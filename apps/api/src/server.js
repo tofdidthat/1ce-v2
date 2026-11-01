@@ -20,6 +20,10 @@ const server=createServer(async(req,res)=>{
  if(allowed){res.setHeader('Access-Control-Allow-Origin',origin);res.setHeader('Access-Control-Allow-Credentials','true');res.setHeader('Vary','Origin');}
  if(req.method==='OPTIONS'){res.writeHead(allowed?204:403,{'Access-Control-Allow-Methods':'GET,POST,OPTIONS','Access-Control-Allow-Headers':'Content-Type'});return res.end();}
  if(pathname==='/health'&&req.method==='GET')return json(res,200,{ok:true,service:'1ce-v2-api'});
+ if(pathname==='/health/db'&&req.method==='GET'){
+  try{await pool.query('SELECT 1');return json(res,200,{ok:true,database:'connected'});}
+  catch(err){console.error('v2 database health check failed',err?.message);return json(res,503,{ok:false,database:'unavailable'});}
+ }
  if(!allowed && req.headers.origin)return json(res,403,{error:'Origin not allowed'});
  try{
   if(pathname==='/auth/me'&&req.method==='GET'){const user=await currentUser(req);return user?json(res,200,{user}):json(res,401,{error:'Not authenticated'});}
