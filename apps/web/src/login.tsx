@@ -6,7 +6,7 @@ function GoogleMark(){return <svg viewBox="0 0 24 24" width="18" height="18" ari
 export function LoginPage(){
  const [email,setEmail]=useState(''); const [password,setPassword]=useState('');const [notice,setNotice]=useState('');
  return <div className="v1-auth">
-  <header className="v1-auth-header"><Link to="/" className="v1-auth-identity"><img src="https://raw.githubusercontent.com/tofdidthat/1ce/main/public/1ce-logo.png" alt="1CE"/><span className="v1-auth-rule"/><span>One Content Engine</span></Link><Link to="/register">Sign up</Link></header>
+  <header className="v1-auth-header"><Link to="/" className="v1-auth-identity"><img src="/1ce-logo.png" alt="1CE"/><span className="v1-auth-rule"/><span>One Content Engine</span></Link><Link to="/register">Sign up</Link></header>
   <main className="v1-auth-center"><section className="v1-auth-card"><h1>Welcome back.</h1><p className="v1-auth-subtitle">Continue where you left off.</p>
   <button className="v1-google" type="button" onClick={()=>setNotice('Google sign-in will be available when the v2 authentication service is connected.')}><GoogleMark/>Continue with Google</button>
   <div className="v1-auth-divider"><span/>Or<span/></div>
