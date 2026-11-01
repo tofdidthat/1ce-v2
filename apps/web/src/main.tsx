@@ -12,5 +12,21 @@ function Landing() { return <PublicPage><div className="empty-landing" aria-labe
 function Register() { return <PublicPage><section className="auth-card"><h1>Create an account</h1><p>Registration will be enabled when the v2 authentication API is ready.</p><Link to="/login">Back to login</Link></section></PublicPage> }
 function Library() { return <div className="site"><Header/><main className="main library"><aside><h2>Library</h2><button disabled>Upload beat</button><button disabled>Create pack</button></aside><section><h1>Your Library</h1><p>Library controls are visual only in this phase.</p><input placeholder="Search beats" aria-label="Search beats" disabled/><div className="library-empty">Your beats will appear here after the library migration.</div></section></main><Footer/></div> }
 function ProtectedLibrary(){const [status,setStatus]=useState<'checking'|'authorized'|'unauthorized'>('checking');useEffect(()=>{const api=import.meta.env.VITE_API_URL;if(!api){setStatus('unauthorized');return;}fetch(api+'/auth/me',{credentials:'include'}).then(r=>setStatus(r.ok?'authorized':'unauthorized')).catch(()=>setStatus('unauthorized'));},[]);if(status==='checking')return <div className="site"><main className="main">Checking session…</main></div>;if(status==='unauthorized')return <Navigate to="/login" replace/>;return <Library/>;}
-function App() { return <BrowserRouter><Routes><Route path="/" element={<Landing/>}/><Route path="/login" element={<LoginPage/>}/><Route path="/register" element={<Register/>}/><Route path="/terms" element={<TermsPage/>}/><Route path="/privacy" element={<PrivacyPage/>}/><Route path="/app/library" element={<ProtectedLibrary/>}/><Route path="*" element={<Navigate to="/" replace/>}/></Routes></BrowserRouter> }
+function GoogleReturn(){
+ const [message,setMessage]=useState('Completing Google sign-in…');
+ useEffect(()=>{
+  const loginCode=new URLSearchParams(window.location.search).get('login_code');
+  window.history.replaceState({},'',window.location.pathname);
+  const verifier=sessionStorage.getItem('onece_v2_google_verifier');
+  sessionStorage.removeItem('onece_v2_google_verifier');
+  const api=import.meta.env.VITE_API_URL;
+  if(!loginCode||!verifier||!api){setMessage('Google sign-in could not be completed. Please try again.');return;}
+  fetch(api+'/auth/google/exchange',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({loginCode,verifier})})
+   .then(async response=>{if(!response.ok)throw new Error('Exchange failed');const check=await fetch(api+'/auth/me',{credentials:'include'});if(!check.ok)throw new Error('Session unavailable');window.location.replace('/app/library');})
+   .catch(()=>setMessage('Google sign-in failed. Please try again.'));
+ },[]);
+ return <div className="site"><main className="main"><p role="status">{message}</p><Link to="/login">Back to login</Link></main></div>;
+}
+
+function App() { return <BrowserRouter><Routes><Route path="/" element={<Landing/>}/><Route path="/login" element={<LoginPage/>}/><Route path="/register" element={<Register/>}/><Route path="/terms" element={<TermsPage/>}/><Route path="/privacy" element={<PrivacyPage/>}/><Route path="/app" element={<GoogleReturn/>}/><Route path="/app/library" element={<ProtectedLibrary/>}/><Route path="*" element={<Navigate to="/" replace/>}/></Routes></BrowserRouter> }
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);
