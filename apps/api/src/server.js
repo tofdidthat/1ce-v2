@@ -15,15 +15,16 @@ async function verify(password,stored){const p=(stored||'').split('$');if(p.leng
 function cookie(token,maxAge){return cookieName+'='+token+'; HttpOnly; Secure; SameSite=None; Path=/; Max-Age='+maxAge;}
 async function currentUser(req){const token=parseCookies(req.headers.cookie)[cookieName];if(!token||!/^[a-f0-9]{64}$/.test(token))return null;const q=await pool.query('SELECT u.id,u.email,u.name,u.picture FROM account_sessions s JOIN account_users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>now()',[hash(token)]);return q.rows[0]||null;}
 const server=createServer(async(req,res)=>{
+ const pathname=new URL(req.url,'http://localhost').pathname;
  const allowed=req.headers.origin===origin;
  if(allowed){res.setHeader('Access-Control-Allow-Origin',origin);res.setHeader('Access-Control-Allow-Credentials','true');res.setHeader('Vary','Origin');}
  if(req.method==='OPTIONS'){res.writeHead(allowed?204:403,{'Access-Control-Allow-Methods':'GET,POST,OPTIONS','Access-Control-Allow-Headers':'Content-Type'});return res.end();}
- if(req.url==='/health'&&req.method==='GET')return json(res,200,{ok:true,service:'1ce-v2-api'});
+ if(pathname==='/health'&&req.method==='GET')return json(res,200,{ok:true,service:'1ce-v2-api'});
  if(!allowed && req.headers.origin)return json(res,403,{error:'Origin not allowed'});
  try{
-  if(req.url==='/auth/me'&&req.method==='GET'){const user=await currentUser(req);return user?json(res,200,{user}):json(res,401,{error:'Not authenticated'});}
-  if(req.url==='/auth/logout'&&req.method==='POST'){const token=parseCookies(req.headers.cookie)[cookieName];if(token)await pool.query('DELETE FROM account_sessions WHERE token_hash=$1',[hash(token)]);return json(res,200,{ok:true},{'Set-Cookie':cookie('',0)});}
-  if(req.url==='/auth/login'&&req.method==='POST'){
+  if(pathname==='/auth/me'&&req.method==='GET'){const user=await currentUser(req);return user?json(res,200,{user}):json(res,401,{error:'Not authenticated'});}
+  if(pathname==='/auth/logout'&&req.method==='POST'){const token=parseCookies(req.headers.cookie)[cookieName];if(token)await pool.query('DELETE FROM account_sessions WHERE token_hash=$1',[hash(token)]);return json(res,200,{ok:true},{'Set-Cookie':cookie('',0)});}
+  if(pathname==='/auth/login'&&req.method==='POST'){
    if(rateLimited(req.socket.remoteAddress||'unknown'))return json(res,429,{error:'Too many attempts. Please try later.'});
    let body='';for await(const chunk of req){body+=chunk;if(body.length>8192)return json(res,413,{error:'Request too large'});}
    let data;try{data=JSON.parse(body)}catch{return json(res,400,{error:'Invalid request'})}
