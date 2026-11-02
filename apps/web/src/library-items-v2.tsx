@@ -71,6 +71,23 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility}:{onUpload:(
  const [data,setData]=useState<LibraryData>({beats:[],packs:[]});
  const [loading,setLoading]=useState(true);
  const [current,setCurrent]=useState<BeatItem|null>(null);
+ const [openedPack,setOpenedPack]=useState<PackItem|null>(null);
+ const [openedTracks,setOpenedTracks]=useState<BeatItem[]>([]);
+ const [packLoading,setPackLoading]=useState(false);
+ const [packError,setPackError]=useState('');
+ const [openedBeat,setOpenedBeat]=useState<BeatItem|null>(null);
+ const openPack=async(pack:PackItem)=>{
+  setOpenedPack(pack);setOpenedTracks([]);setPackError('');setPackLoading(true);
+  try{
+   const response=await fetch(api+'/api/library/files/pack-tracks/'+pack.id,{credentials:'include'});
+   if(!response.ok)throw Error('Unable to load pack');
+   const result=await response.json();
+   setOpenedTracks((result.beats as BeatItem[]).map(beat=>({...beat,cover_file_id:beat.cover_file_id??pack.cover_file_id})));
+  }catch(e){setPackError(e instanceof Error?e.message:'Unable to load pack')}
+  finally{setPackLoading(false)}
+ };
+ useEffect(()=>{if(!openedBeat)return;const close=(event:KeyboardEvent)=>{if(event.key==='Escape')setOpenedBeat(null)};document.addEventListener('keydown',close);return()=>document.removeEventListener('keydown',close)},[openedBeat]);
+
  const waveBars=useWaveform(current?.audio_file_id??null);
  const [queue,setQueue]=useState<BeatItem[]>([]);
  const [playing,setPlaying]=useState(false);
@@ -129,20 +146,27 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility}:{onUpload:(
    error?<div className="v2-library-status" role="alert">{error}<button onClick={()=>window.location.reload()}>Retry</button></div>:
    empty?<div className="library-empty"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M4 4v16M9 4v16M14 4l4 16"/></svg><h2>Your Library is Empty</h2><button type="button" className="library-add-audio" onClick={onUpload}>Add Audio</button></div>:
    <div className="v2-library-contents">
-    <div className="beat-pack-grid">
+    {openedPack?<div className="library-pack-detail v2-pack-detail">
+      <button type="button" className="library-pack-back" aria-label="Back to library" onClick={()=>setOpenedPack(null)}>‹</button>
+      <div className="library-pack-cover beat-art-0"><Cover id={openedPack.cover_file_id} title={openedPack.title}/></div>
+      <header className="library-pack-info"><div className="library-pack-title-row"><div className="library-pack-title-block"><h2>{openedPack.title}</h2><p>{openedTracks.length} {openedTracks.length===1?'beat':'beats'}</p></div><div className="library-pack-play-controls"><button type="button" className="library-pack-shuffle" aria-label="Shuffle pack" onClick={()=>{if(openedTracks.length){const mixed=[...openedTracks].sort(()=>Math.random()-.5);choose(mixed[0],mixed,openedPack.id)}}}><Shuffle size={19}/></button><button type="button" className="library-pack-play" aria-label={(activePackId===openedPack.id&&playing?'Pause ':'Play ')+openedPack.title} onClick={()=>playPack(openedPack)}>{activePackId===openedPack.id&&playing?<Pause/>:<Play/>}</button></div></div></header>
+      <button type="button" className="library-pack-add" disabled title="Add tracks will be enabled in the next step"><span>+</span><span>Add tracks</span></button>
+      {packLoading?<p className="v2-library-status">Loading beats…</p>:packError?<p role="alert">{packError}</p>:<ol className="beat-track-list">{openedTracks.map((beat,index)=><li key={beat.id} className={current?.id===beat.id?'beat-track-active':''}><button type="button" className="beat-track-play" onClick={()=>choose(beat,openedTracks,openedPack.id)} aria-label={(current?.id===beat.id&&playing?'Pause ':'Play ')+beat.title}><span className="beat-track-number">{current?.id===beat.id&&playing?'▥':index+1}</span><span><strong>{beat.title}</strong></span></button><div className="beat-track-menu"><button type="button" aria-label={'Open '+beat.title} onClick={()=>setOpenedBeat(beat)}>•••</button></div></li>)}</ol>}
+     </div>:<div className="beat-pack-grid">
      {data.packs.map((p,index)=><article key={'pack-'+p.id} className="v2-library-card">
-      <div className={'beat-pack-art beat-art-'+index%3} aria-label={'Pack '+p.title}><Cover id={p.cover_file_id} title={p.title}/><button type="button" className="v2-card-play" aria-label={(activePackId===p.id&&playing?"Pause ":"Play ")+p.title} onClick={()=>playPack(p)}>{activePackId===p.id&&playing?<PauseIcon/>:<PlayIcon/>}</button></div>
+      <div className={'beat-pack-art beat-art-'+index%3+' v2-art-openable'} role="button" tabIndex={0} onClick={()=>openPack(p)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openPack(p)}}} aria-label={'Open pack '+p.title}><Cover id={p.cover_file_id} title={p.title}/><button type="button" className="v2-card-play" aria-label={(activePackId===p.id&&playing?"Pause ":"Play ")+p.title} onClick={e=>{e.stopPropagation();playPack(p)}}>{activePackId===p.id&&playing?<PauseIcon/>:<PlayIcon/>}</button></div>
       <div className="beat-pack-caption"><span className="v2-card-name">{p.title}</span></div>
       <p>{p.track_count} beats</p>
      </article>)}
      {standaloneBeats.map((b,index)=><article key={'beat-'+b.id} className="v2-library-card beat-single-card" onPointerEnter={()=>{void loadWaveform(b.audio_file_id).catch(()=>{})}} onFocusCapture={()=>{void loadWaveform(b.audio_file_id).catch(()=>{})}}>
-      <div className={'beat-pack-art beat-art-'+(data.packs.length+index)%3} aria-label={'Beat '+b.title}><Cover id={b.cover_file_id} title={b.title}/><button type="button" className="v2-card-play" aria-label={(current?.id===b.id&&playing?"Pause ":"Play ")+b.title} onClick={()=>choose(b,[b])}>{current?.id===b.id&&playing?<PauseIcon/>:<PlayIcon/>}</button></div>
+      <div className={'beat-pack-art beat-art-'+(data.packs.length+index)%3+' v2-art-openable'} role="button" tabIndex={0} onClick={()=>setOpenedBeat(b)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setOpenedBeat(b)}}} aria-label={'Open beat '+b.title}><Cover id={b.cover_file_id} title={b.title}/><button type="button" className="v2-card-play" aria-label={(current?.id===b.id&&playing?"Pause ":"Play ")+b.title} onClick={e=>{e.stopPropagation();choose(b,[b])}}>{current?.id===b.id&&playing?<PauseIcon/>:<PlayIcon/>}</button></div>
       <div className="beat-pack-caption"><span className="v2-card-name">{b.title}</span></div>
       <p>{b.created_at?new Date(b.created_at).toLocaleDateString('en-US',{month:'short',day:'2-digit'}):'Beat'}</p>
      </article>)}
-    </div>
+    </div>}
    </div>}
  </div></div>
+ {openedBeat&&<div className="beat-player-overlay v2-beat-overlay" role="dialog" aria-modal="true" aria-label={openedBeat.title} onClick={()=>setOpenedBeat(null)}><div className="beat-player-widget v2-beat-widget" onClick={e=>e.stopPropagation()}><button type="button" className="beat-player-close" aria-label="Close player" onClick={()=>setOpenedBeat(null)}>×</button><div className="v2-beat-modal-art"><Cover id={openedBeat.cover_file_id} title={openedBeat.title}/></div><h2>{openedBeat.title}</h2><p>1CE</p><button type="button" className="v2-beat-modal-play" onClick={()=>choose(openedBeat,[openedBeat])}>{current?.id===openedBeat.id&&playing?<Pause/>:<Play/>}<span>{current?.id===openedBeat.id&&playing?'Pause':'Play'}</span></button></div></div>}
  {current&&<div className="onece-player-dock v2-active-player" aria-label="Audio player">
   <div className="onece-global-player">
    <div className="onece-player-cover" aria-hidden="true">{coverUrl&&coverLoadedId===current.cover_file_id?<img src={coverUrl} alt=""/>:<Music2 size={20}/>}</div>
