@@ -21,6 +21,7 @@ function AdjustMark() {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3v3m0 4v11M12 3v9m0 4v5M18 3v3m0 4v11" /><path d="M4 6h4v4H4zM10 12h4v4h-4zM16 6h4v4h-4z" /></svg>
 }
 
+function EditProfileMark(){return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L9 17l-4 1 1-4Z"/></svg>}
 function SettingsMark(){return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831 2.34 2.34 0 0 1 2.33-4.033 2.34 2.34 0 0 0 3.32-1.915" /><circle cx="12" cy="12" r="3" /></svg>}
 
 function CompactWorkspaceNav({ view, disabled, onNavigate }) {
@@ -232,8 +233,8 @@ function HeaderV2({view,user,onNavigate}){
  <header className="onece-workspace-header" aria-label="Workspace header">
  <div className="onece-workspace-brand"><img src="/1ce-logo.png" alt="1CE"/></div>
  <div className="onece-workspace-actions">
- <button type="button" className="library-settings library-profile-trigger" title={view==='profile'?'Edit Profile':'Public Profile'} aria-label={view==='profile'?'Edit Profile':'Public Profile'} onClick={()=>onNavigate(view==='profile'?'account':'profile')}>
- {view==='profile' ? <SettingsMark/> : user?.customPicture||user?.picture ? <img src={user.customPicture||user.picture} alt="" referrerPolicy="no-referrer"/> : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="7" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2Z"/></svg>}
+ <button type="button" className="library-settings library-profile-trigger" title={view==='profile'?'Edit Profile':'Public Profile'} aria-label={view==='profile'?'Edit Profile':'Public Profile'} onClick={()=>onNavigate(view==='profile'?'edit-profile':'profile')}>
+ {view==='profile' ? <EditProfileMark/> : user?.customPicture||user?.picture ? <img src={user.customPicture||user.picture} alt="" referrerPolicy="no-referrer"/> : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="7" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2Z"/></svg>}
  </button>
  <CompactWorkspaceNav view={view} disabled={false} onNavigate={onNavigate}/></div></header></>;
 }
@@ -249,15 +250,15 @@ function EmptyLibrary({onUpload}){
 export default function WorkspaceV2({user}){
  const navigate=useNavigate();const location=useLocation();
  const [playerVisible,setPlayerVisible]=useState(false);
- const view=location.pathname==='/app/library'?'library':location.pathname.endsWith('/discover')?'discover':location.pathname.endsWith('/upload')?'upload':location.pathname.endsWith('/settings')?'account':'profile';
- const onNavigate=(next)=>navigate(next==='library'?'/app/library':next==='account'?'/app/settings':'/app/'+next);
- useEffect(()=>{document.title=({library:'Library',discover:'Discover',upload:'Upload',account:'Settings',profile:'Profile'}[view]||'Library')+' — 1CE'},[view]);
+ const view=location.pathname==='/app/library'?'library':location.pathname.endsWith('/discover')?'discover':location.pathname.endsWith('/upload')?'upload':location.pathname.endsWith('/settings')?'account':location.pathname.endsWith('/profile/edit')?'edit-profile':'profile';
+ const onNavigate=(next)=>navigate(next==='library'?'/app/library':next==='account'?'/app/settings':next==='edit-profile'?'/app/profile/edit':'/app/'+next);
+ useEffect(()=>{document.title=({library:'Library',discover:'Discover',upload:'Upload',account:'Settings',profile:'Profile','edit-profile':'Edit Profile'}[view]||'Library')+' — 1CE'},[view]);
  return <div className={'onece-workspace-shell'+(view==='library'?' onece-library-view':'')}>
  <HeaderV2 view={view} user={user} onNavigate={onNavigate}/>
  <main className="onece-v2-workspace-main">
  {view==='library'?<LibraryItemsV2 onUpload={()=>onNavigate('upload')} onPlayerVisibility={setPlayerVisible}/>:
  view==='upload'?<LibraryUploadV2/>:
- view==='profile'?<PublicProfileV2 user={user} onSettings={()=>onNavigate('account')}/>:
+ view==='profile'?<PublicProfileV2 user={user} onSettings={()=>onNavigate('edit-profile')}/>: view==='edit-profile'?<section className="onece-workspace-placeholder"><h1>Edit Profile</h1><p>Profile editing is not yet available in v2.</p></section>:
  <section className="onece-workspace-placeholder"><h1>{view==='account'?'Settings':view==='profile'?'Public Profile':'Discover'}</h1><p>{view==='profile'?'Public profile publishing is not yet enabled in v2.':view==='account'?'Account settings are not yet available in v2.':'Discover is not yet available in v2.'}</p></section>}
  </main>
  {view==='library'&&!playerVisible&&<div className="onece-player-dock" aria-label="Add audio"><button type="button" className="onece-global-player" style={{display:'flex',justifyContent:'center',gap:10,width:'fit-content',maxWidth:'100%',marginInline:'auto',padding:'7px 26px',color:'inherit',font:'inherit',fontSize:13,cursor:'pointer'}} onClick={()=>onNavigate('upload')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>Add file</span></button></div>}
