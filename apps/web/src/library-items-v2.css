@@ -125,3 +125,7 @@
 .onece-v2-library .beat-pack-art .v2-card-play svg{width:19px;height:19px}
 .onece-v2-library .beat-pack-art .v2-card-play:hover{background:#3a3a3a;transform:scale(1.04)}
 .onece-v2-library .beat-pack-art .v2-card-play:focus-visible{outline:2px solid #c4b5fd;outline-offset:3px}
+
+/* 2% smaller than the 44px reference overlay, including its icon. */
+.onece-v2-library .beat-pack-art .v2-card-play{width:43.12px;height:43.12px}
+.onece-v2-library .beat-pack-art .v2-card-play svg{width:18.62px;height:18.62px}
