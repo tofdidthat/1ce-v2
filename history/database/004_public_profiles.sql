@@ -16,3 +16,20 @@ CREATE TABLE IF NOT EXISTS v2_public_saves (
  PRIMARY KEY (user_id,owner_id,kind,project_id)
 );
 CREATE INDEX IF NOT EXISTS v2_public_saves_owner_idx ON v2_public_saves(owner_id,kind,project_id);
+
+-- Sharing an unpublished project grants access only to the redeeming account.
+CREATE TABLE IF NOT EXISTS v2_project_access (
+ owner_id INTEGER NOT NULL REFERENCES account_users(id) ON DELETE CASCADE,
+ viewer_id INTEGER NOT NULL REFERENCES account_users(id) ON DELETE CASCADE,
+ kind TEXT NOT NULL CHECK(kind IN ('beat','pack')),
+ project_id UUID NOT NULL,
+ granted_at TIMESTAMPTZ DEFAULT now(),
+ PRIMARY KEY(owner_id,viewer_id,kind,project_id)
+);
+CREATE TABLE IF NOT EXISTS v2_project_share_links (
+ token_hash TEXT PRIMARY KEY,
+ owner_id INTEGER NOT NULL REFERENCES account_users(id) ON DELETE CASCADE,
+ kind TEXT NOT NULL CHECK(kind IN ('beat','pack')),
+ project_id UUID NOT NULL,
+ created_at TIMESTAMPTZ DEFAULT now()
+);
