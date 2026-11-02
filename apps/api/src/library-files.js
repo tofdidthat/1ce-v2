@@ -87,7 +87,7 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser){
   ]);
   send(res,200,{beats:beats.rows,packs:packs.rows});return true;
  }
- if(req.method==='GET'&&segments.length===5&&segments[3]==='cover'&&/^\\d+$/.test(segments[4])){
+ if(req.method==='GET'&&segments.length===5&&segments[3]==='cover'&&/^\d+$/.test(segments[4])){
   const id=segments[4];
   const q=await pool.query("SELECT object_key,content_type FROM library_files WHERE id=$1 AND user_id=$2 AND kind='cover' AND status='ready'",[id,user.id]);
   if(!q.rows[0]){send(res,404,{error:'Cover not found'});return true;}
