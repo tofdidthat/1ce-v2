@@ -9,13 +9,14 @@ const formatSize=file=>(file.size/1024/1024).toFixed(2)+' MB';
 export default function LibraryUploadV2(){
  const [audioFiles,setAudioFiles]=useState([]);
  const [cover,setCover]=useState(null);
- const [stems,setStems]=useState(null);
+ const [stemsByAudio,setStemsByAudio]=useState({});
  const [itemName,setItemName]=useState('');
  const [dragging,setDragging]=useState(false);
  const [error,setError]=useState('');
  const audioInput=useRef(null);
  const coverInput=useRef(null);
  const stemsInput=useRef(null);
+ const [stemsTarget,setStemsTarget]=useState(null);
  const [saving,setSaving]=useState(false);
  const [stage,setStage]=useState('');
  const [result,setResult]=useState('');
@@ -30,16 +31,18 @@ export default function LibraryUploadV2(){
   setAudioFiles(current=>{const known=new Set(current.map(file=>file.name+':'+file.size));return [...current,...valid.filter(file=>!known.has(file.name+':'+file.size))]});
   if(!itemName&&valid.length===1)setItemName(fileTitle(valid[0]));
  };
- const removeFile=file=>{setAudioFiles(current=>current.filter(item=>item!==file));setError('')};
+ const fileKey=file=>file.name+':'+file.size;
+ const removeFile=file=>{setAudioFiles(current=>current.filter(item=>item!==file));setStemsByAudio(current=>{const next={...current};delete next[fileKey(file)];return next;});setError('')};
+ const chooseStems=file=>{setStemsTarget(fileKey(file));stemsInput.current?.click()};
  const save=async()=>{
   if(saving||!audioFiles.length)return;
   const api=import.meta.env.VITE_API_URL;
   if(!api){setError('Upload API is not configured');return;}
   setSaving(true);setError('');setResult('');
-  const upload=async(file,kind)=>{
+  const upload=async(file,kind,collectionId,trackId)=>{
    const mime=kind==='audio'?(file.name.toLowerCase().endsWith('.mp3')?'audio/mpeg':'audio/wav'):
     kind==='stems'?'application/zip':file.type;
-   const response=await fetch(api+'/api/library/files/init',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,name:file.name,contentType:mime,size:file.size})});
+   const response=await fetch(api+'/api/library/files/init',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,name:file.name,contentType:mime,size:file.size,collectionId,trackId})});
    const data=await response.json().catch(()=>({}));
    if(!response.ok)throw new Error(data.error||'Unable to start upload');
    const put=await fetch(data.uploadUrl,{method:'PUT',headers:{'Content-Type':mime},body:file});
@@ -49,13 +52,21 @@ export default function LibraryUploadV2(){
    if(!done.ok)throw new Error(completion.error||'Unable to finalize upload');
   };
   try{
+   const collectionResponse=await fetch(api+'/api/library/files/collections',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:isPack?'pack':'beat',title:itemName.trim()||fileTitle(audioFiles[0])})});
+   const collection=await collectionResponse.json().catch(()=>({}));
+   if(!collectionResponse.ok)throw new Error(collection.error||'Unable to create collection');
    for(const [index,file] of audioFiles.entries()){
+    const trackId=crypto.randomUUID();
     setStage('Uploading audio '+(index+1)+'/'+audioFiles.length+'…');
-    await upload(file,'audio');
+    await upload(file,'audio',collection.id,trackId);
+    const stems=stemsByAudio[fileKey(file)];
+    if(stems){setStage('Uploading stems for '+file.name+'…');await upload(stems,'stems',collection.id,trackId);}
    }
-   if(cover){setStage('Uploading cover…');await upload(cover,'cover');}
-   if(stems){setStage('Uploading stems…');await upload(stems,'stems');}
-   setAudioFiles([]);setCover(null);setStems(null);setItemName('');
+   if(cover){setStage('Uploading shared cover…');await upload(cover,'cover',collection.id,null);}
+   const complete=await fetch(api+'/api/library/files/collections/'+collection.id+'/complete',{method:'POST',credentials:'include'});
+   const completed=await complete.json().catch(()=>({}));
+   if(!complete.ok)throw new Error(completed.error||'Unable to finalize collection');
+   setAudioFiles([]);setCover(null);setStemsByAudio({});setItemName('');
    setResult('Files saved to your private Library.');
   }catch(e){setError(e instanceof Error?e.message:'Upload failed');}
   finally{setSaving(false);setStage('');}
@@ -149,14 +160,19 @@ export default function LibraryUploadV2(){
                       <strong>{file.name}</strong>
                       <span>{formatSize(file)}</span>
                     </div>
+                    <div className="upload-file-actions">
+                      <button type="button" disabled={saving} onClick={()=>chooseStems(file)}>
+                        {stemsByAudio[fileKey(file)] ? 'Stems: '+stemsByAudio[fileKey(file)].name : 'Add stems'}
+                      </button>
                     <button
                       type="button"
                       aria-label={'Remove ' + file.name}
-                      disabled={false}
+                      disabled={saving}
                       onClick={() => removeFile(file)}
                     >
                       Remove
                     </button>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -172,28 +188,13 @@ export default function LibraryUploadV2(){
               />
             </label>
 
-            {!isPack && audioFiles.length === 1 && (
-              <div className="upload-stems">
-                <button
-                  type="button"
-                  className="upload-secondary-action"
-                  onClick={() => stemsInput.current?.click()}
-                >
-                  {stems ? stems.name : 'Add stems ZIP (optional)'}
-                </button>
-                <input
-                  ref={stemsInput}
-                  type="file"
-                  accept=".zip"
-                  hidden
-                  onChange={event => {
-                    const file = event.target.files?.[0]
-                    event.target.value = ''
-                    if (file) setStems(file)
-                  }}
-                />
-              </div>
-            )}
+            <input ref={stemsInput} type="file" accept=".zip" hidden onChange={event=>{
+              const file=event.target.files?.[0];event.target.value='';
+              if(file&&stemsTarget){
+               if(!/\.zip$/i.test(file.name)){setError('Stems must be a ZIP file');return;}
+               setStemsByAudio(current=>({...current,[stemsTarget]:file}));
+              }
+            }}/>
 
             {error && <p className="upload-error" role="alert">{error}</p>}
             {stage && <p className="upload-stage" role="status">{stage}</p>}
