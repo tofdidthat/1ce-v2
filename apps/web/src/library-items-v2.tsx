@@ -3,6 +3,7 @@ import React,{useEffect,useRef,useState} from 'react';
 import {Play,Pause,SkipBack,SkipForward,Shuffle,Repeat,Repeat1,ListMusic,Volume2,VolumeX,X,Music2,ChevronLeft,Bookmark,Eye,EyeOff,ListPlus,FolderPlus,Pencil,Image as ImageIcon,Download,Layers,Trash2,ChevronRight,Link2} from 'lucide-react';
 import './library-items-v2.css';
 import {notifyV2DataChanged,subscribeV2DataChanges,subscribeV2Resume} from './data-refresh-v2';
+import ProjectContextMenuV2 from './project-context-menu-v2';
 import ProjectActionDialogV2,{type ContextProject,type ProjectAction,type ChangedProject} from './project-action-dialog-v2';
 const api=import.meta.env.VITE_API_URL;
 type BeatItem = {published?:boolean;owner_id?:number;id:string;title:string;audio_file_id:number;cover_file_id:number|null;stems_file_id:number|null;pack_count:number;created_at:string;library_visible:boolean};
@@ -348,35 +349,8 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
     </div>}
    </div>}
  </div></div>
- {contextPack&&<div className="v2-context-menu" role="menu" aria-label={'Pack actions for '+contextPack.pack.title} style={{left:Math.max(8,Math.min(contextPack.x,window.innerWidth-280))+'px',top:Math.max(8,Math.min(contextPack.y,window.innerHeight-460))+'px'}} onPointerDown={e=>e.stopPropagation()} onContextMenu={e=>e.preventDefault()}>
-  <button type="button" role="menuitem" className="v2-context-action" onClick={()=>void togglePublish('pack',contextPack.pack.id)}>{published.has(publicationKey('pack',contextPack.pack.id))?<EyeOff size={17}/>:<Eye size={17}/>}<span>{published.has(publicationKey('pack',contextPack.pack.id))?'Unpublish':'Publish'}</span></button>
-  <div className="v2-context-separator"/>
-  <button type="button" role="menuitem" className="v2-context-action" onClick={()=>{const id=contextPack.pack.id;setContextPack(null);void toggleSavedProject('pack',id)}}><Bookmark size={17} fill={savedPackIds.has(contextPack.pack.id)?'currentColor':'none'}/><span>{savedPackIds.has(contextPack.pack.id)?'Unsave':'Save'}</span></button>
-  <button type="button" role="menuitem" className="v2-context-action" onClick={()=>void copyProjectLink('pack',contextPack.pack.id)}><Link2 size={17}/><span>Copy link</span></button>
-  <button type="button" role="menuitem" className="v2-context-action" onClick={()=>{void (async()=>{const pack=contextPack.pack;setContextPack(null);try{const response=await fetch(api+'/api/library/files/pack-tracks/'+pack.id,{credentials:'include'});if(!response.ok)throw Error('Unable to load pack tracks');const result=await response.json();const tracks=(result.beats as BeatItem[]).map(beat=>({...beat,cover_file_id:beat.cover_file_id??pack.cover_file_id}));if(!tracks.length)return;if(!current)choose(tracks[0],tracks,pack.id);else setQueue(previous=>[...previous,...tracks.map(beat=>({...beat,owner_id:userId}))])}catch(error){setPlayerError(error instanceof Error?error.message:'Unable to add pack to queue')}})()}}><ListPlus size={17}/><span>Add to queue</span></button>
-  <button type="button" role="menuitem" className="v2-context-action" onClick={()=>showProjectAction('add',{...contextPack.pack,kind:'pack'})}><FolderPlus size={17}/><span>Add to...</span><ChevronRight className="v2-context-chevron" size={15}/></button>
-  <div className="v2-context-separator"/>
-  <button type="button" role="menuitem" className="v2-context-action" onClick={()=>showProjectAction('rename',{...contextPack.pack,kind:'pack'})}><Pencil size={17}/><span>Rename</span></button>
-  <button type="button" role="menuitem" className="v2-context-action" onClick={()=>showProjectAction('cover',{...contextPack.pack,kind:'pack'})}><ImageIcon size={17}/><span>Change cover</span></button>
-  <button type="button" role="menuitem" className="v2-context-action" disabled title="Pack ZIP download will include all beats and available stems; server-side archive generation is not implemented yet"><Download size={17}/><span>Download ZIP</span></button>
-  <div className="v2-context-separator"/>
-  <button type="button" role="menuitem" className="v2-context-action v2-context-danger" onClick={()=>showProjectAction('delete',{...contextPack.pack,kind:'pack'})}><Trash2 size={17}/><span>Delete</span></button>
- </div>}
- {contextBeat&&<div className="v2-context-menu" role="menu" aria-label={'Beat actions for '+contextBeat.beat.title} style={{left:Math.min(contextBeat.x,Math.max(8,window.innerWidth-280))+'px',top:Math.min(contextBeat.y,Math.max(8,window.innerHeight-440))+'px'}} onPointerDown={e=>e.stopPropagation()} onContextMenu={e=>e.preventDefault()}>
-  <button type="button" role="menuitem" className="v2-context-action" onClick={()=>void togglePublish('beat',contextBeat.beat.id)}>{published.has(publicationKey('beat',contextBeat.beat.id))?<EyeOff size={17}/>:<Eye size={17}/>}<span>{published.has(publicationKey('beat',contextBeat.beat.id))?'Unpublish':'Publish'}</span></button>
-  <div className="v2-context-separator"/>
-  <button type="button" role="menuitem" className="v2-context-action" onClick={()=>{void toggleSavedProject('beat',contextBeat.beat.id);setContextBeat(null)}}><Bookmark size={17} fill={savedBeatIds.has(contextBeat.beat.id)?'currentColor':'none'}/><span>{savedBeatIds.has(contextBeat.beat.id)?'Unsave':'Save'}</span></button>
-  <button type="button" role="menuitem" className="v2-context-action" onClick={()=>void copyProjectLink('beat',contextBeat.beat.id)}><Link2 size={17}/><span>Copy link</span></button>
-  <button type="button" role="menuitem" className="v2-context-action" onClick={()=>addToQueue(contextBeat.beat)}><ListPlus size={17}/><span>Add to queue</span></button>
-  <button type="button" role="menuitem" className="v2-context-action" onClick={()=>showProjectAction('add',{...contextBeat.beat,kind:'beat'})}><FolderPlus size={17}/><span>Add to...</span><ChevronRight className="v2-context-chevron" size={15}/></button>
-  <div className="v2-context-separator"/>
-  <button type="button" role="menuitem" className="v2-context-action" onClick={()=>showProjectAction('rename',{...contextBeat.beat,kind:'beat'})}><Pencil size={17}/><span>Rename</span></button>
-  <button type="button" role="menuitem" className="v2-context-action" onClick={()=>showProjectAction('cover',{...contextBeat.beat,kind:'beat'})}><ImageIcon size={17}/><span>Change cover</span></button>
-  <button type="button" role="menuitem" className="v2-context-action" disabled title="Download will be available after the v2 API integration"><Download size={17}/><span>Download MP3</span></button>
-  <button type="button" role="menuitem" className="v2-context-action" disabled title="Stems management will be available after the v2 API integration"><Layers size={17}/><span>{contextBeat.beat.stems_file_id?'Download stems':'Upload stems'}</span></button>
-  <div className="v2-context-separator"/>
-  <button type="button" role="menuitem" className="v2-context-action v2-context-danger" onClick={()=>showProjectAction('delete',{...contextBeat.beat,kind:'beat'})}><Trash2 size={17}/><span>Delete</span></button>
- </div>}
+ {contextPack&&<ProjectContextMenuV2 project={{...contextPack.pack,kind:'pack'}} x={contextPack.x} y={contextPack.y} owner published={published.has(publicationKey('pack',contextPack.pack.id))} saved={savedPackIds.has(contextPack.pack.id)} onPublish={()=>void togglePublish('pack',contextPack.pack.id)} onSave={()=>{const id=contextPack.pack.id;setContextPack(null);void toggleSavedProject('pack',id)}} onShare={()=>void copyProjectLink('pack',contextPack.pack.id)} onQueue={()=>{const pack=contextPack.pack;setContextPack(null);void (async()=>{try{const response=await fetch(api+'/api/library/files/pack-tracks/'+pack.id,{credentials:'include'});if(!response.ok)throw Error('Unable to load pack tracks');const result=await response.json();const tracks=(result.beats as BeatItem[]).map(beat=>({...beat,cover_file_id:beat.cover_file_id??pack.cover_file_id}));if(!tracks.length)return;if(!current)choose(tracks[0],tracks,pack.id);else setQueue(previous=>[...previous,...tracks.map(beat=>({...beat,owner_id:userId}))])}catch(error){setPlayerError(error instanceof Error?error.message:'Unable to add pack to queue')}})()}} onAction={action=>showProjectAction(action,{...contextPack.pack,kind:'pack'})}/>}
+ {contextBeat&&<ProjectContextMenuV2 project={{...contextBeat.beat,kind:'beat'}} x={contextBeat.x} y={contextBeat.y} owner published={published.has(publicationKey('beat',contextBeat.beat.id))} saved={savedBeatIds.has(contextBeat.beat.id)} onPublish={()=>void togglePublish('beat',contextBeat.beat.id)} onSave={()=>{const id=contextBeat.beat.id;setContextBeat(null);void toggleSavedProject('beat',id)}} onShare={()=>void copyProjectLink('beat',contextBeat.beat.id)} onQueue={()=>addToQueue(contextBeat.beat)} onAction={action=>showProjectAction(action,{...contextBeat.beat,kind:'beat'})}/>}
  {actionDialog&&<ProjectActionDialogV2
   key={actionDialog.action+':'+actionDialog.project.kind+':'+actionDialog.project.id}
   project={actionDialog.project} action={actionDialog.action} packs={data.packs} userId={userId}
