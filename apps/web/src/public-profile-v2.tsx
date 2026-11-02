@@ -1,5 +1,5 @@
 import React,{useState} from 'react';
-import {Bookmark,Users,Grid2X2,Share2,Settings2} from 'lucide-react';
+import {Bookmark,Users,Grid2X2,Share2,Settings2,Link2} from 'lucide-react';
 import './public-profile-v2.css';
 
 type ProfileTab='catalog'|'saves'|'following';
@@ -15,17 +15,18 @@ export default function PublicProfileV2({user,onSettings}:{user:any;onSettings:(
  ];
  return <section className="onece-public-profile" aria-label="Public profile">
   <div className="onece-profile-top">
-   <div className="onece-profile-identity">
-    <div className="onece-profile-avatar">{picture?<img src={picture} alt="" referrerPolicy="no-referrer"/>:<span>{name.slice(0,1).toUpperCase()}</span>}</div>
-    <div className="onece-profile-name"><h1>{name}</h1>{handle&&<p>@{handle.replace(/^@/,'')}</p>}</div>
+   <div className="onece-profile-avatar">{picture?<img src={picture} alt="" referrerPolicy="no-referrer"/>:<span>{name.slice(0,1).toUpperCase()}</span>}</div>
+   <div className="onece-profile-name">
+    <h1>{handle?'@'+handle.replace(/^@/,''):name}</h1>
+    <div className="onece-profile-actions">
+     <button type="button" onClick={()=>{if(navigator.share)void navigator.share({title:name,url:window.location.href}).catch(()=>{});else if(navigator.clipboard)void navigator.clipboard.writeText(window.location.href)}} aria-label="Share profile" title="Share profile"><Share2 size={15}/></button>
+     <button type="button" onClick={onSettings} aria-label="Edit profile" title="Edit profile"><Settings2 size={15}/></button>
+    </div>
    </div>
-   <div className="onece-profile-actions">
-    <button type="button" onClick={()=>{if(navigator.share)void navigator.share({title:name,url:window.location.href}).catch(()=>{});else if(navigator.clipboard)void navigator.clipboard.writeText(window.location.href)}} aria-label="Share profile"><Share2 size={17}/><span>Share</span></button>
-    <button type="button" onClick={onSettings} aria-label="Profile settings"><Settings2 size={17}/><span>Edit profile</span></button>
-   </div>
+   {handle&&name.toLowerCase()!==handle.toLowerCase()&&<p className="onece-profile-display-name">{name}</p>}
   </div>
   <nav className="onece-profile-tabs" role="tablist" aria-label="Profile sections">
-   {tabs.map(t=><button key={t.id} id={'onece-tab-'+t.id} type="button" role="tab" aria-selected={tab===t.id} aria-controls="onece-profile-tab-panel" className={tab===t.id?'is-active':''} onClick={()=>setTab(t.id)}>{t.icon}<span>{t.label}</span></button>)}
+   {tabs.map(t=><button key={t.id} id={'onece-tab-'+t.id} type="button" role="tab" aria-selected={tab===t.id} aria-controls="onece-profile-tab-panel" className={tab===t.id?'is-active':''} onClick={()=>setTab(t.id)}>{t.icon}<span className="onece-profile-tab-label">{t.label}</span></button>)}
   </nav>
   <div className="onece-profile-panel" id="onece-profile-tab-panel" role="tabpanel" aria-labelledby={'onece-tab-'+tab}>
    {tab==='catalog'?<div className="onece-profile-empty"><Grid2X2 size={27}/><h2>No public releases yet</h2><p>Beats and packs will appear here when published. Private Library files are never displayed automatically.</p></div>:
