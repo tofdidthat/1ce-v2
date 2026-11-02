@@ -40,3 +40,8 @@
 .onece-profile-context-menu button:disabled{opacity:.38;cursor:not-allowed}
 .onece-profile-context-menu button span{flex:1}
 .onece-profile-context-separator{height:1px;background:#343038;margin:5px 8px}
+
+.onece-profile-project-art{position:relative}
+.onece-profile-project-play{position:absolute;right:0;bottom:0;width:44px;height:44px;border:0;border-radius:13px 0 9px 0;background:#242428;color:#fff;display:grid;place-items:center;cursor:pointer;transition:background .15s}
+.onece-profile-project-play:hover{background:#35353a}
+.onece-profile-project-play svg{width:17px;height:17px}
