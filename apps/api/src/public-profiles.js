@@ -38,7 +38,7 @@ export async function handlePublicProfiles(req,res,pathname,pool,currentUser){
  if(!['GET','POST','DELETE'].includes(req.method)){send(res,405,{error:'Method not allowed'});return true;}
  await ready(pool);
  const parts=pathname.split('/').filter(Boolean);
- if(parts.length===5&&parts[2]==='cover'&&/^\\d+$/.test(parts[3])&&/^\\d+$/.test(parts[4])&&req.method==='GET'){
+ if(parts.length===5&&parts[2]==='cover'&&/^\d+$/.test(parts[3])&&/^\d+$/.test(parts[4])&&req.method==='GET'){
   const owner=parts[3],fileId=parts[4];
   const q=await pool.query(`SELECT f.object_key,f.content_type FROM library_files f WHERE f.id=$1 AND f.user_id=$2 AND f.kind='cover' AND f.status='ready'
    AND EXISTS (SELECT 1 FROM v2_public_projects pub LEFT JOIN library_beats b ON pub.kind='beat' AND b.id=pub.project_id AND b.user_id=pub.user_id LEFT JOIN library_packs p ON pub.kind='pack' AND p.id=pub.project_id AND p.user_id=pub.user_id
@@ -53,7 +53,7 @@ export async function handlePublicProfiles(req,res,pathname,pool,currentUser){
   res.end();return true;
  }
  const user=await currentUser(req);
- if(parts.length===4&&parts[2]==='profile'&&/^\\d+$/.test(parts[3])&&req.method==='GET'){
+ if(parts.length===4&&parts[2]==='profile'&&/^\d+$/.test(parts[3])&&req.method==='GET'){
   const profileId=parts[3];
   const [profile,catalog,saves]=await Promise.all([
    pool.query('SELECT id,name,picture,custom_picture FROM account_users WHERE id=$1',[profileId]),
@@ -79,7 +79,7 @@ export async function handlePublicProfiles(req,res,pathname,pool,currentUser){
   else await pool.query('DELETE FROM v2_public_projects WHERE user_id=$1 AND kind=$2 AND project_id=$3',[user.id,kind,id]);
   send(res,200,{ok:true,published:req.method==='POST'});return true;
  }
- if(parts.length===6&&parts[2]==='save'&&/^\\d+$/.test(parts[3])&&['beat','pack'].includes(parts[4])&&uuid.test(parts[5])&&['POST','DELETE'].includes(req.method)){
+ if(parts.length===6&&parts[2]==='save'&&/^\d+$/.test(parts[3])&&['beat','pack'].includes(parts[4])&&uuid.test(parts[5])&&['POST','DELETE'].includes(req.method)){
   const [, , ,owner,kind,id]=parts;
   const published=await pool.query('SELECT 1 FROM v2_public_projects WHERE user_id=$1 AND kind=$2 AND project_id=$3',[owner,kind,id]);
   if(req.method==='POST'&&!published.rowCount){send(res,404,{error:'Public project not found'});return true;}
