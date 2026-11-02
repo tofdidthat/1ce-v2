@@ -80,3 +80,58 @@ export async function resolveAuthorizedMediaFile(pool,{ownerId,viewerId=null,fil
  const access=await pool.query(authorizedProjectSql,[Number(fileId),owner,kind,viewer]);
  return access.rowCount>0?file:null;
 }
+
+
+// A playable manifest refers to original project IDs and existing private
+// file IDs. It never creates media, grants access, or exposes R2 object keys.
+const projectUuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const projectPermission=(alias,kind)=>`
+  ( ${alias}.user_id=$3::integer
+    OR EXISTS(SELECT 1 FROM v2_public_projects pub
+       WHERE pub.user_id=${alias}.user_id AND pub.kind='${kind}' AND pub.project_id=${alias}.id)
+    OR ($3::integer IS NOT NULL AND EXISTS(SELECT 1 FROM v2_project_access access
+       WHERE access.owner_id=${alias}.user_id AND access.viewer_id=$3
+         AND access.kind='${kind}' AND access.project_id=${alias}.id))
+  )`;
+
+const playableBeatSql=`SELECT b.id,b.title,b.user_id AS owner_id,b.audio_file_id,b.cover_file_id,
+ CASE WHEN b.user_id=$3::integer THEN b.stems_file_id ELSE NULL END AS stems_file_id
+ FROM library_beats b
+ JOIN library_files file ON file.id=b.audio_file_id AND file.user_id=b.user_id AND file.kind='audio' AND file.status='ready'
+ WHERE b.user_id=$1 AND b.id=$2 AND ${projectPermission('b','beat')}
+ LIMIT 1`;
+
+const playablePackSql=`SELECT p.id,p.title,p.user_id AS owner_id,p.cover_file_id
+ FROM library_packs p
+ WHERE p.user_id=$1 AND p.id=$2 AND ${projectPermission('p','pack')}
+ LIMIT 1`;
+
+const playablePackMembersSql=`SELECT b.id,b.title,b.user_id AS owner_id,b.audio_file_id,b.cover_file_id,
+ CASE WHEN b.user_id=$3::integer THEN b.stems_file_id ELSE NULL END AS stems_file_id
+ FROM library_pack_beats pb
+ JOIN library_beats b ON b.id=pb.beat_id AND b.user_id=$2
+ JOIN library_files file ON file.id=b.audio_file_id AND file.user_id=b.user_id AND file.kind='audio' AND file.status='ready'
+ WHERE pb.pack_id=$1 ORDER BY pb.position ASC`;
+
+/**
+ * Resolve a beat or pack for playback by canonical (ownerId, kind, projectId).
+ * Private projects return null unless the viewer owns them or has an explicit
+ * share grant. Published projects remain playable to anonymous visitors.
+ *
+ * This check is repeated for each byte-stream request by resolveAuthorizedMediaFile,
+ * so revoking access prevents subsequent reads even with a known file ID.
+ */
+export async function resolvePlayableProject(pool,{ownerId,viewerId=null,kind,projectId}){
+ if(!validId(ownerId)||!['beat','pack'].includes(kind)||typeof projectId!=='string'||!projectUuid.test(projectId))return null;
+ const owner=Number(ownerId);
+ const viewer=validId(viewerId)?Number(viewerId):null;
+ const query=kind==='beat'?playableBeatSql:playablePackSql;
+ const result=await pool.query(query,[owner,projectId,viewer]);
+ const project=result.rows[0];
+ if(!project)return null;
+ const tracks=kind==='beat'?[project]:(await pool.query(playablePackMembersSql,[projectId,owner,viewer])).rows;
+ return {owner_id:owner,kind,id:project.id,title:project.title,cover_file_id:project.cover_file_id??null,
+  tracks:tracks.map(track=>({id:track.id,title:track.title,owner_id:owner,
+   audio_file_id:track.audio_file_id,cover_file_id:track.cover_file_id??null,
+   stems_file_id:track.stems_file_id??null}))};
+}
