@@ -195,9 +195,9 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility}:{onUpload:(
    </div>
    <div className="onece-player-time">{formatTime(elapsed)} <span>/</span> {formatTime(duration)}</div>
    <div className="onece-player-controls">
-    <button type="button" className="onece-player-icon" title="Previous" aria-label="Previous" onClick={previous}><SkipBack/></button>
+    <button type="button" className="onece-player-icon" title="Previous" aria-label="Previous" disabled={!current} onClick={previous}><SkipBack/></button>
     <button type="button" className="onece-player-icon onece-player-play" title={playing?'Pause':'Play'} aria-label={playing?'Pause':'Play'} onClick={toggle}>{playing?<Pause/>:<Play/>}</button>
-    <button type="button" className="onece-player-icon" title="Next" aria-label="Next" disabled={queue.length<2} onClick={next}><SkipForward/></button>
+    <button type="button" className="onece-player-icon" title="Next" aria-label="Next" disabled={queue.length<2&&repeat!=='all'} onClick={next}><SkipForward/></button>
     <button type="button" className={'onece-player-icon'+(shuffle?' is-active':'')} title="Shuffle" aria-label="Shuffle" aria-pressed={shuffle} onClick={()=>setShuffle(v=>!v)}><Shuffle/></button>
     <button type="button" className={'onece-player-icon'+(repeat!=='off'?' is-active':'')} title={'Repeat: '+repeat} aria-label="Repeat" aria-pressed={repeat!=='off'} onClick={()=>setRepeat(v=>v==='off'?'all':v==='all'?'one':'off')}>{repeat==='one'?<Repeat1/>:<Repeat/>}</button>
     <button type="button" className={'onece-player-icon onece-player-queue'+(popup==='queue'?' is-active':'')} title="Playback queue" aria-label="Playback queue" aria-expanded={popup==='queue'} onClick={()=>setPopup(v=>v==='queue'?null:'queue')}><ListMusic/>{queue.length>1&&<span className="onece-queue-count">{queue.length}</span>}</button>
