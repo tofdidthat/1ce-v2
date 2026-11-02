@@ -2,8 +2,8 @@
 import React,{useEffect,useState} from 'react';
 import './library-items-v2.css';
 const api=import.meta.env.VITE_API_URL;
-type BeatItem = {id:string;title:string;cover_file_id:number|null;stems_file_id:number|null;pack_count:number};
-type PackItem = {id:string;title:string;cover_file_id:number|null;track_count:number};
+type BeatItem = {id:string;title:string;cover_file_id:number|null;stems_file_id:number|null;pack_count:number;created_at:string};
+type PackItem = {id:string;title:string;cover_file_id:number|null;track_count:number;created_at:string};
 type LibraryData = {beats:BeatItem[];packs:PackItem[]};
 function Cover({id,title}:{id:number|null;title:string}){
  const [url,setUrl]=useState('');
@@ -16,7 +16,7 @@ function Cover({id,title}:{id:number|null;title:string}){
    .catch(()=>{});
   return ()=>{active=false;if(objectUrl)URL.revokeObjectURL(objectUrl)};
  },[id]);
- return <div className="v2-item-cover">{url?<img src={url} alt={title+' cover'}/>:<span>♫</span>}</div>;
+ return <div className="v2-item-cover">{url?<img src={url} alt={title+' cover'}/>:<span>{title.trim().charAt(0).toUpperCase()||'♪'}</span>}</div>;
 }
 export default function LibraryItemsV2({onUpload}:{onUpload:()=>void}){
  const [data,setData]=useState<LibraryData>({beats:[],packs:[]});
@@ -38,8 +38,18 @@ export default function LibraryItemsV2({onUpload}:{onUpload:()=>void}){
    error?<div className="v2-library-status" role="alert">{error}<button onClick={()=>window.location.reload()}>Retry</button></div>:
    empty?<div className="library-empty"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M4 4v16M9 4v16M14 4l4 16"/></svg><h2>Your Library is Empty</h2><button type="button" className="library-add-audio" onClick={onUpload}>Add Audio</button></div>:
    <div className="v2-library-contents">
-    {data.packs.length>0&&<><h2>Packs <small>{data.packs.length}</small></h2><div className="v2-library-grid">{data.packs.map(p=><article key={p.id} className="v2-library-item"><Cover id={p.cover_file_id} title={p.title}/><strong>{p.title}</strong><span>{p.track_count} beats · Pack</span></article>)}</div></>}
-    {data.beats.length>0&&<><h2>Beats <small>{data.beats.length}</small></h2><div className="v2-library-grid">{data.beats.map(b=><article key={b.id} className="v2-library-item"><Cover id={b.cover_file_id} title={b.title}/><strong>{b.title}</strong><span>{b.pack_count>0?'In '+b.pack_count+' pack(s) · ':''}Beat{b.stems_file_id?' · Stems':''}</span></article>)}</div></>}
+    <div className="beat-pack-grid">
+     {data.packs.map((p,index)=><article key={'pack-'+p.id} className="v2-library-card">
+      <div className={'beat-pack-art beat-art-'+index%3} aria-label={'Pack '+p.title}><Cover id={p.cover_file_id} title={p.title}/></div>
+      <div className="beat-pack-caption"><span className="v2-card-name">{p.title}</span></div>
+      <p>{p.track_count} beats</p>
+     </article>)}
+     {data.beats.map((b,index)=><article key={'beat-'+b.id} className="v2-library-card beat-single-card">
+      <div className={'beat-pack-art beat-art-'+(data.packs.length+index)%3} aria-label={'Beat '+b.title}><Cover id={b.cover_file_id} title={b.title}/></div>
+      <div className="beat-pack-caption"><span className="v2-card-name">{b.title}</span></div>
+      <p>{b.created_at?new Date(b.created_at).toLocaleDateString('en-US',{month:'short',day:'2-digit'}):'Beat'}</p>
+     </article>)}
+    </div>
    </div>}
  </div></div></section>;
 }
