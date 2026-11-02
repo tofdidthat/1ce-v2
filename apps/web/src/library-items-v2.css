@@ -111,3 +111,17 @@
   .onece-player-icon { width: 36px; height: 36px; flex-basis: 36px; }
 }
 @media (prefers-reduced-motion: reduce) { .onece-player-icon { transition: none; } }
+
+/* untitled.stream-inspired play button overlapping the lower-right artwork edge. */
+.onece-v2-library .beat-pack-art{position:relative;overflow:visible}
+.onece-v2-library .v2-item-cover{overflow:hidden;border-radius:14px}
+.onece-v2-library .beat-pack-art .v2-card-play{
+ position:absolute;right:-8px;bottom:-8px;z-index:2;
+ display:grid;place-items:center;width:44px;height:44px;padding:0;
+ border:0;border-radius:15px;background:#292929;color:#fff;
+ box-shadow:0 5px 14px #0005;cursor:pointer;
+ transition:background .15s ease,transform .15s ease;
+}
+.onece-v2-library .beat-pack-art .v2-card-play svg{width:19px;height:19px}
+.onece-v2-library .beat-pack-art .v2-card-play:hover{background:#3a3a3a;transform:scale(1.04)}
+.onece-v2-library .beat-pack-art .v2-card-play:focus-visible{outline:2px solid #c4b5fd;outline-offset:3px}
