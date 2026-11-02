@@ -180,7 +180,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility}:{onUpload:(
  {openedBeat&&<div className="beat-player-overlay v2-beat-overlay" role="dialog" aria-modal="true" aria-label={openedBeat.title} onClick={()=>setOpenedBeat(null)}>
   <div className="beat-player-widget v2-beat-widget" onClick={e=>e.stopPropagation()}>
    <button type="button" className={'v2-beat-save'+(savedBeatIds.has(openedBeat.id)?' is-saved':'')} aria-label={savedBeatIds.has(openedBeat.id)?'Unsave beat':'Save beat'} aria-pressed={savedBeatIds.has(openedBeat.id)} onClick={()=>toggleSavedBeat(openedBeat.id)}><Bookmark size={18} fill={savedBeatIds.has(openedBeat.id)?'currentColor':'none'}/></button>
-   <button type="button" className="beat-player-close" aria-label="Close player" onClick={()=>setOpenedBeat(null)}>×</button>
+   <button type="button" className="beat-player-close v2-beat-close" aria-label="Close player" onClick={()=>setOpenedBeat(null)}><X size={16} strokeWidth={1.8}/></button>
    <div className="card v2-music-card">
     <div className={'mask'+(playing&&current?.id===openedBeat.id?' is-playing':'')}><div className="spin"><Cover id={openedBeat.cover_file_id} title={openedBeat.title}/></div><div className="hole"><div className="hole-inner"/></div></div>
     <div className="info">
@@ -188,11 +188,11 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility}:{onUpload:(
      <div className="bar" role="slider" tabIndex={0} aria-label="Playback position" aria-valuemin={0} aria-valuemax={100} aria-valuenow={current?.id===openedBeat.id&&duration?Math.round(elapsed/duration*100):0} onClick={e=>{if(current?.id!==openedBeat.id){choose(openedBeat,[openedBeat]);return;}const rect=e.currentTarget.getBoundingClientRect();if(audioRef.current&&duration)audioRef.current.currentTime=Math.max(0,Math.min(1,(e.clientX-rect.left)/rect.width))*duration}}><div className="bar-fill" style={{width:(current?.id===openedBeat.id&&duration?elapsed/duration*100:0)+'%'}}/></div>
      <div className="time"><span className="current">{formatTime(current?.id===openedBeat.id?elapsed:0)}</span><span className="total">{formatTime(current?.id===openedBeat.id?duration:0)}</span></div>
      <div className="controls">
-      <button type="button" className={'ctrl ctrl-toggle'+(shuffle?' is-active':'')} aria-label="Shuffle" onClick={()=>setShuffle(v=>!v)}><Shuffle size={15}/></button>
-      <button type="button" className="ctrl" aria-label="Previous" onClick={previous}><SkipBack size={17}/></button>
-      <button type="button" className="ctrl ctrl-play" aria-label={current?.id===openedBeat.id&&playing?'Pause':'Play'} onClick={()=>choose(openedBeat,[openedBeat])}>{current?.id===openedBeat.id&&playing?<Pause size={16}/>:<Play size={16}/>}</button>
-      <button type="button" className="ctrl" aria-label="Next" onClick={next}><SkipForward size={17}/></button>
-      <button type="button" className={'ctrl ctrl-toggle'+(repeat!=='off'?' is-active':'')} aria-label="Repeat" onClick={()=>setRepeat(v=>v==='off'?'all':v==='all'?'one':'off')}>{repeat==='one'?<Repeat1 size={15}/>:<Repeat size={15}/>}</button>
+      <button type="button" className={'ctrl ctrl-toggle'+(shuffle?' is-active':'')} aria-label="Shuffle" onClick={()=>setShuffle(v=>!v)}><Shuffle size={17}/></button>
+      <button type="button" className="ctrl" aria-label="Previous" onClick={previous}><V1SkipBack/></button>
+      <button type="button" className="ctrl ctrl-play" aria-label={current?.id===openedBeat.id&&playing?'Pause':'Play'} onClick={()=>{if(current?.id===openedBeat.id)toggle();else choose(openedBeat,[openedBeat])}}>{current?.id===openedBeat.id&&playing?<Pause size={19}/>:<Play size={19}/>}</button>
+      <button type="button" className="ctrl" aria-label="Next" onClick={next}><V1SkipForward/></button>
+      <button type="button" className={'ctrl ctrl-toggle'+(repeat!=='off'?' is-active':'')} aria-label="Repeat" onClick={()=>setRepeat(v=>v==='off'?'all':v==='all'?'one':'off')}>{repeat==='one'?<Repeat1 size={17}/>:<Repeat size={17}/>}</button>
      </div>
     </div>
    </div>
