@@ -44,16 +44,20 @@ export async function handlePublicProfiles(req,res,pathname,pool,currentUser){
  const user=await currentUser(req);
  if(parts.length===5&&parts[2]==='cover'&&/^\d+$/.test(parts[3])&&/^\d+$/.test(parts[4])&&req.method==='GET'){
   const owner=parts[3],fileId=parts[4];
-  const q=await pool.query(`SELECT f.object_key,f.content_type FROM library_files f WHERE f.id=$1 AND f.user_id=$2 AND f.kind='cover' AND f.status='ready'
-   AND EXISTS (SELECT 1 FROM v2_public_projects pub LEFT JOIN library_beats b ON pub.kind='beat' AND b.id=pub.project_id AND b.user_id=pub.user_id LEFT JOIN library_packs p ON pub.kind='pack' AND p.id=pub.project_id AND p.user_id=pub.user_id
-    WHERE pub.user_id=$2 AND COALESCE(b.cover_file_id,p.cover_file_id)=$1)
-   OR ($3::integer IS NOT NULL AND EXISTS (
-    SELECT 1 FROM v2_public_saves s
-    LEFT JOIN library_beats b ON s.kind='beat' AND b.id=s.project_id AND b.user_id=s.owner_id
-    LEFT JOIN library_packs p ON s.kind='pack' AND p.id=s.project_id AND p.user_id=s.owner_id
-    WHERE s.owner_id=$2 AND COALESCE(b.cover_file_id,p.cover_file_id)=$1
-    AND (s.owner_id=$3 OR EXISTS(SELECT 1 FROM v2_project_access a WHERE a.owner_id=s.owner_id AND a.viewer_id=$3 AND a.kind=s.kind AND a.project_id=s.project_id))
-   )) LIMIT 1`,[fileId,owner,user?.id||null]);
+  const q=await pool.query(`SELECT f.object_key,f.content_type FROM library_files f
+   WHERE f.id=$1 AND f.user_id=$2 AND f.kind='cover' AND f.status='ready'
+   AND (
+    EXISTS (
+     SELECT 1 FROM library_beats b WHERE b.user_id=$2 AND b.cover_file_id=f.id
+     AND (b.user_id=$3 OR EXISTS(SELECT 1 FROM v2_public_projects pub WHERE pub.user_id=b.user_id AND pub.kind='beat' AND pub.project_id=b.id)
+      OR ($3::integer IS NOT NULL AND EXISTS(SELECT 1 FROM v2_project_access a WHERE a.owner_id=b.user_id AND a.viewer_id=$3 AND a.kind='beat' AND a.project_id=b.id)))
+    )
+    OR EXISTS (
+     SELECT 1 FROM library_packs p WHERE p.user_id=$2 AND p.cover_file_id=f.id
+     AND (p.user_id=$3 OR EXISTS(SELECT 1 FROM v2_public_projects pub WHERE pub.user_id=p.user_id AND pub.kind='pack' AND pub.project_id=p.id)
+      OR ($3::integer IS NOT NULL AND EXISTS(SELECT 1 FROM v2_project_access a WHERE a.owner_id=p.user_id AND a.viewer_id=$3 AND a.kind='pack' AND a.project_id=p.id)))
+    )
+   ) LIMIT 1`,[fileId,owner,user?.id||null]);
   if(!q.rowCount){send(res,404,{error:'Cover not found'});return true;}
   const cfg={account:process.env.R2_ACCOUNT_ID,key:process.env.R2_ACCESS_KEY_ID,secret:process.env.R2_SECRET_ACCESS_KEY,bucket:process.env.R2_BUCKET_NAME};
   if(!cfg.account||!cfg.key||!cfg.secret||!cfg.bucket){send(res,503,{error:'Storage unavailable'});return true;}
