@@ -1,5 +1,5 @@
 import React,{useState} from 'react';
-import {Bookmark,Users,Share2,Settings2} from 'lucide-react';
+import {Bookmark,Users,Share2} from 'lucide-react';
 import './public-profile-v2.css';
 
 function CatalogLibraryIcon({size=17}:{size?:number}){
@@ -24,7 +24,6 @@ export default function PublicProfileV2({user,onSettings}:{user:any;onSettings:(
     <h1>{handle?'@'+handle.replace(/^@/,''):name}</h1>
     <div className="onece-profile-actions">
      <button type="button" onClick={()=>{if(navigator.share)void navigator.share({title:name,url:window.location.href}).catch(()=>{});else if(navigator.clipboard)void navigator.clipboard.writeText(window.location.href)}} aria-label="Share profile" title="Share profile"><Share2 size={15}/></button>
-     <button type="button" onClick={onSettings} aria-label="Edit profile" title="Edit profile"><Settings2 size={15}/></button>
     </div>
    </div>
    {handle&&name.toLowerCase()!==handle.toLowerCase()&&<p className="onece-profile-display-name">{name}</p>}
