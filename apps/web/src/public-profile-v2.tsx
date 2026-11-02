@@ -6,6 +6,8 @@ function CatalogLibraryIcon({size=17}:{size?:number}){
  // Same SVG paths and styling as the Library navigation HomeMark.
  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 4v16M9 4v16M14 4l4 16"/></svg>;
 }
+function PlayIcon(){return <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m8 5 12 7-12 7Z"/></svg>}
+function PauseIcon(){return <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>}
 const api=import.meta.env.VITE_API_URL;
 type PublicProject={id:string;kind:'beat'|'pack';owner_id:number;title:string;cover_file_id:number|null;track_count:number|null;published_at:string};
 function ProjectCover({project}:{project:PublicProject}){
@@ -116,7 +118,7 @@ export default function PublicProfileV2({user,onSettings,profileId,onPlayProject
     <div className="onece-profile-projects">{(tab==='catalog'?projects.catalog:projects.saves).map(project=>{
      const key=project.owner_id+':'+project.kind+':'+project.id;
      return <article className="onece-profile-project" key={key} onContextMenu={event=>{event.preventDefault();setMenu({project,x:event.clientX,y:event.clientY})}}>
-      <div className="onece-profile-project-art"><ProjectCover project={project}/>{onPlayProject&&ownerOf(project)&&<button type="button" className="v2-card-play onece-profile-project-play" aria-label={activeProject===key?'Pause project':'Play project'} title={activeProject===key?'Pause':'Play'} onClick={()=>{onPlayProject(project.kind,project.id);setActiveProject(activeProject===key?null:key)}}>{activeProject===key?<Pause size={17} fill="currentColor"/>:<Play size={17} fill="currentColor"/>}</button>}</div>
+      <div className="onece-profile-project-art"><ProjectCover project={project}/>{onPlayProject&&ownerOf(project)&&<button type="button" className="v2-card-play onece-profile-project-play" aria-label={activeProject===key?'Pause project':'Play project'} title={activeProject===key?'Pause':'Play'} onClick={()=>{onPlayProject(project.kind,project.id);setActiveProject(activeProject===key?null:key)}}>{activeProject===key?<PauseIcon/>:<PlayIcon/>}</button>}</div>
       <div className="onece-profile-project-info"><strong>{project.title}</strong><span>{project.kind==='pack'?(project.track_count||0)+' beats':'Beat'}</span></div>
      </article>;
     })}</div>:
