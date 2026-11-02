@@ -25,6 +25,12 @@ test('Library and Profile use the same card, context menu and mutation dialog',(
  assert.match(menu,/onAction\('delete'\)/);
 });
 
+test('Add to places the folder icon before the label and the chevron after it',()=>{
+ assert.match(menu,/\{icon\}<span>\{label\}<\/span>\{trailingIcon\}/);
+ assert.match(menu,/item\('Add to\.\.\.',<FolderPlus size=\{17\}\/>.*<ChevronRight className="v2-context-chevron" size=\{15\}\/>\)/);
+ assert.doesNotMatch(menu,/<><FolderPlus size=\{17\}\/><ChevronRight/);
+});
+
 test('single authorized cover path and no duplicated view-specific fetch fallback',()=>{
  assert.match(cover,/\/api\/public\/cover\//);
  assert.match(cover,/credentials:'include',signal:controller\.signal/);
