@@ -61,7 +61,15 @@ export async function handlePublicProfiles(req,res,pathname,pool,currentUser){
   const [profile,catalog,saves]=await Promise.all([
    pool.query('SELECT id,name,picture,custom_picture FROM account_users WHERE id=$1',[profileId]),
    pool.query(selectProjects+' AND pub.user_id=$1 ORDER BY pub.published_at DESC LIMIT 200',[profileId]),
-   pool.query(`SELECT projects.* FROM v2_public_saves s JOIN LATERAL (${selectProjects} AND pub.user_id=s.owner_id AND pub.kind=s.kind AND pub.project_id=s.project_id) projects ON TRUE WHERE s.user_id=$1 ORDER BY s.saved_at DESC LIMIT 200`,[profileId])
+   pool.query(`SELECT s.kind,s.project_id AS id,s.owner_id,COALESCE(b.title,p.title) AS title,COALESCE(b.cover_file_id,p.cover_file_id) AS cover_file_id,
+    CASE WHEN s.kind='pack' THEN (SELECT count(*)::int FROM library_pack_beats pb WHERE pb.pack_id=p.id) ELSE NULL END AS track_count,s.saved_at AS published_at
+    FROM v2_public_saves s
+    LEFT JOIN library_beats b ON s.kind='beat' AND b.id=s.project_id AND b.user_id=s.owner_id
+    LEFT JOIN library_packs p ON s.kind='pack' AND p.id=s.project_id AND p.user_id=s.owner_id
+    WHERE s.user_id=$1 AND (b.id IS NOT NULL OR p.id IS NOT NULL)
+    AND (s.owner_id=$2 OR EXISTS(SELECT 1 FROM v2_public_projects pub WHERE pub.user_id=s.owner_id AND pub.kind=s.kind AND pub.project_id=s.project_id)
+    OR EXISTS(SELECT 1 FROM v2_project_access a WHERE a.owner_id=s.owner_id AND a.viewer_id=$2 AND a.kind=s.kind AND a.project_id=s.project_id))
+    ORDER BY s.saved_at DESC LIMIT 200`,[profileId,user?.id||null])
   ]);
   if(!profile.rowCount){send(res,404,{error:'Profile not found'});return true;}
   send(res,200,{profile:profile.rows[0],catalog:catalog.rows,saves:saves.rows});return true;
