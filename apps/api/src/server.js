@@ -115,7 +115,7 @@ const server=createServer(async(req,res)=>{
     await client.query('BEGIN');
     const result=await client.query('SELECT id,user_id,verifier_challenge FROM account_google_login_attempts WHERE exchange_hash=$1 AND callback_used_at IS NOT NULL AND exchanged_at IS NULL AND exchange_expires_at>now() AND user_id IS NOT NULL FOR UPDATE',[hash(data.loginCode)]);
     const attempt=result.rows[0];
-    if(!attempt||!timingSafeEqual(Buffer.from(attempt.verifier_challenge),Buffer.from(shaBase64(data.verifier)))){await client.query('ROLLBACK');return json(res,400,{error:'Invalid exchange'});}
+    if(!attempt||!timingSafeEqual(Buffer.from(attempt.verifier_challenge),Buffer.from(shaBase64(shaBase64(data.verifier))))){await client.query('ROLLBACK');return json(res,400,{error:'Invalid exchange'});}
     const token=randomBytes(32).toString('hex');
     await client.query("INSERT INTO account_sessions(user_id,token_hash,expires_at) VALUES($1,$2,now()+interval '7 days')",[attempt.user_id,hash(token)]);
     await client.query('UPDATE account_google_login_attempts SET exchanged_at=now() WHERE id=$1',[attempt.id]);
