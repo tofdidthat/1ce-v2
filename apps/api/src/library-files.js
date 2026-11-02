@@ -53,7 +53,9 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser){
   let data;try{data=await bodyJSON(req)}catch{send(res,400,{error:'Invalid request'});return true;}
   const title=typeof data?.title==='string'?data.title.trim():'';
   const beatIds=data?.beatIds;
+  const newBeatIds=data?.newBeatIds||[];
   if(!title||title.length>180||!Array.isArray(beatIds)||beatIds.length<2||beatIds.length>100||new Set(beatIds).size!==beatIds.length||beatIds.some(id=>typeof id!=='string'||!/^[a-f0-9-]{36}$/i.test(id))){send(res,400,{error:'Invalid pack'});return true;}
+  if(!Array.isArray(newBeatIds)||new Set(newBeatIds).size!==newBeatIds.length||newBeatIds.some(id=>!beatIds.includes(id))){send(res,400,{error:'Invalid new beat IDs'});return true;}
   if(data.coverFileId!=null&&(!Number.isSafeInteger(data.coverFileId)||data.coverFileId<1)){send(res,400,{error:'Invalid cover'});return true;}
   const client=await pool.connect();
   try{
@@ -67,12 +69,13 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser){
    const id=randomUUID();
    await client.query('INSERT INTO library_packs(id,user_id,title,cover_file_id) VALUES($1,$2,$3,$4)',[id,user.id,title,data.coverFileId||null]);
    for(let i=0;i<beatIds.length;i++)await client.query('INSERT INTO library_pack_beats(pack_id,beat_id,position) VALUES($1,$2,$3)',[id,beatIds[i],i]);
+   if(newBeatIds.length)await client.query('UPDATE library_beats SET library_visible=FALSE WHERE user_id=$1 AND id=ANY($2::uuid[]) AND library_visible=TRUE',[user.id,newBeatIds]);
    await client.query('COMMIT');send(res,201,{id});return true;
   }catch(err){await client.query('ROLLBACK');throw err;}finally{client.release();}
  }
  if(req.method==='GET'&&segments.length===4&&segments[3]==='items'){
   const [beats,packs]=await Promise.all([
-   pool.query(`SELECT b.id,b.title,b.created_at,b.audio_file_id,b.cover_file_id,b.stems_file_id,
+   pool.query(`SELECT b.id,b.title,b.created_at,b.audio_file_id,b.cover_file_id,b.stems_file_id,b.library_visible,
      a.original_name AS audio_name,a.byte_size AS audio_size,
      (SELECT count(*)::int FROM library_pack_beats pb WHERE pb.beat_id=b.id) AS pack_count
      FROM library_beats b JOIN library_files a ON a.id=b.audio_file_id AND a.status='ready'
