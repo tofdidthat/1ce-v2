@@ -93,8 +93,11 @@ export async function handlePublicProfiles(req,res,pathname,pool,currentUser){
     LEFT JOIN library_beats b ON s.kind='beat' AND b.id=s.project_id AND b.user_id=s.owner_id
     LEFT JOIN library_packs p ON s.kind='pack' AND p.id=s.project_id AND p.user_id=s.owner_id
     WHERE s.user_id=$1 AND (b.id IS NOT NULL OR p.id IS NOT NULL)
-    AND (s.owner_id=$2 OR EXISTS(SELECT 1 FROM v2_public_projects pub WHERE pub.user_id=s.owner_id AND pub.kind=s.kind AND pub.project_id=s.project_id)
-    OR EXISTS(SELECT 1 FROM v2_project_access a WHERE a.owner_id=s.owner_id AND a.viewer_id=$2 AND a.kind=s.kind AND a.project_id=s.project_id))
+    -- A saved private project belongs to the saver's personal Saves view.
+    -- A project owner or a separately granted viewer must not discover
+    -- private saves on someone else's profile. Publication alone makes
+    -- the saved entry eligible for public display.
+    AND (s.user_id=$2 OR EXISTS(SELECT 1 FROM v2_public_projects pub WHERE pub.user_id=s.owner_id AND pub.kind=s.kind AND pub.project_id=s.project_id))
     ORDER BY s.saved_at DESC LIMIT 200`,[profileId,user?.id||null])
   ]);
   send(res,200,{profile:profile.rows[0],catalog:catalog.rows,saves:saves.rows});return true;
