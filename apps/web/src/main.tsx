@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter, Link, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Link, Navigate, Route, Routes, useParams } from 'react-router-dom';
 import './styles.css';
 import { TermsPage, PrivacyPage } from './legal';
 import { LoginPage } from './login';
 import WorkspaceV2 from './workspace-v1';
+import PublicProfileV2 from './public-profile-v2';
 
 function Header() { return <header className="site-header"><Link to="/" className="brand"><img src="/1ce-logo.png" alt="1CE" className="brand-logo"/></Link><nav><Link to="/">Home</Link><Link to="/login" className="button">Log in</Link></nav></header> }
 function Footer() { return <footer className="site-footer"><span>© 2026 1CE</span><nav><Link to="/terms">Terms of Service</Link><Link to="/privacy">Privacy Policy</Link></nav></footer> }
@@ -12,6 +13,12 @@ function PublicPage({children}:{children:React.ReactNode}) { return <div classNa
 function Landing() { return <PublicPage><div className="empty-landing" aria-label="Landing content reserved for future design"/></PublicPage> }
 function Register() { return <PublicPage><section className="auth-card"><h1>Create an account</h1><p>Registration will be enabled when the v2 authentication API is ready.</p><Link to="/login">Back to login</Link></section></PublicPage> }
 function ProtectedLibrary(){const [status,setStatus]=useState<'checking'|'authorized'|'unauthorized'>('checking');const [user,setUser]=useState(null);useEffect(()=>{const api=import.meta.env.VITE_API_URL;if(!api){setStatus('unauthorized');return;}fetch(api+'/auth/me',{credentials:'include'}).then(async r=>{if(!r.ok){setStatus('unauthorized');return;}const data=await r.json();setUser(data.user||data);setStatus('authorized')}).catch(()=>setStatus('unauthorized'));},[]);if(status==='checking')return <div className="site"><main className="main">Checking session…</main></div>;if(status==='unauthorized')return <Navigate to="/login" replace/>;return <WorkspaceV2 user={user}/>;}
+function PublicUserPage(){
+ const {id}=useParams();
+ const [viewer,setViewer]=useState<any>(null);
+ useEffect(()=>{const api=import.meta.env.VITE_API_URL;if(api)fetch(api+'/auth/me',{credentials:'include'}).then(r=>r.ok?r.json():null).then(d=>setViewer(d?.user||null)).catch(()=>{})},[]);
+ return <div style={{minHeight:'100vh',background:'#0b0911',paddingTop:70}}><PublicProfileV2 user={viewer} profileId={id} onSettings={()=>{window.location.href='/app/profile/edit'}}/></div>;
+}
 function GoogleReturn(){
  const [message,setMessage]=useState('Completing Google sign-in…');
  useEffect(()=>{
@@ -28,5 +35,5 @@ function GoogleReturn(){
  return <div className="site"><main className="main"><p role="status">{message}</p><Link to="/login">Back to login</Link></main></div>;
 }
 
-function App() { return <BrowserRouter><Routes><Route path="/" element={<Landing/>}/><Route path="/login" element={<LoginPage/>}/><Route path="/register" element={<Register/>}/><Route path="/terms" element={<TermsPage/>}/><Route path="/privacy" element={<PrivacyPage/>}/><Route path="/app" element={<GoogleReturn/>}/><Route path="/app/library" element={<ProtectedLibrary/>}/><Route path="/app/discover" element={<ProtectedLibrary/>}/><Route path="/app/upload" element={<ProtectedLibrary/>}/><Route path="/app/settings" element={<ProtectedLibrary/>}/><Route path="/app/profile" element={<ProtectedLibrary/>}/><Route path="*" element={<Navigate to="/" replace/>}/></Routes></BrowserRouter> }
+function App() { return <BrowserRouter><Routes><Route path="/" element={<Landing/>}/><Route path="/login" element={<LoginPage/>}/><Route path="/register" element={<Register/>}/><Route path="/terms" element={<TermsPage/>}/><Route path="/privacy" element={<PrivacyPage/>}/><Route path="/app" element={<GoogleReturn/>}/><Route path="/app/library" element={<ProtectedLibrary/>}/><Route path="/app/discover" element={<ProtectedLibrary/>}/><Route path="/app/upload" element={<ProtectedLibrary/>}/><Route path="/app/settings" element={<ProtectedLibrary/>}/><Route path="/app/profile" element={<ProtectedLibrary/>}/><Route path="/app/profile/edit" element={<ProtectedLibrary/>}/><Route path="/u/:id" element={<PublicUserPage/>}/><Route path="*" element={<Navigate to="/" replace/>}/></Routes></BrowserRouter> }
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);
