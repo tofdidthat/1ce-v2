@@ -2,6 +2,7 @@
 import { randomUUID, createHash } from 'node:crypto';
 import { S3Client, PutObjectCommand, HeadObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import {resolveAuthorizedMediaFile} from './project-media.js';
 
 const limits={audio:150*1024*1024,cover:15*1024*1024,stems:250*1024*1024};
 const types={
@@ -75,9 +76,9 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser){
  }
  if(req.method==='GET'&&segments.length===5&&segments[3]==='audio'&&/^\d+$/.test(segments[4])){
   const id=segments[4];
-  const q=await pool.query("SELECT object_key,content_type,byte_size FROM library_files WHERE id=$1 AND user_id=$2 AND kind='audio' AND status='ready'",[id,user.id]);
-  if(!q.rows[0]){send(res,404,{error:'Audio not found'});return true;}
-  const file=q.rows[0],range=req.headers.range;
+  const file=await resolveAuthorizedMediaFile(pool,{ownerId:user.id,viewerId:user.id,fileId:id,kind:'audio'});
+  if(!file){send(res,404,{error:'Audio not found'});return true;}
+  const range=req.headers.range;
   let start=0,end=Number(file.byte_size)-1,status=200;
   if(range){
    const match=/^bytes=(\d*)-(\d*)$/.exec(range);
@@ -116,10 +117,10 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser){
  }
  if(req.method==='GET'&&segments.length===5&&segments[3]==='cover'&&/^\d+$/.test(segments[4])){
   const id=segments[4];
-  const q=await pool.query("SELECT object_key,content_type FROM library_files WHERE id=$1 AND user_id=$2 AND kind='cover' AND status='ready'",[id,user.id]);
-  if(!q.rows[0]){send(res,404,{error:'Cover not found'});return true;}
-  const object=await s3.send(new GetObjectCommand({Bucket:cfg.bucket,Key:q.rows[0].object_key}));
-  res.writeHead(200,{'Content-Type':q.rows[0].content_type,'Cache-Control':'private, max-age=300','X-Content-Type-Options':'nosniff'});
+  const file=await resolveAuthorizedMediaFile(pool,{ownerId:user.id,viewerId:user.id,fileId:id,kind:'cover'});
+  if(!file){send(res,404,{error:'Cover not found'});return true;}
+  const object=await s3.send(new GetObjectCommand({Bucket:cfg.bucket,Key:file.object_key}));
+  res.writeHead(200,{'Content-Type':file.content_type,'Cache-Control':'private, max-age=300','X-Content-Type-Options':'nosniff'});
   for await(const chunk of object.Body)res.write(chunk);
   res.end();return true;
  }
