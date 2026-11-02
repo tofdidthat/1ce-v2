@@ -5,15 +5,15 @@ let initialized;
 function ready(pool){
  if(!initialized)initialized=(async()=>{
   await pool.query(`CREATE TABLE IF NOT EXISTS v2_public_projects (
-   user_id UUID NOT NULL REFERENCES account_users(id) ON DELETE CASCADE,
+   user_id INTEGER NOT NULL REFERENCES account_users(id) ON DELETE CASCADE,
    kind TEXT NOT NULL CHECK(kind IN ('beat','pack')),
    project_id UUID NOT NULL,
    published_at TIMESTAMPTZ NOT NULL DEFAULT now(),
    PRIMARY KEY (user_id,kind,project_id)
   )`);
   await pool.query(`CREATE TABLE IF NOT EXISTS v2_public_saves (
-   user_id UUID NOT NULL REFERENCES account_users(id) ON DELETE CASCADE,
-   owner_id UUID NOT NULL REFERENCES account_users(id) ON DELETE CASCADE,
+   user_id INTEGER NOT NULL REFERENCES account_users(id) ON DELETE CASCADE,
+   owner_id INTEGER NOT NULL REFERENCES account_users(id) ON DELETE CASCADE,
    kind TEXT NOT NULL CHECK(kind IN ('beat','pack')),
    project_id UUID NOT NULL,
    saved_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -38,7 +38,7 @@ export async function handlePublicProfiles(req,res,pathname,pool,currentUser){
  await ready(pool);
  const parts=pathname.split('/').filter(Boolean);
  const user=await currentUser(req);
- if(parts.length===4&&parts[2]==='profile'&&uuid.test(parts[3])&&req.method==='GET'){
+ if(parts.length===4&&parts[2]==='profile'&&/^\\d+$/.test(parts[3])&&req.method==='GET'){
   const profileId=parts[3];
   const [catalog,saves]=await Promise.all([
    pool.query(selectProjects+' AND pub.user_id=$1 ORDER BY pub.published_at DESC LIMIT 200',[profileId]),
@@ -62,7 +62,7 @@ export async function handlePublicProfiles(req,res,pathname,pool,currentUser){
   else await pool.query('DELETE FROM v2_public_projects WHERE user_id=$1 AND kind=$2 AND project_id=$3',[user.id,kind,id]);
   send(res,200,{ok:true,published:req.method==='POST'});return true;
  }
- if(parts.length===6&&parts[2]==='save'&&uuid.test(parts[3])&&['beat','pack'].includes(parts[4])&&uuid.test(parts[5])&&['POST','DELETE'].includes(req.method)){
+ if(parts.length===6&&parts[2]==='save'&&/^\\d+$/.test(parts[3])&&['beat','pack'].includes(parts[4])&&uuid.test(parts[5])&&['POST','DELETE'].includes(req.method)){
   const [, , ,owner,kind,id]=parts;
   const published=await pool.query('SELECT 1 FROM v2_public_projects WHERE user_id=$1 AND kind=$2 AND project_id=$3',[owner,kind,id]);
   if(req.method==='POST'&&!published.rowCount){send(res,404,{error:'Public project not found'});return true;}
