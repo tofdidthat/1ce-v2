@@ -625,3 +625,28 @@
 .onece-v2-library .v2-pack-detail .beat-track-active .beat-track-play:hover strong{
  color:#a78bfa;
 }
+
+/* Pack play: dark graphite capsule matching the audio dock and other v2 controls. */
+.onece-v2-library .v2-pack-detail .library-pack-play-controls .library-pack-play{
+ background:#343039;
+ color:#f5f3ff;
+ border:1px solid rgba(255,255,255,.08);
+ border-radius:14px;
+ box-shadow:0 2px 10px rgba(0,0,0,.16);
+ transition:background-color 180ms ease,border-color 180ms ease,transform 180ms ease;
+}
+.onece-v2-library .v2-pack-detail .library-pack-play-controls .library-pack-play:hover{
+ background:#423b4c;
+ border-color:rgba(167,139,250,.22);
+ transform:translateY(-1px);
+}
+.onece-v2-library .v2-pack-detail .library-pack-play-controls .library-pack-play:active{
+ transform:translateY(0);
+}
+.onece-v2-library .v2-pack-detail .library-pack-play-controls .library-pack-play:focus-visible{
+ outline:2px solid #a78bfa;
+ outline-offset:3px;
+}
+@media(prefers-reduced-motion:reduce){
+ .onece-v2-library .v2-pack-detail .library-pack-play-controls .library-pack-play{transition:none}
+}
