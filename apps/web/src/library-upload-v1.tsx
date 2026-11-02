@@ -2,11 +2,13 @@
 // Visual/interaction port of v1 src/upload/LibraryUploadPage.jsx.
 // NO v1 backend, bearer session, uploads or external video publishing.
 import React,{useEffect,useMemo,useRef,useState} from 'react';
+import {useNavigate} from 'react-router-dom';
 import './library-upload-v1.css';
 const audioPattern=/\.(mp3|wav)$/i;
 const fileTitle=file=>file.name.replace(/\.[^.]+$/,'').replace(/[-_]+/g,' ').trim();
 const formatSize=file=>(file.size/1024/1024).toFixed(2)+' MB';
 export default function LibraryUploadV2(){
+ const navigate=useNavigate();
  const [audioFiles,setAudioFiles]=useState([]);
  const [cover,setCover]=useState(null);
  const [stemsByAudio,setStemsByAudio]=useState({});
@@ -19,7 +21,6 @@ export default function LibraryUploadV2(){
  const [stemsTarget,setStemsTarget]=useState(null);
  const [saving,setSaving]=useState(false);
  const [stage,setStage]=useState('');
- const [result,setResult]=useState('');
  const isPack=audioFiles.length>1;
  const coverUrl=useMemo(()=>cover?URL.createObjectURL(cover):'',[cover]);
  useEffect(()=>()=>{if(coverUrl)URL.revokeObjectURL(coverUrl)},[coverUrl]);
@@ -38,7 +39,7 @@ export default function LibraryUploadV2(){
   if(saving||!audioFiles.length)return;
   const api=import.meta.env.VITE_API_URL;
   if(!api){setError('Upload API is not configured');return;}
-  setSaving(true);setError('');setResult('');
+  setSaving(true);setError('');
   const upload=async(file,kind)=>{
    const mime=kind==='audio'?(file.name.toLowerCase().endsWith('.mp3')?'audio/mpeg':'audio/wav'):
     kind==='stems'?'application/zip':file.type;
@@ -79,7 +80,7 @@ export default function LibraryUploadV2(){
     if(!packResponse.ok)throw new Error(pack.error||'Unable to create pack');
    }
    setAudioFiles([]);setCover(null);setStemsByAudio({});setItemName('');
-   setResult('Files saved to your private Library.');
+   navigate('/app/library',{replace:true});
   }catch(e){setError(e instanceof Error?e.message:'Upload failed');}
   finally{setSaving(false);setStage('');}
  };
@@ -210,7 +211,6 @@ export default function LibraryUploadV2(){
 
             {error && <p className="upload-error" role="alert">{error}</p>}
             {stage && <p className="upload-stage" role="status">{stage}</p>}
-            {result && <p className="upload-result" role="status">{result}</p>}
 
 
             <div className="upload-actions">
