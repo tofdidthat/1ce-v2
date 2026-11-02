@@ -1,6 +1,7 @@
 import React,{useState} from 'react';
 import {Bookmark,Users,Share2,Eye,EyeOff,Link2,ListPlus,FolderPlus,Pencil,Image as ImageIcon,Download,Layers,Trash2,ChevronRight,Play,Pause} from 'lucide-react';
 import './public-profile-v2.css';
+import {profilePictureV2} from './profile-picture-v2';
 
 function CatalogLibraryIcon({size=17}:{size?:number}){
  // Same SVG paths and styling as the Library navigation HomeMark.
@@ -49,7 +50,7 @@ export default function PublicProfileV2({user,onSettings,profileId,onPlayProject
  const [loading,setLoading]=useState(true);
  const [error,setError]=useState('');
  const targetId=profileId||String(user?.id||'');
- const isOwner=!profileId||String(user?.id)===profileId;
+ const isOwner=!profileId||String(user?.id)===String(profileUser?.id)||Boolean(user?.username&&user.username===profileId);
  React.useEffect(()=>{
   if(!api||!targetId){setLoading(false);return;}
   const controller=new AbortController();
@@ -107,7 +108,7 @@ export default function PublicProfileV2({user,onSettings,profileId,onPlayProject
  const shownUser=profileId?profileUser:user;
  const name=String(shownUser?.displayName||shownUser?.name||shownUser?.username||'Profile');
  const handle=String(shownUser?.username||shownUser?.handle||'');
- const picture=shownUser?.customPicture||shownUser?.custom_picture||shownUser?.picture||'';
+ const picture=profilePictureV2(shownUser);
  const tabs:{id:ProfileTab;label:string;icon:React.ReactNode}[]=[
   {id:'catalog',label:'Catalog',icon:<CatalogLibraryIcon/>},
   {id:'saves',label:'Saves',icon:<Bookmark size={16}/>},
@@ -119,7 +120,7 @@ export default function PublicProfileV2({user,onSettings,profileId,onPlayProject
    <div className="onece-profile-name">
     <h1>{handle?'@'+handle.replace(/^@/,''):name}</h1>
     <div className="onece-profile-actions">
-     <button type="button" onClick={()=>{if(navigator.share)void navigator.share({title:name,url:window.location.origin+'/u/'+targetId}).catch(()=>{});else if(navigator.clipboard)void navigator.clipboard.writeText(window.location.origin+'/u/'+targetId)}} aria-label="Share profile" title="Share profile"><Share2 size={15}/></button>
+     <button type="button" onClick={()=>{if(navigator.share)void navigator.share({title:name,url:window.location.origin+'/u/'+encodeURIComponent(handle||targetId)}).catch(()=>{});else if(navigator.clipboard)void navigator.clipboard.writeText(window.location.origin+'/u/'+targetId)}} aria-label="Share profile" title="Share profile"><Share2 size={15}/></button>
     </div>
    </div>
    {handle&&name.toLowerCase()!==handle.toLowerCase()&&<p className="onece-profile-display-name">{name}</p>}
