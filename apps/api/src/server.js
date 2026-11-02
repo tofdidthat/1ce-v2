@@ -3,6 +3,7 @@ import { randomBytes, createHash, scrypt as scryptCallback, timingSafeEqual } fr
 import { promisify } from 'node:util';
 import pg from 'pg';
 import { handleLibraryFiles } from './library-files.js';
+import {handleProjectActions} from './project-actions.js';
 import { handlePublicProfiles } from './public-profiles.js';
 import { handleProfileIdentity } from './profile-identity.js';
 const scrypt=promisify(scryptCallback);
@@ -76,6 +77,7 @@ const server=createServer(async(req,res)=>{
 
   if(await handleProfileIdentity(req,res,pathname,pool,currentUser))return;
   if(await handlePublicProfiles(req,res,pathname,pool,currentUser))return;
+  if(await handleProjectActions(req,res,pathname,pool,currentUser))return;
   if(await handleLibraryFiles(req,res,pathname,pool,currentUser))return;
 
   if(pathname==='/auth/google'&&req.method==='GET'){

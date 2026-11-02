@@ -1,0 +1,17 @@
+.v2-project-dialog-overlay{position:fixed;inset:0;z-index:130;background:#07050ccc;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box}
+.v2-project-dialog{box-sizing:border-box;width:min(440px,100%);max-height:calc(100vh - 40px);overflow:auto;color:#f6f1ff;background:#1b1724;border:1px solid #ffffff23;border-radius:18px;box-shadow:0 20px 70px #000c;padding:22px;font:inherit}
+.v2-project-dialog>header{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.v2-project-dialog h2{font-size:21px;margin:0;font-weight:650}
+.v2-project-dialog>header button{border:0;color:#c5bdd0;background:transparent;cursor:pointer;font-size:26px}
+.v2-project-dialog-subtitle{color:#aaa1b6;font-size:13px;margin:9px 0 20px;overflow-wrap:anywhere}
+.v2-project-dialog-field{display:flex;flex-direction:column;gap:9px;font-size:13px;margin:14px 0;color:#d9d3e4}
+.v2-project-dialog-field input,.v2-project-dialog select{box-sizing:border-box;width:100%;padding:12px;border:1px solid #ffffff33;border-radius:10px;background:#100d17;color:#fff;font:inherit}
+.v2-project-dialog-option{display:flex;align-items:center;gap:10px;padding:10px 0;font-size:14px;cursor:pointer}
+.v2-project-dialog-option input{accent-color:#ad95ed}
+.v2-project-dialog-help{font-size:12px;color:#aaa1b6;line-height:1.5}
+.v2-project-dialog-warning{padding:14px;border:1px solid #d9828277;border-radius:10px;color:#f9d3d3;font-size:13px;line-height:1.6}
+.v2-project-dialog-error{color:#ffabab;font-size:13px}
+.v2-project-dialog footer{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}
+.v2-project-dialog footer button{cursor:pointer;padding:10px 18px;background:#302b3a;border:1px solid #ffffff1c;border-radius:10px;color:#fff;font:inherit}
+.v2-project-dialog footer button[type=submit]{background:#7558bf}.v2-project-dialog footer button.danger{background:#a0323d}
+.v2-project-dialog button:disabled{opacity:.45;cursor:not-allowed}
