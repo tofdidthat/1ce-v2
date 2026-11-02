@@ -250,7 +250,7 @@ function EmptyLibrary({onUpload}){
   </div>
  </section>;
 }
-export default function WorkspaceV2({user,profileId=null}){
+export default function WorkspaceV2({user,profileId}:{user:any;profileId?:string}){
  const navigate=useNavigate();const location=useLocation();
  const [account,setAccount]=useState(user);
  useEffect(()=>setAccount(user),[user?.id]);
