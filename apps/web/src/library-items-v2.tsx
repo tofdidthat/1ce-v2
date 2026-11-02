@@ -67,7 +67,7 @@ function useWaveform(fileId:number|null){
  },[fileId]);
  return bars;
 }
-export default function LibraryItemsV2({onUpload,onPlayerVisibility,userId}:{onUpload:()=>void;onPlayerVisibility?:(visible:boolean)=>void;userId?:number}){
+export default function LibraryItemsV2({onUpload,onPlayerVisibility,userId,active=true,playRequest}:{onUpload:()=>void;onPlayerVisibility?:(visible:boolean)=>void;userId?:number;active?:boolean;playRequest?:{kind:'beat'|'pack';id:string;nonce:number}|null}){
  const [data,setData]=useState<LibraryData>({beats:[],packs:[]});
  const [loading,setLoading]=useState(true);
  const [current,setCurrent]=useState<BeatItem|null>(null);
@@ -189,6 +189,16 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,userId}:{onU
  const previous=()=>{if(!current)return;const index=queue.findIndex(b=>b.id===current.id);if(index>0){setCurrent(queue[index-1]);setElapsed(0)}else if(audioRef.current)audioRef.current.currentTime=0};
  const playPack=async(p:PackItem)=>{if(activePackId===p.id&&current){toggle();return;}try{setPlayerError('');const response=await fetch(api+'/api/library/files/pack-tracks/'+p.id,{credentials:'include'});if(!response.ok)throw Error('Unable to load pack');const result=await response.json();const beats=(result.beats as BeatItem[]).map(beat=>({...beat,cover_file_id:beat.cover_file_id??p.cover_file_id}));if(beats[0])void loadWaveform(beats[0].audio_file_id).catch(()=>{});if(!beats.length)throw Error('Pack has no playable beats');choose(beats[0],beats,p.id)}catch(e){setPlayerError(e instanceof Error?e.message:'Unable to load pack')}};
 
+ useEffect(()=>{
+  if(!playRequest)return;
+  if(playRequest.kind==='beat'){
+   const beat=data.beats.find(item=>item.id===playRequest.id);
+   if(beat)choose(beat,[beat]);else setPlayerError('This beat is not available in your Library yet');
+  }else{
+   const pack=data.packs.find(item=>item.id===playRequest.id);
+   if(pack)void playPack(pack);else setPlayerError('This pack is not available in your Library yet');
+  }
+ },[playRequest?.nonce,data.beats,data.packs]);
  const [error,setError]=useState('');
  useEffect(()=>{
   const controller=new AbortController();
@@ -204,7 +214,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,userId}:{onU
  // Warm the first standalone waveform while the user browses the Library.
  useEffect(()=>{const first=data.beats.find(b=>b.library_visible!==false);if(first)void loadWaveform(first.audio_file_id).catch(()=>{})},[data.beats]);
  const empty=!standaloneBeats.length&&!data.packs.length;
- return <section className="beat-profile library-page onece-v2-library"><div className="beat-profile-content"><div className="library-items">
+ return <section className={"beat-profile library-page onece-v2-library"+(!active?" onece-library-inactive":"")}><div className="beat-profile-content"><div className="library-items">
   {actionError&&<p role="alert" className="v2-library-status">{actionError}</p>}
   {loading?<p className="v2-library-status">Loading your Library…</p>:
    error?<div className="v2-library-status" role="alert">{error}<button onClick={()=>window.location.reload()}>Retry</button></div>:
