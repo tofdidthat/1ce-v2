@@ -584,3 +584,30 @@
  .onece-v2-library .v2-pack-detail>.library-pack-info{grid-column:1;grid-row:3}
  .onece-v2-library .v2-pack-detail>.beat-track-list{grid-column:1;grid-row:4}
 }
+
+/* Playback skip buttons: preserve the v1 32px circular hit area, 17px icons,
+   muted resting color, and gentle transparent hover instead of button flashes. */
+.v2-active-player .onece-player-controls>.onece-player-icon{
+ width:32px;height:32px;flex:0 0 32px;padding:0;
+ border:0;border-radius:50%;background:transparent;
+ color:#b7b1c1;opacity:1;
+ transition:color 220ms ease-in-out,background-color 220ms ease-in-out,opacity 220ms ease-in-out;
+}
+.v2-active-player .onece-player-controls>.onece-player-icon svg{
+ width:17px;height:17px;stroke-width:1.8;
+}
+.v2-active-player .onece-player-controls>.onece-player-icon:hover:not(:disabled){
+ color:#fff;background:rgba(255,255,255,.035);
+}
+.v2-active-player .onece-player-controls>.onece-player-icon:disabled{
+ opacity:.28;cursor:default;background:transparent;
+}
+.v2-active-player .onece-player-controls>.onece-player-play{
+ color:#f5f3ff;
+}
+.v2-active-player .onece-player-controls>.onece-player-play svg{
+ width:19px;height:19px;fill:currentColor;stroke-width:1.2;
+}
+@media(prefers-reduced-motion:reduce){
+ .v2-active-player .onece-player-controls>.onece-player-icon{transition:none}
+}
