@@ -1,5 +1,5 @@
 import React,{useState} from 'react';
-import {Bookmark,Users,Share2,Eye,EyeOff,Link2,ListPlus,FolderPlus,Pencil,Image as ImageIcon,Download,Layers,Trash2,ChevronRight} from 'lucide-react';
+import {Bookmark,Users,Share2,Eye,EyeOff,Link2,ListPlus,FolderPlus,Pencil,Image as ImageIcon,Download,Layers,Trash2,ChevronRight,Play,Pause} from 'lucide-react';
 import './public-profile-v2.css';
 
 function CatalogLibraryIcon({size=17}:{size?:number}){
@@ -19,11 +19,12 @@ function ProjectCover({project}:{project:PublicProject}){
  return <div className="onece-profile-project-cover">{src?<img src={src} alt=""/>:<span>{project.title.charAt(0).toUpperCase()}</span>}</div>;
 }
 type ProfileTab='catalog'|'saves'|'following';
-export default function PublicProfileV2({user,onSettings,profileId}:{user:any;onSettings:()=>void;profileId?:string}){
+export default function PublicProfileV2({user,onSettings,profileId,onPlayProject}:{user:any;onSettings:()=>void;profileId?:string;onPlayProject?:(kind:'beat'|'pack',id:string)=>void}){
  const [tab,setTab]=useState<ProfileTab>('catalog');
  const [projects,setProjects]=useState<{catalog:PublicProject[];saves:PublicProject[]}>({catalog:[],saves:[]});
  const [saved,setSaved]=useState<Set<string>>(new Set());
  const [published,setPublished]=useState<Set<string>>(new Set());
+ const [activeProject,setActiveProject]=useState<string|null>(null);
  const [menu,setMenu]=useState<{project:PublicProject;x:number;y:number}|null>(null);
  const [profileUser,setProfileUser]=useState<any>(null);
  const [loading,setLoading]=useState(true);
@@ -115,7 +116,7 @@ export default function PublicProfileV2({user,onSettings,profileId}:{user:any;on
     <div className="onece-profile-projects">{(tab==='catalog'?projects.catalog:projects.saves).map(project=>{
      const key=project.owner_id+':'+project.kind+':'+project.id;
      return <article className="onece-profile-project" key={key} onContextMenu={event=>{event.preventDefault();setMenu({project,x:event.clientX,y:event.clientY})}}>
-      <ProjectCover project={project}/>
+      <div className="onece-profile-project-art"><ProjectCover project={project}/>{onPlayProject&&ownerOf(project)&&<button type="button" className="onece-profile-project-play" aria-label={activeProject===key?'Pause project':'Play project'} title={activeProject===key?'Pause':'Play'} onClick={()=>{onPlayProject(project.kind,project.id);setActiveProject(activeProject===key?null:key)}}>{activeProject===key?<Pause size={17} fill="currentColor"/>:<Play size={17} fill="currentColor"/>}</button>}</div>
       <div className="onece-profile-project-info"><strong>{project.title}</strong><span>{project.kind==='pack'?(project.track_count||0)+' beats':'Beat'}</span></div>
       {user?.id&&<button type="button" className="onece-profile-project-save" aria-label={saved.has(key)?'Unsave '+project.title:'Save '+project.title} aria-pressed={saved.has(key)} title={saved.has(key)?'Unsave':'Save'} onClick={()=>void toggleSave(project)}><Bookmark size={17} fill={saved.has(key)?'currentColor':'none'}/></button>}
      </article>;
