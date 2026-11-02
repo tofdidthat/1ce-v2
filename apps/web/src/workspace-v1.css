@@ -1,0 +1,39 @@
+/* Original v1 GlobalPlayer dock and Library styling selectively ported, no v1 backend. */
+.onece-player-dock {
+  position: fixed;
+  z-index: 80;
+  bottom: max(24px, env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(860px, calc(100% - 32px));
+  color: #f5f3ff;
+}
+.onece-global-player {
+  display: grid;
+  grid-template-columns: 42px minmax(90px, 150px) minmax(90px, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 58px;
+  padding: 7px 14px 7px 7px;
+  box-sizing: border-box;
+  border: 1px solid #ffffff0b;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #302e35 0%, #25232b 100%);
+  box-shadow: 0 16px 44px #0009, 0 4px 12px #0006, inset 0 1px 0 #ffffff08;
+}
+
+.onece-workspace-shell{min-height:100vh;background:#09080e;color:#f5f3ff}
+.onece-v2-workspace-main{min-height:100vh;padding-top:80px;padding-bottom:130px}
+.onece-v2-workspace-main .beat-profile.library-page{padding:28px 24px 130px;background:#09080e;min-height:calc(100vh - 80px)}
+.onece-v2-library .beat-profile-content,.onece-v2-library .library-items{width:100%;max-width:960px;margin:0 auto}
+.onece-v2-library .beat-tabs{display:flex;border-bottom:1px solid #ffffff0a;margin-bottom:40px;gap:20px}
+.onece-v2-library .beat-tabs button{flex:1;display:flex;justify-content:center;padding:15px;border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;color:#81778d;font-size:12px}
+.onece-v2-library .beat-tabs button[aria-selected=true]{border-color:#8b5cf6;color:#c4b5fd}
+.onece-v2-library .library-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;min-height:310px;color:#8d849e}
+.onece-v2-library .library-empty svg{width:44px;height:44px;color:#837294}
+.onece-v2-library .library-empty h2{margin:0;color:#f5f3ff;font-size:20px;font-weight:600}
+.onece-v2-library .library-add-audio{padding:12px 22px;border:1px solid #ffffff1a;border-radius:12px;background:#ffffff0b;color:#f5f3ff;cursor:pointer;font-size:13px}
+.onece-workspace-placeholder{max-width:960px;margin:45px auto;padding:30px 24px;color:#b5acc5}
+.onece-workspace-placeholder h1{font-size:24px;color:#fff}
+.onece-workspace-placeholder input[type=file]{display:block;max-width:100%;margin:24px 0;padding:15px;background:#18141f;border:1px solid #ffffff22;border-radius:12px;color:#f5f3ff}
+@media(max-width:600px){.onece-v2-workspace-main{padding-top:76px}.onece-v2-workspace-main .beat-profile.library-page{padding:20px 16px 110px}}
