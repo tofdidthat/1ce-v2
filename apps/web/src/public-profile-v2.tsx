@@ -4,9 +4,9 @@ import './public-profile-v2.css';
 
 function CatalogDiscIcon({size=17}:{size?:number}){
  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-  <path d="M16.5 6.2a6.2 6.2 0 0 1 0 12.4"/>
-  <path d="M16.5 10.2a2.15 2.15 0 0 1 0 4.3"/>
-  <rect x="2.8" y="3.3" width="13.7" height="17.4" rx="1.45"/>
+  <path d="M17 6.5a6.5 6.5 0 0 1 0 13"/>
+  <path d="M17 10.5a2.5 2.5 0 0 1 0 5"/>
+  <rect x="3" y="4" width="15" height="15" rx="1.4" fill="var(--onece-profile-icon-bg, #0b0911)"/>
  </svg>;
 }
 type ProfileTab='catalog'|'saves'|'following';
