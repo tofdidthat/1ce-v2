@@ -2,6 +2,13 @@ import React,{useState} from 'react';
 import {Bookmark,Users,Grid2X2,Share2,Settings2,Link2} from 'lucide-react';
 import './public-profile-v2.css';
 
+function CatalogDiscIcon({size=17}:{size?:number}){
+ return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+  <path d="M16.7 6.7a7.1 7.1 0 0 1 0 10.6"/>
+  <path d="M16.7 10.2a2.5 2.5 0 0 1 0 3.6"/>
+  <rect x="3.5" y="4" width="13.2" height="16" rx="1.7"/>
+ </svg>;
+}
 type ProfileTab='catalog'|'saves'|'following';
 export default function PublicProfileV2({user,onSettings}:{user:any;onSettings:()=>void}){
  const [tab,setTab]=useState<ProfileTab>('catalog');
@@ -9,7 +16,7 @@ export default function PublicProfileV2({user,onSettings}:{user:any;onSettings:(
  const handle=String(user?.username||user?.handle||'');
  const picture=user?.customPicture||user?.picture||'';
  const tabs:{id:ProfileTab;label:string;icon:React.ReactNode}[]=[
-  {id:'catalog',label:'Catalog',icon:<Grid2X2 size={16}/>},
+  {id:'catalog',label:'Catalog',icon:<CatalogDiscIcon/>},
   {id:'saves',label:'Saves',icon:<Bookmark size={16}/>},
   {id:'following',label:'Following',icon:<Users size={16}/>}
  ];
