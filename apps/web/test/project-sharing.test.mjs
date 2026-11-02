@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 const file=name=>readFileSync(new URL('../src/'+name,import.meta.url),'utf8');
 const library=file('library-items-v2.tsx');
 const profile=file('public-profile-v2.tsx');
+const sharedPage=file('main.tsx');
 const menu=file('project-context-menu-v2.tsx');
 const card=file('project-card-v2.tsx');
 const cover=file('project-cover-v2.tsx');
@@ -41,6 +42,8 @@ test('save publish and share mutations share their HTTP implementation',()=>{
   assert.match(view,/createProjectShareLinkV2/);
   assert.doesNotMatch(view,/\/api\/public\/(?:save|publish|share)\//);
  }
+ assert.match(sharedPage,/setProjectSavedV2/);
+ assert.doesNotMatch(sharedPage,/\/api\/public\/save\//);
  for(const route of ['publish','save','share'])assert.match(requests,new RegExp('/api/public/'+route+'/'));
  assert.match(requests,/credentials:'include'/);
 });
