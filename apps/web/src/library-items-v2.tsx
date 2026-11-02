@@ -74,6 +74,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility}:{onUpload:(
  const waveBars=useWaveform(current?.audio_file_id??null);
  const [queue,setQueue]=useState<BeatItem[]>([]);
  const [playing,setPlaying]=useState(false);
+ const [activePackId,setActivePackId]=useState<string|null>(null);
  const [elapsed,setElapsed]=useState(0);
  const [duration,setDuration]=useState(0);
  const [playerError,setPlayerError]=useState('');
@@ -103,10 +104,10 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility}:{onUpload:(
  useEffect(()=>{onPlayerVisibility?.(Boolean(current));return ()=>onPlayerVisibility?.(false)},[Boolean(current),onPlayerVisibility]);
  useEffect(()=>{const audio=audioRef.current;if(!audio||!current)return;audio.load();audio.play().then(()=>setPlaying(true)).catch(()=>{setPlaying(false);setPlayerError('Unable to play audio')})},[current?.id]);
  const toggle=()=>{const a=audioRef.current;if(!a)return;if(a.paused)a.play().then(()=>setPlaying(true)).catch(()=>setPlayerError('Unable to play audio'));else{a.pause();setPlaying(false)}};
- const choose=(beat:BeatItem,list:BeatItem[])=>{setPlayerError('');setQueue(list);if(current?.id===beat.id){toggle();return;}setElapsed(0);setDuration(0);setCurrent(beat)};
+ const choose=(beat:BeatItem,list:BeatItem[],packId:string|null=null)=>{setPlayerError('');setActivePackId(packId);setQueue(list);if(current?.id===beat.id){toggle();return;}setElapsed(0);setDuration(0);setCurrent(beat)};
  const next=()=>{if(!current)return;if(repeat==='one'){if(audioRef.current){audioRef.current.currentTime=0;audioRef.current.play().catch(()=>{})}return;}const index=queue.findIndex(b=>b.id===current.id);const target=shuffle&&queue.length>1?queue.filter(b=>b.id!==current.id)[Math.floor(Math.random()*(queue.length-1))]:queue[index+1]||(repeat==='all'?queue[0]:null);if(target){setCurrent(target);setElapsed(0)}else{setPlaying(false)}};
  const previous=()=>{if(!current)return;const index=queue.findIndex(b=>b.id===current.id);if(index>0){setCurrent(queue[index-1]);setElapsed(0)}else if(audioRef.current)audioRef.current.currentTime=0};
- const playPack=async(p:PackItem)=>{try{setPlayerError('');const response=await fetch(api+'/api/library/files/pack-tracks/'+p.id,{credentials:'include'});if(!response.ok)throw Error('Unable to load pack');const result=await response.json();const beats=(result.beats as BeatItem[]).map(beat=>({...beat,cover_file_id:beat.cover_file_id??p.cover_file_id}));if(beats[0])void loadWaveform(beats[0].audio_file_id).catch(()=>{});if(!beats.length)throw Error('Pack has no playable beats');choose(beats[0],beats)}catch(e){setPlayerError(e instanceof Error?e.message:'Unable to load pack')}};
+ const playPack=async(p:PackItem)=>{if(activePackId===p.id&&current){toggle();return;}try{setPlayerError('');const response=await fetch(api+'/api/library/files/pack-tracks/'+p.id,{credentials:'include'});if(!response.ok)throw Error('Unable to load pack');const result=await response.json();const beats=(result.beats as BeatItem[]).map(beat=>({...beat,cover_file_id:beat.cover_file_id??p.cover_file_id}));if(beats[0])void loadWaveform(beats[0].audio_file_id).catch(()=>{});if(!beats.length)throw Error('Pack has no playable beats');choose(beats[0],beats,p.id)}catch(e){setPlayerError(e instanceof Error?e.message:'Unable to load pack')}};
 
  const [error,setError]=useState('');
  useEffect(()=>{
@@ -130,7 +131,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility}:{onUpload:(
    <div className="v2-library-contents">
     <div className="beat-pack-grid">
      {data.packs.map((p,index)=><article key={'pack-'+p.id} className="v2-library-card">
-      <div className={'beat-pack-art beat-art-'+index%3} aria-label={'Pack '+p.title}><Cover id={p.cover_file_id} title={p.title}/><button type="button" className="v2-card-play" aria-label={"Play "+p.title} onClick={()=>playPack(p)}><PlayIcon/></button></div>
+      <div className={'beat-pack-art beat-art-'+index%3} aria-label={'Pack '+p.title}><Cover id={p.cover_file_id} title={p.title}/><button type="button" className="v2-card-play" aria-label={(activePackId===p.id&&playing?"Pause ":"Play ")+p.title} onClick={()=>playPack(p)}>{activePackId===p.id&&playing?<PauseIcon/>:<PlayIcon/>}</button></div>
       <div className="beat-pack-caption"><span className="v2-card-name">{p.title}</span></div>
       <p>{p.track_count} beats</p>
      </article>)}
