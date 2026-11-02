@@ -83,7 +83,20 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility}:{onUpload:(
  const [shuffle,setShuffle]=useState(false);
  const [repeat,setRepeat]=useState<'off'|'all'|'one'>('off');
  const [coverUrl,setCoverUrl]=useState('');
- useEffect(()=>{if(!current?.cover_file_id){setCoverUrl('');return;}let alive=true;let objectUrl='';fetch(api+'/api/library/files/cover/'+current.cover_file_id,{credentials:'include'}).then(r=>{if(!r.ok)throw Error('Cover');return r.blob()}).then(b=>{objectUrl=URL.createObjectURL(b);if(alive)setCoverUrl(objectUrl);else URL.revokeObjectURL(objectUrl)}).catch(()=>setCoverUrl(''));return()=>{alive=false;if(objectUrl)URL.revokeObjectURL(objectUrl)}},[current?.cover_file_id]);
+ const [coverLoadedId,setCoverLoadedId]=useState<number|null>(null);
+ useEffect(()=>{
+  const id=current?.cover_file_id??null;
+  setCoverUrl('');
+  setCoverLoadedId(null);
+  if(!id||!api)return;
+  let active=true;
+  let objectUrl='';
+  fetch(api+'/api/library/files/cover/'+id,{credentials:'include'})
+   .then(response=>{if(!response.ok)throw Error('Cover unavailable');return response.blob()})
+   .then(blob=>{objectUrl=URL.createObjectURL(blob);if(active){setCoverUrl(objectUrl);setCoverLoadedId(id)}else URL.revokeObjectURL(objectUrl)})
+   .catch(()=>{if(active){setCoverUrl('');setCoverLoadedId(null)}});
+  return()=>{active=false;if(objectUrl)URL.revokeObjectURL(objectUrl)};
+ },[current?.cover_file_id]);
  useEffect(()=>{if(audioRef.current){audioRef.current.volume=volume;audioRef.current.muted=muted}},[volume,muted,current?.id]);
  useEffect(()=>{if(!popup)return;const key=(e:KeyboardEvent)=>{if(e.key==='Escape')setPopup(null)};document.addEventListener('keydown',key);return()=>document.removeEventListener('keydown',key)},[popup]);
  const audioRef=useRef<HTMLAudioElement|null>(null);
@@ -93,7 +106,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility}:{onUpload:(
  const choose=(beat:BeatItem,list:BeatItem[])=>{setPlayerError('');setQueue(list);if(current?.id===beat.id){toggle();return;}setElapsed(0);setDuration(0);setCurrent(beat)};
  const next=()=>{if(!current)return;if(repeat==='one'){if(audioRef.current){audioRef.current.currentTime=0;audioRef.current.play().catch(()=>{})}return;}const index=queue.findIndex(b=>b.id===current.id);const target=shuffle&&queue.length>1?queue.filter(b=>b.id!==current.id)[Math.floor(Math.random()*(queue.length-1))]:queue[index+1]||(repeat==='all'?queue[0]:null);if(target){setCurrent(target);setElapsed(0)}else{setPlaying(false)}};
  const previous=()=>{if(!current)return;const index=queue.findIndex(b=>b.id===current.id);if(index>0){setCurrent(queue[index-1]);setElapsed(0)}else if(audioRef.current)audioRef.current.currentTime=0};
- const playPack=async(p:PackItem)=>{try{setPlayerError('');const response=await fetch(api+'/api/library/files/pack-tracks/'+p.id,{credentials:'include'});if(!response.ok)throw Error('Unable to load pack');const result=await response.json();const beats=result.beats as BeatItem[];if(beats[0])void loadWaveform(beats[0].audio_file_id).catch(()=>{});if(!beats.length)throw Error('Pack has no playable beats');choose(beats[0],beats)}catch(e){setPlayerError(e instanceof Error?e.message:'Unable to load pack')}};
+ const playPack=async(p:PackItem)=>{try{setPlayerError('');const response=await fetch(api+'/api/library/files/pack-tracks/'+p.id,{credentials:'include'});if(!response.ok)throw Error('Unable to load pack');const result=await response.json();const beats=(result.beats as BeatItem[]).map(beat=>({...beat,cover_file_id:beat.cover_file_id??p.cover_file_id}));if(beats[0])void loadWaveform(beats[0].audio_file_id).catch(()=>{});if(!beats.length)throw Error('Pack has no playable beats');choose(beats[0],beats)}catch(e){setPlayerError(e instanceof Error?e.message:'Unable to load pack')}};
 
  const [error,setError]=useState('');
  useEffect(()=>{
@@ -131,7 +144,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility}:{onUpload:(
  </div></div>
  {current&&<div className="onece-player-dock v2-active-player" aria-label="Audio player">
   <div className="onece-global-player">
-   <div className="onece-player-cover" aria-hidden="true">{coverUrl?<img src={coverUrl} alt=""/>:<Music2 size={20}/>}</div>
+   <div className="onece-player-cover" aria-hidden="true">{coverUrl&&coverLoadedId===current.cover_file_id?<img src={coverUrl} alt=""/>:<Music2 size={20}/>}</div>
    <div className="onece-player-meta"><span className="onece-player-title" title={current.title}>{current.title}</span><span className="onece-player-author">1CE</span></div>
    <div className="onece-player-wave" style={{'--played':(duration?elapsed/duration*100:0)+'%'} as React.CSSProperties}>
     <div className={'onece-wave-bars'+(!waveBars.length?' is-loading':'')} aria-hidden="true">{waveBars.map((height,index)=><span key={index} className={index/waveBars.length*100<=(duration?elapsed/duration*100:0)?'is-played':''} style={{height:Math.max(2,height*34)+'px'}}/>)}</div><span className="onece-wave-cursor" aria-hidden="true"/>
