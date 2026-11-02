@@ -3,6 +3,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { S3Client, PutObjectCommand, HeadObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import {resolveAuthorizedMediaFile} from './project-media.js';
+import {streamAuthorizedAudio} from './audio-stream.js';
 
 const limits={audio:150*1024*1024,cover:15*1024*1024,stems:250*1024*1024};
 const types={
@@ -78,20 +79,7 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser){
   const id=segments[4];
   const file=await resolveAuthorizedMediaFile(pool,{ownerId:user.id,viewerId:user.id,fileId:id,kind:'audio'});
   if(!file){send(res,404,{error:'Audio not found'});return true;}
-  const range=req.headers.range;
-  let start=0,end=Number(file.byte_size)-1,status=200;
-  if(range){
-   const match=/^bytes=(\d*)-(\d*)$/.exec(range);
-   if(!match||(!match[1]&&!match[2])){res.writeHead(416,{'Content-Range':'bytes */'+file.byte_size});res.end();return true;}
-   if(!match[1]){const suffix=Number(match[2]);if(!Number.isSafeInteger(suffix)||suffix<=0){res.writeHead(416,{'Content-Range':'bytes */'+file.byte_size});res.end();return true;}start=Math.max(0,Number(file.byte_size)-suffix);}
-   else {start=Number(match[1]);if(match[2])end=Number(match[2]);}
-   if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start>end||start>=Number(file.byte_size)){res.writeHead(416,{'Content-Range':'bytes */'+file.byte_size});res.end();return true;}
-   end=Math.min(end,Number(file.byte_size)-1);status=206;
-  }
-  const object=await s3.send(new GetObjectCommand({Bucket:cfg.bucket,Key:file.object_key,...(status===206?{Range:'bytes='+start+'-'+end}:{})}));
-  res.writeHead(status,{'Content-Type':file.content_type,'Content-Length':end-start+1,'Accept-Ranges':'bytes','Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff',...(status===206?{'Content-Range':'bytes '+start+'-'+end+'/'+file.byte_size}:{})});
-  for await(const chunk of object.Body)res.write(chunk);
-  res.end();return true;
+  await streamAuthorizedAudio(req,res,{file,s3,bucket:cfg.bucket});return true;
  }
  if(req.method==='GET'&&segments.length===5&&segments[3]==='pack-tracks'&&/^[a-f0-9-]{36}$/i.test(segments[4])){
   const q=await pool.query(`SELECT b.id,b.title,b.audio_file_id,b.cover_file_id,b.stems_file_id
