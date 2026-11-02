@@ -1,3 +1,4 @@
+import {randomBytes,createHash} from 'node:crypto';
 import {S3Client,GetObjectCommand} from '@aws-sdk/client-s3';
 // 1CE v2 public profile catalog and public saves. Metadata only; R2 objects are never duplicated.
 const send=(res,status,data)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data));};
@@ -20,6 +21,8 @@ function ready(pool){
    saved_at TIMESTAMPTZ NOT NULL DEFAULT now(),
    PRIMARY KEY (user_id,owner_id,kind,project_id)
   )`);
+  await pool.query("CREATE TABLE IF NOT EXISTS v2_project_access (owner_id INTEGER NOT NULL REFERENCES account_users(id) ON DELETE CASCADE,viewer_id INTEGER NOT NULL REFERENCES account_users(id) ON DELETE CASCADE,kind TEXT NOT NULL CHECK(kind IN ('beat','pack')),project_id UUID NOT NULL,granted_at TIMESTAMPTZ DEFAULT now(),PRIMARY KEY(owner_id,viewer_id,kind,project_id))");
+  await pool.query("CREATE TABLE IF NOT EXISTS v2_project_share_links (token_hash TEXT PRIMARY KEY,owner_id INTEGER NOT NULL REFERENCES account_users(id) ON DELETE CASCADE,kind TEXT NOT NULL CHECK(kind IN ('beat','pack')),project_id UUID NOT NULL,created_at TIMESTAMPTZ DEFAULT now())");
   await pool.query('CREATE INDEX IF NOT EXISTS v2_public_saves_owner_idx ON v2_public_saves(owner_id,kind,project_id)');
  })().catch(err=>{initialized=null;throw err});
  return initialized;
@@ -38,6 +41,7 @@ export async function handlePublicProfiles(req,res,pathname,pool,currentUser){
  if(!['GET','POST','DELETE'].includes(req.method)){send(res,405,{error:'Method not allowed'});return true;}
  await ready(pool);
  const parts=pathname.split('/').filter(Boolean);
+ const user=await currentUser(req);
  if(parts.length===5&&parts[2]==='cover'&&/^\d+$/.test(parts[3])&&/^\d+$/.test(parts[4])&&req.method==='GET'){
   const owner=parts[3],fileId=parts[4];
   const q=await pool.query(`SELECT f.object_key,f.content_type FROM library_files f WHERE f.id=$1 AND f.user_id=$2 AND f.kind='cover' AND f.status='ready'
@@ -52,7 +56,6 @@ export async function handlePublicProfiles(req,res,pathname,pool,currentUser){
   for await(const chunk of obj.Body)res.write(chunk);
   res.end();return true;
  }
- const user=await currentUser(req);
  if(parts.length===4&&parts[2]==='profile'&&/^\d+$/.test(parts[3])&&req.method==='GET'){
   const profileId=parts[3];
   const [profile,catalog,saves]=await Promise.all([
