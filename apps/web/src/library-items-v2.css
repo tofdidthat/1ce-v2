@@ -760,3 +760,56 @@
 @media(max-width:520px){
  .v2-beat-overlay .v2-beat-widget{padding:18px 14px 20px}
 }
+
+/* Beat modal only: mirror dock icon sizing, tones, and smooth hover.
+   Save control and bottom dock remain untouched. */
+.v2-beat-overlay .v2-beat-widget .v2-music-card .controls{
+ gap:10px;
+}
+.v2-beat-overlay .v2-beat-widget .v2-music-card .controls .ctrl{
+ display:grid;place-items:center;
+ width:32px;height:32px;flex:0 0 32px;
+ padding:0;border:0;border-radius:50%;
+ background:transparent;color:#b7b1c1;
+ box-shadow:none;
+ transition:color 220ms ease-in-out,background-color 220ms ease-in-out;
+}
+.v2-beat-overlay .v2-beat-widget .v2-music-card .controls .ctrl svg{
+ width:17px;height:17px;stroke-width:1.8;
+}
+.v2-beat-overlay .v2-beat-widget .v2-music-card .controls .ctrl:not(.ctrl-play):hover{
+ background:rgba(255,255,255,.035);
+ color:#fff;
+}
+.v2-beat-overlay .v2-beat-widget .v2-music-card .controls .ctrl-toggle.is-active{
+ color:#a78bfa;
+}
+.v2-beat-overlay .v2-beat-widget .v2-music-card .controls .ctrl-play{
+ width:42px;height:42px;flex:0 0 42px;
+ border-radius:50%;background:#fff;color:#111;
+}
+.v2-beat-overlay .v2-beat-widget .v2-music-card .controls .ctrl-play svg{
+ width:19px;height:19px;fill:currentColor;stroke-width:1.2;
+}
+.v2-beat-overlay .v2-beat-widget .v2-music-card .controls .ctrl-play:hover{
+ background:#eeeaf5;color:#111;
+}
+.v2-beat-overlay .v2-beat-widget .v2-beat-close,
+.v2-beat-overlay .v2-beat-widget .v2-beat-close:hover{
+ display:grid;place-items:center;
+ width:30px;height:30px;
+ border:0;border-radius:50%;
+ background:transparent;
+ box-shadow:none;color:#a9a4b1;
+ transform:none;
+}
+.v2-beat-overlay .v2-beat-widget .v2-beat-close{
+ transition:color 200ms ease,background-color 200ms ease;
+}
+.v2-beat-overlay .v2-beat-widget .v2-beat-close:hover{
+ background:rgba(255,255,255,.055);
+ color:#fff;
+}
+.v2-beat-overlay .v2-beat-widget .v2-beat-close:focus-visible{
+ outline:2px solid #a78bfa;outline-offset:2px;
+}
