@@ -62,6 +62,7 @@ export default function LibraryUploadV2(){
    let coverId=null;
    if(cover){setStage('Uploading shared cover…');coverId=await upload(cover,'cover');}
    const beatIds=[];
+   const newBeatIds=[];
    for(const [index,file] of audioFiles.entries()){
     setStage('Uploading audio '+(index+1)+'/'+audioFiles.length+'…');
     const audioId=await upload(file,'audio');
@@ -72,10 +73,11 @@ export default function LibraryUploadV2(){
     const beat=await beatResponse.json().catch(()=>({}));
     if(!beatResponse.ok)throw new Error(beat.error||'Unable to save beat');
     beatIds.push(beat.id);
+    if(!beat.reused)newBeatIds.push(beat.id);
    }
    if(isPack){
     setStage('Creating pack…');
-    const packResponse=await fetch(api+'/api/library/files/packs',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:itemName.trim()||'New pack',coverFileId:coverId,beatIds})});
+    const packResponse=await fetch(api+'/api/library/files/packs',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:itemName.trim()||'New pack',coverFileId:coverId,beatIds,newBeatIds})});
     const pack=await packResponse.json().catch(()=>({}));
     if(!packResponse.ok)throw new Error(pack.error||'Unable to create pack');
    }
