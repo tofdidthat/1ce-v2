@@ -3,6 +3,7 @@ import React,{useEffect,useRef,useState} from 'react';
 import {Play,Pause,SkipBack,SkipForward,Shuffle,Repeat,Repeat1,ListMusic,Volume2,VolumeX,X,Music2,ChevronLeft,Bookmark,Eye,EyeOff,ListPlus,FolderPlus,Pencil,Image as ImageIcon,Download,Layers,Trash2,ChevronRight,Link2} from 'lucide-react';
 import './library-items-v2.css';
 import {notifyV2DataChanged,subscribeV2DataChanges,subscribeV2Resume} from './data-refresh-v2';
+import ProjectActionDialogV2,{type ContextProject,type ProjectAction,type ChangedProject} from './project-action-dialog-v2';
 const api=import.meta.env.VITE_API_URL;
 type BeatItem = {published?:boolean;owner_id?:number;id:string;title:string;audio_file_id:number;cover_file_id:number|null;stems_file_id:number|null;pack_count:number;created_at:string;library_visible:boolean};
 type PackItem = {published?:boolean;id:string;title:string;cover_file_id:number|null;track_count:number;created_at:string};
@@ -10,6 +11,7 @@ type LibraryData = {beats:BeatItem[];packs:PackItem[]};
 function Cover({id,title}:{id:number|null;title:string}){
  const [url,setUrl]=useState('');
  useEffect(()=>{
+  setUrl('');
   if(!id||!api)return;
   let active=true;let objectUrl='';
   fetch(api+'/api/library/files/cover/'+id,{credentials:'include'})
@@ -102,6 +104,45 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
  const [openedBeat,setOpenedBeat]=useState<BeatItem|null>(null);
  const [contextBeat,setContextBeat]=useState<{beat:BeatItem;x:number;y:number}|null>(null);
  const [contextPack,setContextPack]=useState<{pack:PackItem;x:number;y:number}|null>(null);
+ const [actionDialog,setActionDialog]=useState<{project:ContextProject;action:ProjectAction}|null>(null);
+ const showProjectAction=(action:ProjectAction,project:ContextProject)=>{
+  setContextBeat(null);setContextPack(null);setActionDialog({action,project});
+ };
+ const onProjectChanged=(change:ChangedProject)=>{
+  const {source,action}=change;
+  if(action==='delete'){
+   if(source.kind==='beat'){
+    setOpenedBeat(previous=>previous?.id===source.id?null:previous);
+    setOpenedTracks(previous=>previous.filter(item=>item.id!==source.id));
+    setQueue(previous=>previous.filter(item=>!(item.id===source.id&&item.owner_id===userId)));
+    if(current?.id===source.id&&current?.owner_id===userId){
+     audioRef.current?.pause();setCurrent(null);setPlaying(false);setDuration(0);setElapsed(0);
+    }
+   }else{
+    setOpenedPack(previous=>previous?.id===source.id?null:previous);
+    if(activePackId===source.id)setActivePackId(null);
+   }
+  }else if(action==='rename'){
+   if(source.kind==='beat'){
+    setCurrent(previous=>previous?.id===source.id&&previous.owner_id===userId?{...previous,title:change.title!}:previous);
+    setQueue(previous=>previous.map(item=>item.id===source.id&&item.owner_id===userId?{...item,title:change.title!}:item));
+    setOpenedBeat(previous=>previous?.id===source.id?{...previous,title:change.title!}:previous);
+    setOpenedTracks(previous=>previous.map(item=>item.id===source.id?{...item,title:change.title!}:item));
+   }else{
+    setOpenedPack(previous=>previous?.id===source.id?{...previous,title:change.title!}:previous);
+   }
+  }else if(action==='cover'){
+   if(source.kind==='beat'){
+    setCurrent(previous=>previous?.id===source.id&&previous.owner_id===userId?{...previous,cover_file_id:change.coverFileId!}:previous);
+    setQueue(previous=>previous.map(item=>item.id===source.id&&item.owner_id===userId?{...item,cover_file_id:change.coverFileId!}:item));
+    setOpenedBeat(previous=>previous?.id===source.id?{...previous,cover_file_id:change.coverFileId!}:previous);
+    setOpenedTracks(previous=>previous.map(item=>item.id===source.id?{...item,cover_file_id:change.coverFileId!}:item));
+   }else{
+    setOpenedPack(previous=>previous?.id===source.id?{...previous,cover_file_id:change.coverFileId!}:previous);
+   }
+  }
+  setActionDialog(null);
+ };
  const showBeatMenu=(event:React.MouseEvent,beat:BeatItem)=>{
   event.preventDefault();event.stopPropagation();
   setContextPack(null);
@@ -313,13 +354,13 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
   <button type="button" role="menuitem" className="v2-context-action" onClick={()=>{const id=contextPack.pack.id;setContextPack(null);void toggleSavedProject('pack',id)}}><Bookmark size={17} fill={savedPackIds.has(contextPack.pack.id)?'currentColor':'none'}/><span>{savedPackIds.has(contextPack.pack.id)?'Unsave':'Save'}</span></button>
   <button type="button" role="menuitem" className="v2-context-action" onClick={()=>void copyProjectLink('pack',contextPack.pack.id)}><Link2 size={17}/><span>Copy link</span></button>
   <button type="button" role="menuitem" className="v2-context-action" onClick={()=>{void (async()=>{const pack=contextPack.pack;setContextPack(null);try{const response=await fetch(api+'/api/library/files/pack-tracks/'+pack.id,{credentials:'include'});if(!response.ok)throw Error('Unable to load pack tracks');const result=await response.json();const tracks=(result.beats as BeatItem[]).map(beat=>({...beat,cover_file_id:beat.cover_file_id??pack.cover_file_id}));if(!tracks.length)return;if(!current)choose(tracks[0],tracks,pack.id);else setQueue(previous=>[...previous,...tracks.map(beat=>({...beat,owner_id:userId}))])}catch(error){setPlayerError(error instanceof Error?error.message:'Unable to add pack to queue')}})()}}><ListPlus size={17}/><span>Add to queue</span></button>
-  <button type="button" role="menuitem" className="v2-context-action" disabled title="Adding packs to collections requires v2 API integration"><FolderPlus size={17}/><span>Add to...</span><ChevronRight className="v2-context-chevron" size={15}/></button>
+  <button type="button" role="menuitem" className="v2-context-action" onClick={()=>showProjectAction('add',{...contextPack.pack,kind:'pack'})}><FolderPlus size={17}/><span>Add to...</span><ChevronRight className="v2-context-chevron" size={15}/></button>
   <div className="v2-context-separator"/>
-  <button type="button" role="menuitem" className="v2-context-action" disabled title="Renaming packs requires v2 API integration"><Pencil size={17}/><span>Rename</span></button>
-  <button type="button" role="menuitem" className="v2-context-action" disabled title="Changing pack covers requires v2 API integration"><ImageIcon size={17}/><span>Change cover</span></button>
+  <button type="button" role="menuitem" className="v2-context-action" onClick={()=>showProjectAction('rename',{...contextPack.pack,kind:'pack'})}><Pencil size={17}/><span>Rename</span></button>
+  <button type="button" role="menuitem" className="v2-context-action" onClick={()=>showProjectAction('cover',{...contextPack.pack,kind:'pack'})}><ImageIcon size={17}/><span>Change cover</span></button>
   <button type="button" role="menuitem" className="v2-context-action" disabled title="Pack ZIP download will include all beats and available stems; server-side archive generation is not implemented yet"><Download size={17}/><span>Download ZIP</span></button>
   <div className="v2-context-separator"/>
-  <button type="button" role="menuitem" className="v2-context-action v2-context-danger" disabled title="Deleting packs requires confirmation and v2 API integration"><Trash2 size={17}/><span>Delete pack</span></button>
+  <button type="button" role="menuitem" className="v2-context-action v2-context-danger" onClick={()=>showProjectAction('delete',{...contextPack.pack,kind:'pack'})}><Trash2 size={17}/><span>Delete</span></button>
  </div>}
  {contextBeat&&<div className="v2-context-menu" role="menu" aria-label={'Beat actions for '+contextBeat.beat.title} style={{left:Math.min(contextBeat.x,Math.max(8,window.innerWidth-280))+'px',top:Math.min(contextBeat.y,Math.max(8,window.innerHeight-440))+'px'}} onPointerDown={e=>e.stopPropagation()} onContextMenu={e=>e.preventDefault()}>
   <button type="button" role="menuitem" className="v2-context-action" onClick={()=>void togglePublish('beat',contextBeat.beat.id)}>{published.has(publicationKey('beat',contextBeat.beat.id))?<EyeOff size={17}/>:<Eye size={17}/>}<span>{published.has(publicationKey('beat',contextBeat.beat.id))?'Unpublish':'Publish'}</span></button>
@@ -327,15 +368,19 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
   <button type="button" role="menuitem" className="v2-context-action" onClick={()=>{void toggleSavedProject('beat',contextBeat.beat.id);setContextBeat(null)}}><Bookmark size={17} fill={savedBeatIds.has(contextBeat.beat.id)?'currentColor':'none'}/><span>{savedBeatIds.has(contextBeat.beat.id)?'Unsave':'Save'}</span></button>
   <button type="button" role="menuitem" className="v2-context-action" onClick={()=>void copyProjectLink('beat',contextBeat.beat.id)}><Link2 size={17}/><span>Copy link</span></button>
   <button type="button" role="menuitem" className="v2-context-action" onClick={()=>addToQueue(contextBeat.beat)}><ListPlus size={17}/><span>Add to queue</span></button>
-  <button type="button" role="menuitem" className="v2-context-action" disabled title="Adding to packs will be available after the v2 API integration"><FolderPlus size={17}/><span>Add to...</span><ChevronRight className="v2-context-chevron" size={15}/></button>
+  <button type="button" role="menuitem" className="v2-context-action" onClick={()=>showProjectAction('add',{...contextBeat.beat,kind:'beat'})}><FolderPlus size={17}/><span>Add to...</span><ChevronRight className="v2-context-chevron" size={15}/></button>
   <div className="v2-context-separator"/>
-  <button type="button" role="menuitem" className="v2-context-action" disabled title="Rename will be available after the v2 API integration"><Pencil size={17}/><span>Rename</span></button>
-  <button type="button" role="menuitem" className="v2-context-action" disabled title="Change cover will be available after the v2 API integration"><ImageIcon size={17}/><span>Change cover</span></button>
+  <button type="button" role="menuitem" className="v2-context-action" onClick={()=>showProjectAction('rename',{...contextBeat.beat,kind:'beat'})}><Pencil size={17}/><span>Rename</span></button>
+  <button type="button" role="menuitem" className="v2-context-action" onClick={()=>showProjectAction('cover',{...contextBeat.beat,kind:'beat'})}><ImageIcon size={17}/><span>Change cover</span></button>
   <button type="button" role="menuitem" className="v2-context-action" disabled title="Download will be available after the v2 API integration"><Download size={17}/><span>Download MP3</span></button>
   <button type="button" role="menuitem" className="v2-context-action" disabled title="Stems management will be available after the v2 API integration"><Layers size={17}/><span>{contextBeat.beat.stems_file_id?'Download stems':'Upload stems'}</span></button>
   <div className="v2-context-separator"/>
-  <button type="button" role="menuitem" className="v2-context-action v2-context-danger" disabled title="Delete will be available with a confirmation dialog"><Trash2 size={17}/><span>Delete beat</span></button>
+  <button type="button" role="menuitem" className="v2-context-action v2-context-danger" onClick={()=>showProjectAction('delete',{...contextBeat.beat,kind:'beat'})}><Trash2 size={17}/><span>Delete</span></button>
  </div>}
+ {actionDialog&&<ProjectActionDialogV2
+  key={actionDialog.action+':'+actionDialog.project.kind+':'+actionDialog.project.id}
+  project={actionDialog.project} action={actionDialog.action} packs={data.packs} userId={userId}
+  onClose={()=>setActionDialog(null)} onChanged={onProjectChanged}/>}
  {openedBeat&&<div className="beat-player-overlay v2-beat-overlay" role="dialog" aria-modal="true" aria-label={openedBeat.title} onClick={()=>setOpenedBeat(null)}>
   <div className="beat-player-widget v2-beat-widget" onClick={e=>e.stopPropagation()}>
    <button type="button" className={'v2-beat-save'+(savedBeatIds.has(openedBeat.id)?' is-saved':'')} aria-label={savedBeatIds.has(openedBeat.id)?'Unsave beat':'Save beat'} aria-pressed={savedBeatIds.has(openedBeat.id)} onClick={()=>void toggleSavedProject('beat',openedBeat.id)}><Bookmark size={18} fill={savedBeatIds.has(openedBeat.id)?'currentColor':'none'}/></button>
