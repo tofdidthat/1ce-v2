@@ -76,7 +76,7 @@ Status legend: **done/merged**, **working**, **pending**, **blocked by product d
 
 ### Product decisions (confirmed vs pending)
 
-- **Saved item publication/access:** when someone unpublishes a project previously saved by another person, should it immediately disappear from that person's Saves unless they have an explicit share grant? Security default is **yes**; never retain private playback via stale client state. Check actual server semantics and discuss the UX.
+- **CONFIRMED 2026-11-02 — Unpublish, private Saves and links:** Unpublish removes a beat/pack from public Catalog/discovery, **not from the saved-project relationship**. The saver must still see their own saved item in Saves (assuming the project still exists), while **other visitors must not see any unpublished project in that saver’s public Saves view**, even if those visitors separately have share grants or are the project owner. Publicly published saved items may remain visible in profiles according to public Saves behavior. A user redeeming the owner's share link receives an explicit project access grant and may save that original private project; the saved entry is **visible only to the saver** until publicly published. Do not copy project/media data. Media permissions remain server-authoritative: a saved relation by itself must **never** grant playback/cover/stems access. Explicit access grants continue through Unpublish unless revoked; handling a saved item after access is revoked is a separate decision. Implement and test server-side visibility, not just CSS/client filtering.
 - **CONFIRMED 2026-11-02 — Unsave in Saves tab:** when the user clicks **Unsave**, the corresponding card must disappear **immediately after the server confirms success**, without F5 or switching tabs. On request failure, it stays visible and the error is surfaced. Apply consistently to own Saves and shared components. The decision is final unless the user explicitly changes it.
 - **Playback after metadata edits/deletions:** preserve audio uninterrupted for rename/cover; deletion must stop or remove the affected owned beat; details and cross-user revocation require review before D.
 - Ask **one focused question at a time**, tied to a visible UI behavior; record the user answer **in this architecture guide**, with date and implementation/testing status, before implementation. Pending questions are not implementation approval.
@@ -88,6 +88,18 @@ Status legend: **done/merged**, **working**, **pending**, **blocked by product d
 3. **Implement one shared responsibility:** reuse existing `ProjectCardV2`, `ProjectCoverV2`, `ProjectContextMenuV2`, `ProjectActionDialogV2`, and `ProjectFlagsProviderV2` (branch only until PR #7 merges); keep list/presentation concerns inside appropriate views. Do not clone projects or introduce parallel caches.
 4. **Check regression gates:** GitHub Actions runs `npm test --prefix apps/api`, `node --experimental-strip-types --test apps/web/test/*.test.mjs`, and `npm run build --prefix apps/web`. CI source-contract tests alone are not visual or database E2E tests. Manual matrix must cover owner/non-owner/anonymous, Library/Catalog/Saves, null cover/stems, Save/Unsave, Publish/Unpublish, Add to, Rename, Delete, focus/cross-tab, and playback continuity.
 5. **Update this guide within the same PR:** exact branch/PR/SHA, what is on `main` vs branch-only, validations run, missing real-environment verification, open user choices, next Phase C item and release status. **No new handoff file, no merge or deploy without the user's authorization.** Vercel previews are intentionally disabled to conserve the Hobby deployment quota.
+
+### Accepted private-save behavior (server/UI acceptance matrix)
+
+| Case | Saved reference remains? | Visible in saver’s own Saves? | Visible to a third-party visiting saver’s profile? | Media access |
+| --- | --- | --- | --- | --- |
+| Published beat saved by an authorized person | Yes | Yes | Yes while published | Published project rules |
+| Owner clicks Unpublish after someone saved | **Yes** | **Yes** | **No** | Owner or existing explicit share grants only; Save alone does not authorize |
+| Recipient redeems valid private sharing link, then saves | Yes | Yes | **No**, including viewers with other grants | Recipient’s explicit access grant authorizes permitted media, not stems by default |
+| Saver clicks Unsave | **No** after successful server response | Disappears immediately | No | Separate grant/publication remains independently unchanged |
+| Project physically deleted | No, relationship deleted | No | No | Server must revoke project access; original R2 cleanup remains a separate policy |
+
+**Implementation notes:** currently `apps/api/src/public-profiles.js` filters the saved entries returned by `GET /api/public/profile/:identifier` using publication and viewer grants. The API must enforce **viewer is saver OR project is published**, never disclose the saved private entry simply because viewer is owner of the underlying project or a separately granted recipient. Tests must cover saver, third-party (including another grantee), and Unpublish not deleting saves. The saved entry may remain metadata-only when media rights are unavailable; never use local state to bypass media server authorization.
 
 ### Dated Phase C implementation handoff log
 
@@ -231,8 +243,8 @@ The endpoint design is a **decision gate**, not an instruction to create another
 - **Cover component:** accepts a project identity/manifest, uses the canonical authorized media contract, and handles absent cover, loading, error, cancellation and object-URL cleanup. No view-specific endpoint fallback.
 - **Persistent player:** one playback controller outside view-specific mounting, with canonical `(ownerId, kind, projectId)` identity, active beat, pack track order, queue, play/pause, progress and errors. Navigation must not reset playback.
 - **Profile and Library:** views request actions from the shared player and project data layer rather than maintaining competing playback truth.
-- **Saves:** references to original projects, including the user's own projects. Saving/un-saving does not create media copies. The owner must be able to see their own saved private projects; other viewers see only projects they are authorized to see.
-- **Sharing:** grant access to an original project; redemption must not duplicate it. Revocation semantics and access persistence need explicit policy before implementation.
+- **Saves:** references to original projects, including the user's own projects. Saving/un-saving does not create media copies. The saver sees their saved entries even if the owner later unpublishes them. **Private/unpublished saves are invisible to all other visitors to the saver’s profile, including viewers with an independent share grant.** Only published saved items may be shown publicly. Media playback/cover authorization is a separate server check; a Save alone is not a grant.
+- **Sharing:** redeeming a valid share link grants authenticated access to the original beat/pack and allows the recipient to save it, even when unpublished. The grant is distinct from publication and persists through Unpublish unless actively revoked; redemption must not duplicate data. Precise revocation behavior and presentation of saves without grants remain open product decisions.
 
 ## 7. Refactoring plan — ordered, incremental
 
@@ -310,3 +322,5 @@ The endpoint design is a **decision gate**, not an instruction to create another
 - `apps/web/src/library-items-v2.tsx`, `apps/web/src/public-profile-v2.tsx`: current view and playback implementations.
 
 Sections 5–7 describe remaining target architecture and exit criteria; section 0 records what has already been implemented, tested and deployed.
+
+- **2026-11-02 — confirmed privacy semantics:** Owner's Unpublish removes only publication, not prior Saves. A recipient with a redeemed share grant may save a private project; private saved entries are only visible to the saver, not on third-party views of the saver’s profile. This is enforced server-side and is part of PR #7’s Phase C cross-view acceptance. Playback rights remain separate; access after explicit revocation still requires a product decision.
