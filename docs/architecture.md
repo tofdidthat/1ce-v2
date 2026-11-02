@@ -65,12 +65,12 @@ Library / Catalog / Saves / Shared link / Queue / Player
 
 ## 4. Current implementation (verified in repository)
 
-- `apps/api/src/library-files.js` handles private library files, project creation/listing, cover/audio delivery and pack tracks. Existing `library_beats` records reference `audio_file_id`, `cover_file_id`, `stems_file_id`; `library_packs` reference `cover_file_id`, and `library_pack_beats` orders membership.
-- `apps/api/src/public-profiles.js` handles published projects, saves, share-link redemption, access grants and a **separate** public-cover delivery path. Related schema is recorded in `history/database/004_public_profiles.sql`.
+- `apps/api/src/library-files.js` handles private library files, project creation/listing, cover/audio delivery and pack tracks. Existing `library_beats` records reference `audio_file_id`, `cover_file_id`, `stems_file_id`; `library_packs` reference `cover_file_id`, and `library_pack_beats` orders membership. Pack track responses now return each beat's original audio, cover and optional stems IDs.
+- `apps/api/src/public-profiles.js` handles published projects, saves, share-link redemption, access grants and an existing public-cover HTTP route. Related schema is recorded in `history/database/004_public_profiles.sql`.
 - `apps/web/src/library-items-v2.tsx` loads Library items, media and pack tracks and currently owns much of the persistent player behavior.
 - `apps/web/src/public-profile-v2.tsx` loads Catalog and Saves and currently uses different cover-request paths for owner and visitor, including a fallback. This is **temporary implementation debt**, not the target contract.
 - Library and Profile currently maintain some independent save/publish and play-related state. A Profile play request is forwarded to Library's player, whose project lookup is currently tied to the viewer's Library items; shared projects may therefore require a different resolution path.
-- The presence of two cover routes and per-view authorization/loading logic is a known architectural inconsistency. Previous cover fixes have **not** been verified end to end.
+- **First phase B extraction in source:** `apps/api/src/project-media.js` now centralizes media-file lookup and permissions behind existing owner audio/cover and public cover endpoints. A published/shared pack can authorize access to its original members' audio/covers. Stems are provisionally owner-only. The separate HTTP cover routes and frontend fallback remain migration debt. `apps/api/test/project-media.test.js` provides fixture-backed unit tests, with execution and deployment verification still pending.
 
 Do not treat the existing routes as an approved long-term API design simply because they exist.
 
@@ -188,7 +188,8 @@ The endpoint design is a **decision gate**, not an instruction to create another
 - `README.md`: repository structure and deployment overview (some setup notes may be historical).
 - `docs/auth-deployment.md`: isolated authentication deployment notes.
 - `history/database/004_public_profiles.sql`: recorded publication, save and access relationships.
-- `apps/api/src/library-files.js`, `apps/api/src/public-profiles.js`: current API implementations.
+- `apps/api/src/library-files.js`, `apps/api/src/public-profiles.js`, `apps/api/src/project-media.js`: current API implementations and shared media authorization.
+- `docs/refactor-phase-a-inventory.md`: route matrix, risks, initial implementation ledger and remaining verification gates.
 - `apps/web/src/library-items-v2.tsx`, `apps/web/src/public-profile-v2.tsx`: current view and playback implementations.
 
 The plan above is **not** a claim that the refactor has been implemented.
