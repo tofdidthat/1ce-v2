@@ -611,3 +611,17 @@
 @media(prefers-reduced-motion:reduce){
  .v2-active-player .onece-player-controls>.onece-player-icon{transition:none}
 }
+
+/* Match v1 pack track typography and active purple state. */
+.onece-v2-library .v2-pack-detail .beat-track-play strong{
+ font-size:13px;font-weight:500;line-height:1.35;
+}
+.onece-v2-library .v2-pack-detail .beat-track-active .beat-track-play strong{
+ color:#a78bfa;
+}
+.onece-v2-library .v2-pack-detail .beat-track-play:hover strong{
+ color:#b9a1ff;transition:color 150ms ease;
+}
+.onece-v2-library .v2-pack-detail .beat-track-active .beat-track-play:hover strong{
+ color:#a78bfa;
+}
