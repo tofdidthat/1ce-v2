@@ -1,6 +1,39 @@
+# Protocol for complete change batches — read before changing 1CE v2
+
+> **Mandatory working agreement (2026-11-02).** Whenever the user requests a complete feature, a refactor, several changes, or a production correction, **first read this entire `docs/architecture.md` and the relevant behavior/contract documentation** (notably `docs/refactor-phase-a-inventory.md`, `docs/shared-playback-v2.md`, `docs/reactive-refresh-v2.md`, and related migration/rollout notes). Compare the guide against the live code, the current branch, tests and deployment state; update this document when a decision or phase status changes **before implementing the feature**. Do not rely on historical chat descriptions or stale snapshots to declare work complete.
+
+## Batch / deployment protocol
+
+1. **Inventory and behavior:** identify user-visible acceptance criteria and affected UI, API, auth, SQL schema, R2, player, Saves/Catalog and permissions; inspect current existing methods before adding routes, tables or state. Document changes to behavior and architecture, including expected deletion and optional-asset behavior.
+2. **Plan and isolation:** group related work into **one coherent batch**, in an isolated v2 branch, and prefer one reviewed PR and one production deploy per approved batch. Preserve v1 independence and original project/media IDs. Avoid redundant R2 copies and new database paths without justification.
+3. **Implement and verify:** batch commits rather than deploying at every intermediate change; use GitHub Actions for API tests, frontend tests, TypeScript/build and regression checks. Test both ownership and cross-user access, missing optional cover/stems, navigation and persistent-player preservation. Be honest when live end-to-end testing cannot be done.
+4. **Release gate:** review migration and runtime dependencies, confirm CI green, inspect diff and verify target branch/commit. **Do not merge or deploy unless the user authorizes this batch's publication**, or explicitly requests immediate release. On approval, deploy API/migrations in safe order then frontend, check Vercel READY/alias, Railway health and database, and report incomplete verification.
+5. **Economize Vercel:** automatic previews for v2 are disabled to conserve Hobby deployment quota; **do not re-enable without permission**. Prefer CI-only validation on feature branches, no manual deployments for each commit and no duplicate retry loops. One deployment for a complete reviewed batch; handle build quota limits transparently.
+6. **Documentation before code, then ledger:** maintain an accurate implemented vs validated vs pending phase ledger below, and update acceptance scenarios, docs/tests, or explicit decisions within the same PR. Before every future complete request, check this protocol **and behavioral contracts** again.
+
+**Binding boundaries:** do not change/download stems or unrelated features without request; never change v1 or its database/bucket. Published and explicitly shared permissions remain server-authoritative; saving is not an authorization grant. Preserve a single active player and original project identities. No destructive action without explicit user confirmation in the interface and safe server checks.
+
+---
+
 # 1CE v2 — Architecture and Refactoring Plan
 
-> Status: living architecture document. The **Current implementation** sections describe the repository as inspected on 2026-11-02. The **Target architecture** and **Migration plan** sections are decisions and proposals, **not implemented features**. Update this document alongside architectural changes.
+> Status: living architecture document. Read section 0 for the latest implementation and verification ledger. Sections 5–7 are target behavior and remaining migration gates; implemented milestones are separately recorded in section 0.
+
+## 0. Progress ledger — current phase and completed work (2026-11-02)
+
+The refactor is **in progress, spanning phases A–D**. **We are currently prioritizing C (shared frontend behavior and project actions), while B and D still have consolidation debt.** Phase E has not been completed. These statuses distinguish code integrated on `main`, automated tests, deployment, and end-to-end verification:
+
+| Phase | Implemented and merged in v2 | Still missing before exit |
+| --- | --- | --- |
+| **A — Inventory and tests** | Inventory and risk/contract matrix recorded; API fixture-based tests (28 passed on latest verified CI); second-account sharing/Saves behavior manually exercised; profile/avatar and playback bug reproduction; cross-tab refresh tests (3 passed). | Full systematic owner/public/shared/anonymous live DB + R2 regression matrix; explicitly approve final stems policy; complete contract/behavior inventory and sign off A exit. |
+| **B — Canonical project resolver/media policy** | `project-media.js` shared authorization behind existing private/public routes; `/api/public/play/:owner/:kind/:id` project manifests and `/api/public/audio/:owner/:fileId` authorized streaming with byte ranges; original files and pack order preserved. Deployed and public beat/pack manifests smoke-tested. | Consolidate duplicate cover routes, typed canonical manifest for all consumers, verify private/shared access and deletion/revocation against live isolated v2 PostgreSQL and private R2. Stems remain interim owner-only. |
+| **C — Shared frontend project/media layer** | Settings username/avatar merged and deployed with migration 007; public profile Catalog/Saves; cross-owner Play controls; project/save/publish flags and cross-tab/focus refresh; upload Library refresh merged and Vercel READY. | Shared typed card/media components; eliminate cover fallback duplication; actual project context actions (Add to, Rename, Change cover, Delete) with documented semantics, tests, auth and immediate invalidation. **This is the active feature batch.** |
+| **D — Persistent player / shared projects** | Library-owned audio player kept mounted across `/app/*` view transitions; cross-user and `/u/:username` playback through shared manifests, correct ordered pack references and R2 ranges; CI passed. | Extract controller above route/view lifetime; verify transitions between `/u/*` and `/app/*`, queue behavior after project edits/deletion, full multi-account manual playback scenarios. |
+| **E — Consolidation and release** | Partial cleanup/test documentation, merge gates and one-deploy-per-batch process; Vercel previews disabled and CI used independently. | Full route/state/cover consolidation, error/caching/memory review, staging and production end-to-end acceptance matrix and written Phase E sign-off. |
+
+**Previous integrated batches:** PR #1 Settings identity (migration 007 + deployment), PR #2 secure shared playback (28 API tests), PR #3 scoped refresh without F5 (28 API + 3 frontend tests; Vercel production READY on commit `32b11d05`). **Latest observed Railway build for PR #3 was still pending while its existing API remained healthy**; do not infer an unobserved final deployment outcome. The user must explicitly approve final deployment of each new batch.
+
+**Context-menu action decision for this batch:** "Add to > existing pack" adds **references** to owned original beats; "New project" creates a **new pack project** referencing those beats (never a nested pack or a media duplicate). Applying Add to a pack means selecting its existing beats, not nesting the pack. Changes to names/covers mutate metadata only; optional cover may remain null. Deleting a pack removes only pack relationships and its project metadata, not source beats/files. Deleting a beat requires confirmation, enforces ownership, revokes its public/save/share links and detaches it from packs before deleting its metadata; actual R2 objects are **not** deleted in this batch to avoid destroying shared/reused objects. Retained unreferenced objects need a future cleanup policy. Clear confirmation text must explain these effects. Download and Stems remain untouched.
 
 ## 1. Mission and non-negotiable boundaries
 
@@ -69,8 +102,8 @@ Library / Catalog / Saves / Shared link / Queue / Player
 - `apps/api/src/public-profiles.js` handles published projects, saves, share-link redemption, access grants and an existing public-cover HTTP route. Related schema is recorded in `history/database/004_public_profiles.sql`.
 - `apps/web/src/library-items-v2.tsx` loads Library items, media and pack tracks and currently owns much of the persistent player behavior.
 - `apps/web/src/public-profile-v2.tsx` loads Catalog and Saves and currently uses different cover-request paths for owner and visitor, including a fallback. This is **temporary implementation debt**, not the target contract.
-- Library and Profile currently maintain some independent save/publish and play-related state. A Profile play request is forwarded to Library's player, whose project lookup is currently tied to the viewer's Library items; shared projects may therefore require a different resolution path.
-- **First phase B extraction in source:** `apps/api/src/project-media.js` now centralizes media-file lookup and permissions behind existing owner audio/cover and public cover endpoints. A published/shared pack can authorize access to its original members' audio/covers. Stems are provisionally owner-only. The separate HTTP cover routes and frontend fallback remain migration debt. `apps/api/test/project-media.test.js` provides fixture-backed unit tests, with execution and deployment verification still pending.
+- Library and Profile still have separate view-specific flags, but PR #3 added scoped mutation notifications, focus revalidation and cancelable refetches. Profile play requests now carry canonical owner/kind/project identity to a shared API manifest, including cross-owner playback; the Library-mounted player remains a temporary architectural coupling.
+- **Phase B incremental source/deployment:** `apps/api/src/project-media.js` centralizes media-file lookup and permissions for owner audio/cover, public cover, public project playback manifests and cross-owner audio streaming. Published/shared packs authorize original member audio/covers; stems remain owner-only. Separate HTTP cover routes/frontend fallbacks remain debt. Fixture-backed tests and GitHub CI have passed; a public manifest smoke test has been performed, but the entire permission matrix has not been verified against live PostgreSQL/R2.
 
 Do not treat the existing routes as an approved long-term API design simply because they exist.
 
@@ -192,4 +225,4 @@ The endpoint design is a **decision gate**, not an instruction to create another
 - `docs/refactor-phase-a-inventory.md`: route matrix, risks, initial implementation ledger and remaining verification gates.
 - `apps/web/src/library-items-v2.tsx`, `apps/web/src/public-profile-v2.tsx`: current view and playback implementations.
 
-The plan above is **not** a claim that the refactor has been implemented.
+Sections 5–7 describe remaining target architecture and exit criteria; section 0 records what has already been implemented, tested and deployed.
