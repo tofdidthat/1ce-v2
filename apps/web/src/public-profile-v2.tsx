@@ -3,9 +3,10 @@ import {Bookmark,Users,Share2,Eye,EyeOff,Link2,ListPlus,FolderPlus,Pencil,Image 
 import './public-profile-v2.css';
 import ProjectContextMenuV2 from './project-context-menu-v2';
 import ProjectCardV2 from './project-card-v2';
-import {setProjectPublishedV2,setProjectSavedV2,createProjectShareLinkV2} from './project-requests-v2';
+import {createProjectShareLinkV2} from './project-requests-v2';
 import ProjectActionDialogV2,{type ContextProject,type ProjectAction,type ChangedProject} from './project-action-dialog-v2';
-import {notifyV2DataChanged,subscribeV2DataChanges,subscribeV2Resume} from './data-refresh-v2';
+import {subscribeV2DataChanges,subscribeV2Resume} from './data-refresh-v2';
+import useProjectFlagsV2 from './project-flags-v2';
 import {profilePictureV2} from './profile-picture-v2';
 
 function CatalogLibraryIcon({size=17}:{size?:number}){
@@ -18,8 +19,7 @@ type ProfileTab='catalog'|'saves'|'following';
 export default function PublicProfileV2({user,onSettings,profileId,onPlayProject,playback}:{user:any;onSettings:()=>void;profileId?:string;onPlayProject?:(ownerId:number,kind:'beat'|'pack',id:string)=>void;playback?:{ownerId:number;kind:'beat'|'pack';id:string;playing:boolean}|null}){
  const [tab,setTab]=useState<ProfileTab>('catalog');
  const [projects,setProjects]=useState<{catalog:PublicProject[];saves:PublicProject[]}>({catalog:[],saves:[]});
- const [saved,setSaved]=useState<Set<string>>(new Set());
- const [published,setPublished]=useState<Set<string>>(new Set());
+ const {saved,published,toggleSaved,togglePublished}=useProjectFlagsV2();
  const [menu,setMenu]=useState<{project:PublicProject;x:number;y:number}|null>(null);
  const [actionDialog,setActionDialog]=useState<{project:ContextProject;action:ProjectAction}|null>(null);
  const [ownerPacks,setOwnerPacks]=useState<{id:string;title:string;track_count:number}[]>([]);
@@ -36,26 +36,22 @@ export default function PublicProfileV2({user,onSettings,profileId,onPlayProject
   if(!api||!targetId){setLoading(false);return;}
   const controller=new AbortController();
   setLoading(true);setError('');
-  Promise.all([
-   fetch(api+'/api/public/profile/'+targetId,{credentials:'include',signal:controller.signal}).then(async r=>{if(!r.ok)throw Error('Unable to load profile');return r.json()}),
-   user?.id?fetch(api+'/api/public/mine',{credentials:'include',signal:controller.signal}).then(r=>r.ok?r.json():{saved:[]}):Promise.resolve({saved:[]})
-  ]).then(([result,mine])=>{
-   if(controller.signal.aborted)return;
-   setProjects({catalog:result.catalog||[],saves:result.saves||[]});
-   setProfileUser(result.profile||null);
-   setPublished(new Set((mine.published||[]).map((p:{kind:string;id:string})=>p.kind+':'+p.id)));
-   setSaved(new Set((mine.saved||[]).map((p:{owner_id:number;kind:string;id:string})=>p.owner_id+':'+p.kind+':'+p.id)));
-  }).catch(e=>{if(e.name!=='AbortError')setError(e.message||'Unable to load profile')}).finally(()=>{if(!controller.signal.aborted)setLoading(false)});
-  return()=>controller.abort();
- },[targetId,user?.id,tab,refreshRevision]);
+  fetch(api+'/api/public/profile/'+targetId,{credentials:'include',signal:controller.signal,cache:'no-store'})
+    .then(async response=>{if(!response.ok)throw Error('Unable to load profile');return response.json()})
+    .then(result=>{
+     if(controller.signal.aborted)return;
+     setProjects({catalog:result.catalog||[],saves:result.saves||[]});
+     setProfileUser(result.profile||null);
+    }).catch(e=>{if(e.name!=='AbortError')setError(e.message||'Unable to load profile')})
+    .finally(()=>{if(!controller.signal.aborted)setLoading(false)});
+   return()=>controller.abort();
+ },[targetId,user?.id,refreshRevision]);
  const toggleSave=async(project:PublicProject)=>{
   const key=project.owner_id+':'+project.kind+':'+project.id;
   const already=saved.has(key);
   try{
-   await setProjectSavedV2(project.owner_id,project.kind,project.id,already);
-   setSaved(prev=>{const next=new Set(prev);if(already)next.delete(key);else next.add(key);return next});
+   await toggleSaved(project.owner_id,project.kind,project.id);
    if(isOwner)setProjects(prev=>({...prev,saves:already?prev.saves.filter(p=>p.owner_id+':'+p.kind+':'+p.id!==key):[project,...prev.saves.filter(p=>p.owner_id+':'+p.kind+':'+p.id!==key)]}));
-   notifyV2DataChanged(['saves'],user?.id);
   }catch(e){setError(e instanceof Error?e.message:'Unable to save')}
  };
 
@@ -81,10 +77,8 @@ export default function PublicProfileV2({user,onSettings,profileId,onPlayProject
   setMenu(null);setError('');
   const key=project.kind+':'+project.id,already=published.has(key);
   try{
-   await setProjectPublishedV2(project.kind,project.id,already);
-   setPublished(previous=>{const next=new Set(previous);if(already)next.delete(key);else next.add(key);return next});
+   await togglePublished(project.kind,project.id);
    setProjects(previous=>({...previous,catalog:already?previous.catalog.filter(p=>p.kind+':'+p.id!==key):previous.catalog}));
-   notifyV2DataChanged(['publications'],user?.id);
   }catch(e){setError(e instanceof Error?e.message:'Unable to change publication')}
  };
  const copyProjectLink=async(project:PublicProject)=>{
