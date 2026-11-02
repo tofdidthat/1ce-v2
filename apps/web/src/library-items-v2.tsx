@@ -2,7 +2,10 @@
 import React,{useEffect,useState} from 'react';
 import './library-items-v2.css';
 const api=import.meta.env.VITE_API_URL;
-function Cover({id,title}){
+type BeatItem = {id:string;title:string;cover_file_id:number|null;stems_file_id:number|null;pack_count:number};
+type PackItem = {id:string;title:string;cover_file_id:number|null;track_count:number};
+type LibraryData = {beats:BeatItem[];packs:PackItem[]};
+function Cover({id,title}:{id:number|null;title:string}){
  const [url,setUrl]=useState('');
  useEffect(()=>{
   if(!id||!api)return;
@@ -15,8 +18,8 @@ function Cover({id,title}){
  },[id]);
  return <div className="v2-item-cover">{url?<img src={url} alt={title+' cover'}/>:<span>♫</span>}</div>;
 }
-export default function LibraryItemsV2({onUpload}){
- const [data,setData]=useState({beats:[],packs:[]});
+export default function LibraryItemsV2({onUpload}:{onUpload:()=>void}){
+ const [data,setData]=useState<LibraryData>({beats:[],packs:[]});
  const [loading,setLoading]=useState(true);
  const [error,setError]=useState('');
  useEffect(()=>{
