@@ -13,6 +13,31 @@ function PublicPage({children}:{children:React.ReactNode}) { return <div classNa
 function Landing() { return <PublicPage><div className="empty-landing" aria-label="Landing content reserved for future design"/></PublicPage> }
 function Register() { return <PublicPage><section className="auth-card"><h1>Create an account</h1><p>Registration will be enabled when the v2 authentication API is ready.</p><Link to="/login">Back to login</Link></section></PublicPage> }
 function ProtectedLibrary(){const [status,setStatus]=useState<'checking'|'authorized'|'unauthorized'>('checking');const [user,setUser]=useState(null);useEffect(()=>{const api=import.meta.env.VITE_API_URL;if(!api){setStatus('unauthorized');return;}fetch(api+'/auth/me',{credentials:'include'}).then(async r=>{if(!r.ok){setStatus('unauthorized');return;}const data=await r.json();setUser(data.user||data);setStatus('authorized')}).catch(()=>setStatus('unauthorized'));},[]);if(status==='checking')return <div className="site"><main className="main">Checking session…</main></div>;if(status==='unauthorized')return <Navigate to="/login" replace/>;return <WorkspaceV2 user={user}/>;}
+function SharedProjectPage(){
+ const {token}=useParams();
+ const [status,setStatus]=useState('Checking shared project…');
+ const [project,setProject]=useState<{owner_id:number;kind:string;id:string}|null>(null);
+ useEffect(()=>{
+  const api=import.meta.env.VITE_API_URL;
+  if(!api||!token)return;
+  fetch(api+'/api/public/redeem/'+token,{method:'POST',credentials:'include'}).then(async r=>{
+   const data=await r.json().catch(()=>({}));
+   if(!r.ok)throw Error(r.status===401?'Sign in to access this project':data.error||'Unable to access project');
+   setProject(data);setStatus('Access granted. You can save this project to your Library.');
+  }).catch(e=>setStatus(e.message));
+ },[token]);
+ const save=async()=>{
+  if(!project)return;
+  const api=import.meta.env.VITE_API_URL;
+  const r=await fetch(api+'/api/public/save/'+project.owner_id+'/'+project.kind+'/'+project.id,{method:'POST',credentials:'include'});
+  setStatus(r.ok?'Saved to your profile.':'Unable to save project.');
+ };
+ return <div style={{minHeight:'100vh',background:'#0b0911',color:'#f6f4fa',padding:'100px 24px',textAlign:'center'}}>
+  <h1>Shared project</h1><p>{status}</p>
+  {project&&<button type="button" onClick={()=>void save()} style={{padding:'12px 20px',borderRadius:10,cursor:'pointer'}}>Save to library</button>}
+  <p><Link to="/app/profile">My profile</Link></p>
+ </div>;
+}
 function PublicUserPage(){
  const {id}=useParams();
  const [viewer,setViewer]=useState<any>(null);
@@ -35,5 +60,5 @@ function GoogleReturn(){
  return <div className="site"><main className="main"><p role="status">{message}</p><Link to="/login">Back to login</Link></main></div>;
 }
 
-function App() { return <BrowserRouter><Routes><Route path="/" element={<Landing/>}/><Route path="/login" element={<LoginPage/>}/><Route path="/register" element={<Register/>}/><Route path="/terms" element={<TermsPage/>}/><Route path="/privacy" element={<PrivacyPage/>}/><Route path="/app" element={<GoogleReturn/>}/><Route path="/app/library" element={<ProtectedLibrary/>}/><Route path="/app/discover" element={<ProtectedLibrary/>}/><Route path="/app/upload" element={<ProtectedLibrary/>}/><Route path="/app/settings" element={<ProtectedLibrary/>}/><Route path="/app/profile" element={<ProtectedLibrary/>}/><Route path="/app/profile/edit" element={<ProtectedLibrary/>}/><Route path="/u/:id" element={<PublicUserPage/>}/><Route path="*" element={<Navigate to="/" replace/>}/></Routes></BrowserRouter> }
+function App() { return <BrowserRouter><Routes><Route path="/" element={<Landing/>}/><Route path="/login" element={<LoginPage/>}/><Route path="/register" element={<Register/>}/><Route path="/terms" element={<TermsPage/>}/><Route path="/privacy" element={<PrivacyPage/>}/><Route path="/app" element={<GoogleReturn/>}/><Route path="/app/library" element={<ProtectedLibrary/>}/><Route path="/app/discover" element={<ProtectedLibrary/>}/><Route path="/app/upload" element={<ProtectedLibrary/>}/><Route path="/app/settings" element={<ProtectedLibrary/>}/><Route path="/app/profile" element={<ProtectedLibrary/>}/><Route path="/app/profile/edit" element={<ProtectedLibrary/>}/><Route path="/u/:id" element={<PublicUserPage/>}/><Route path="/shared/:token" element={<SharedProjectPage/>}/><Route path="*" element={<Navigate to="/" replace/>}/></Routes></BrowserRouter> }
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);
