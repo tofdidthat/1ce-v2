@@ -256,7 +256,7 @@ export default function WorkspaceV2({user}){
  return <div className={'onece-workspace-shell'+(view==='library'?' onece-library-view':'')}>
  <HeaderV2 view={view} user={user} onNavigate={onNavigate}/>
  <main className="onece-v2-workspace-main">
- {view==='library'?<LibraryItemsV2 onUpload={()=>onNavigate('upload')} onPlayerVisibility={setPlayerVisible}/>:
+ {view==='library'?<LibraryItemsV2 userId={user?.id} onUpload={()=>onNavigate('upload')} onPlayerVisibility={setPlayerVisible}/>:
  view==='upload'?<LibraryUploadV2/>:
  view==='profile'?<PublicProfileV2 user={user} onSettings={()=>onNavigate('edit-profile')}/>: view==='edit-profile'?<section className="onece-workspace-placeholder"><h1>Edit Profile</h1><p>Profile editing is not yet available in v2.</p></section>:
  <section className="onece-workspace-placeholder"><h1>{view==='account'?'Settings':view==='profile'?'Public Profile':'Discover'}</h1><p>{view==='profile'?'Public profile publishing is not yet enabled in v2.':view==='account'?'Account settings are not yet available in v2.':'Discover is not yet available in v2.'}</p></section>}
