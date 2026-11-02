@@ -114,9 +114,17 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,userId}:{onU
  useEffect(()=>{if(!api)return;fetch(api+'/api/public/mine',{credentials:'include'}).then(r=>r.ok?r.json():Promise.reject()).then(data=>{setPublished(new Set((data.published||[]).map((item:{kind:string;id:string})=>item.kind+':'+item.id)));setSavedBeatIds(new Set((data.saved||[]).filter((item:{owner_id:number;kind:string})=>item.owner_id===userId&&item.kind==='beat').map((item:{id:string})=>item.id)));setSavedPackIds(new Set((data.saved||[]).filter((item:{owner_id:number;kind:string})=>item.owner_id===userId&&item.kind==='pack').map((item:{id:string})=>item.id)))}).catch(()=>{})},[]);
  const [savedBeatIds,setSavedBeatIds]=useState<Set<string>>(new Set());
  const [savedPackIds,setSavedPackIds]=useState<Set<string>>(new Set());
+ const copyProjectLink=async(kind:'beat'|'pack',id:string)=>{
+  setContextBeat(null);setContextPack(null);setActionError('');
+  try{
+   const response=await fetch(api+'/api/public/share/'+kind+'/'+id,{method:'POST',credentials:'include'});
+   if(!response.ok)throw Error((await response.json().catch(()=>({}))).error||'Unable to create share link');
+   const result=await response.json();
+   await navigator.clipboard.writeText(window.location.origin+'/shared/'+result.token);
+  }catch(e){setActionError(e instanceof Error?e.message:'Unable to copy link')}
+ };
  const toggleSavedProject=async(kind:'beat'|'pack',id:string)=>{
   if(!userId){setActionError('Sign in to save public projects');return;}
-  if(!published.has(publicationKey(kind,id))){setActionError('Publish this project before saving it publicly');return;}
   const already=(kind==='beat'?savedBeatIds:savedPackIds).has(id);
   setActionError('');
   try{
