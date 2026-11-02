@@ -23,6 +23,7 @@ export default function PublicProfileV2({user,onSettings,profileId}:{user:any;on
  const [tab,setTab]=useState<ProfileTab>('catalog');
  const [projects,setProjects]=useState<{catalog:PublicProject[];saves:PublicProject[]}>({catalog:[],saves:[]});
  const [saved,setSaved]=useState<Set<string>>(new Set());
+ const [profileUser,setProfileUser]=useState<any>(null);
  const [loading,setLoading]=useState(true);
  const [error,setError]=useState('');
  const targetId=profileId||String(user?.id||'');
@@ -36,6 +37,7 @@ export default function PublicProfileV2({user,onSettings,profileId}:{user:any;on
    user?.id?fetch(api+'/api/public/mine',{credentials:'include',signal:controller.signal}).then(r=>r.ok?r.json():{saved:[]}):Promise.resolve({saved:[]})
   ]).then(([result,mine])=>{
    setProjects({catalog:result.catalog||[],saves:result.saves||[]});
+   setProfileUser(result.profile||null);
    setSaved(new Set((mine.saved||[]).map((p:{owner_id:number;kind:string;id:string})=>p.owner_id+':'+p.kind+':'+p.id)));
   }).catch(e=>{if(e.name!=='AbortError')setError(e.message||'Unable to load profile')}).finally(()=>{if(!controller.signal.aborted)setLoading(false)});
   return()=>controller.abort();
@@ -51,9 +53,10 @@ export default function PublicProfileV2({user,onSettings,profileId}:{user:any;on
   }catch(e){setError(e instanceof Error?e.message:'Unable to save')}
  };
 
- const name=String(user?.displayName||user?.name||user?.username||'Your profile');
- const handle=String(user?.username||user?.handle||'');
- const picture=user?.customPicture||user?.picture||'';
+ const shownUser=profileId?profileUser:user;
+ const name=String(shownUser?.displayName||shownUser?.name||shownUser?.username||'Profile');
+ const handle=String(shownUser?.username||shownUser?.handle||'');
+ const picture=shownUser?.customPicture||shownUser?.custom_picture||shownUser?.picture||'';
  const tabs:{id:ProfileTab;label:string;icon:React.ReactNode}[]=[
   {id:'catalog',label:'Catalog',icon:<CatalogLibraryIcon/>},
   {id:'saves',label:'Saves',icon:<Bookmark size={16}/>},
