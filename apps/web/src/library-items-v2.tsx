@@ -1,6 +1,6 @@
 // 1CE v2 private library. Never requests v1 data.
 import React,{useEffect,useRef,useState} from 'react';
-import {Play,Pause,SkipBack,SkipForward,Shuffle,Repeat,Repeat1,ListMusic,Volume2,VolumeX,X,Music2,ChevronLeft} from 'lucide-react';
+import {Play,Pause,SkipBack,SkipForward,Shuffle,Repeat,Repeat1,ListMusic,Volume2,VolumeX,X,Music2,ChevronLeft,Bookmark} from 'lucide-react';
 import './library-items-v2.css';
 const api=import.meta.env.VITE_API_URL;
 type BeatItem = {id:string;title:string;audio_file_id:number;cover_file_id:number|null;stems_file_id:number|null;pack_count:number;created_at:string;library_visible:boolean};
@@ -76,6 +76,18 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility}:{onUpload:(
  const [packLoading,setPackLoading]=useState(false);
  const [packError,setPackError]=useState('');
  const [openedBeat,setOpenedBeat]=useState<BeatItem|null>(null);
+ const [savedBeatIds,setSavedBeatIds]=useState<Set<string>>(()=>{
+  try{return new Set<string>(JSON.parse(localStorage.getItem('onece-v2-saved-beats')||'[]'))}
+  catch{return new Set<string>()}
+ });
+ const toggleSavedBeat=(id:string)=>{
+  setSavedBeatIds(previous=>{
+   const next=new Set(previous);
+   if(next.has(id))next.delete(id);else next.add(id);
+   try{localStorage.setItem('onece-v2-saved-beats',JSON.stringify([...next]))}catch{}
+   return next;
+  });
+ };
  const openPack=async(pack:PackItem)=>{
   setOpenedPack(pack);setOpenedTracks([]);setPackError('');setPackLoading(true);
   try{
@@ -167,6 +179,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility}:{onUpload:(
  </div></div>
  {openedBeat&&<div className="beat-player-overlay v2-beat-overlay" role="dialog" aria-modal="true" aria-label={openedBeat.title} onClick={()=>setOpenedBeat(null)}>
   <div className="beat-player-widget v2-beat-widget" onClick={e=>e.stopPropagation()}>
+   <button type="button" className={'v2-beat-save'+(savedBeatIds.has(openedBeat.id)?' is-saved':'')} aria-label={savedBeatIds.has(openedBeat.id)?'Unsave beat':'Save beat'} aria-pressed={savedBeatIds.has(openedBeat.id)} onClick={()=>toggleSavedBeat(openedBeat.id)}><Bookmark size={18} fill={savedBeatIds.has(openedBeat.id)?'currentColor':'none'}/></button>
    <button type="button" className="beat-player-close" aria-label="Close player" onClick={()=>setOpenedBeat(null)}>×</button>
    <div className="card v2-music-card">
     <div className={'mask'+(playing&&current?.id===openedBeat.id?' is-playing':'')}><div className="spin"><Cover id={openedBeat.cover_file_id} title={openedBeat.title}/></div><div className="hole"><div className="hole-inner"/></div></div>
