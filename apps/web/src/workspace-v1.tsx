@@ -5,6 +5,7 @@ import React,{useEffect,useState,useRef} from 'react';
 import {useNavigate,useLocation} from 'react-router-dom';
 import './workspace-v1.css';
 import LibraryUploadV2 from './library-upload-v1';
+import LibraryItemsV2 from './library-items-v2';
 function HomeMark() {
   return <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m3 10 9-7 9 7" /><path d="M5 9v11h14V9" /><path d="M9 20v-7h6v7" /></svg>
 }
@@ -251,7 +252,7 @@ export default function WorkspaceV2({user}){
  return <div className={'onece-workspace-shell'+(view==='library'?' onece-library-view':'')}>
  <HeaderV2 view={view} user={user} onNavigate={onNavigate}/>
  <main className="onece-v2-workspace-main">
- {view==='library'?<EmptyLibrary onUpload={()=>onNavigate('upload')}/>:
+ {view==='library'?<LibraryItemsV2 onUpload={()=>onNavigate('upload')}/>:
  view==='upload'?<LibraryUploadV2/>:
  <section className="onece-workspace-placeholder"><h1>{view==='account'?'Settings':view==='profile'?'Public Profile':'Discover'}</h1><p>{view==='profile'?'Public profile publishing is not yet enabled in v2.':view==='account'?'Account settings are not yet available in v2.':'Discover is not yet available in v2.'}</p></section>}
  </main>
