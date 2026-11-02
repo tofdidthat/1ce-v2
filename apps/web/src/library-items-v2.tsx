@@ -3,8 +3,8 @@ import React,{useEffect,useRef,useState} from 'react';
 import {Play,Pause,SkipBack,SkipForward,Shuffle,Repeat,Repeat1,ListMusic,Volume2,VolumeX,X,Music2,ChevronLeft,Bookmark,Eye,EyeOff,ListPlus,FolderPlus,Pencil,Image as ImageIcon,Download,Layers,Trash2,ChevronRight} from 'lucide-react';
 import './library-items-v2.css';
 const api=import.meta.env.VITE_API_URL;
-type BeatItem = {id:string;title:string;audio_file_id:number;cover_file_id:number|null;stems_file_id:number|null;pack_count:number;created_at:string;library_visible:boolean};
-type PackItem = {id:string;title:string;cover_file_id:number|null;track_count:number;created_at:string};
+type BeatItem = {published?:boolean;id:string;title:string;audio_file_id:number;cover_file_id:number|null;stems_file_id:number|null;pack_count:number;created_at:string;library_visible:boolean};
+type PackItem = {published?:boolean;id:string;title:string;cover_file_id:number|null;track_count:number;created_at:string};
 type LibraryData = {beats:BeatItem[];packs:PackItem[]};
 function Cover({id,title}:{id:number|null;title:string}){
  const [url,setUrl]=useState('');
@@ -99,6 +99,19 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility}:{onUpload:(
   return()=>{document.removeEventListener('pointerdown',dismiss);document.removeEventListener('keydown',key);window.removeEventListener('scroll',dismiss,true);window.removeEventListener('resize',dismiss)};
  },[contextBeat,contextPack]);
 
+ const [published,setPublished]=useState<Set<string>>(new Set());
+ const [actionError,setActionError]=useState('');
+ const publicationKey=(kind:'beat'|'pack',id:string)=>kind+':'+id;
+ const togglePublish=async(kind:'beat'|'pack',id:string)=>{
+  const key=publicationKey(kind,id),isPublished=published.has(key);
+  setContextBeat(null);setContextPack(null);setActionError('');
+  try{
+   const response=await fetch(api+'/api/public/publish/'+kind+'/'+id,{method:isPublished?'DELETE':'POST',credentials:'include'});
+   if(!response.ok)throw Error((await response.json().catch(()=>({}))).error||'Unable to update publication');
+   setPublished(prev=>{const next=new Set(prev);if(isPublished)next.delete(key);else next.add(key);return next});
+  }catch(error){setActionError(error instanceof Error?error.message:'Unable to update publication')}
+ };
+ useEffect(()=>{if(!api)return;fetch(api+'/api/public/mine',{credentials:'include'}).then(r=>r.ok?r.json():Promise.reject()).then(data=>setPublished(new Set((data.published||[]).map((item:{kind:string;id:string})=>item.kind+':'+item.id)))).catch(()=>{})},[]);
  const [savedBeatIds,setSavedBeatIds]=useState<Set<string>>(()=>{
   try{return new Set<string>(JSON.parse(localStorage.getItem('onece-v2-saved-beats')||'[]'))}
   catch{return new Set<string>()}
@@ -182,6 +195,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility}:{onUpload:(
  useEffect(()=>{const first=data.beats.find(b=>b.library_visible!==false);if(first)void loadWaveform(first.audio_file_id).catch(()=>{})},[data.beats]);
  const empty=!standaloneBeats.length&&!data.packs.length;
  return <section className="beat-profile library-page onece-v2-library"><div className="beat-profile-content"><div className="library-items">
+  {actionError&&<p role="alert" className="v2-library-status">{actionError}</p>}
   {loading?<p className="v2-library-status">Loading your Library…</p>:
    error?<div className="v2-library-status" role="alert">{error}<button onClick={()=>window.location.reload()}>Retry</button></div>:
    empty?<div className="library-empty"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M4 4v16M9 4v16M14 4l4 16"/></svg><h2>Your Library is Empty</h2><button type="button" className="library-add-audio" onClick={onUpload}>Add Audio</button></div>:
@@ -206,7 +220,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility}:{onUpload:(
    </div>}
  </div></div>
  {contextPack&&<div className="v2-context-menu" role="menu" aria-label={'Pack actions for '+contextPack.pack.title} style={{left:Math.max(8,Math.min(contextPack.x,window.innerWidth-280))+'px',top:Math.max(8,Math.min(contextPack.y,window.innerHeight-460))+'px'}} onPointerDown={e=>e.stopPropagation()} onContextMenu={e=>e.preventDefault()}>
-  <button type="button" role="menuitem" className="v2-context-action" disabled title="Pack publishing requires v2 API integration"><Eye size={17}/><span>Publish</span></button>
+  <button type="button" role="menuitem" className="v2-context-action" onClick={()=>void togglePublish('pack',contextPack.pack.id)}>{published.has(publicationKey('pack',contextPack.pack.id))?<EyeOff size={17}/>:<Eye size={17}/>}<span>{published.has(publicationKey('pack',contextPack.pack.id))?'Unpublish':'Publish'}</span></button>
   <div className="v2-context-separator"/>
   <button type="button" role="menuitem" className="v2-context-action" onClick={()=>{void (async()=>{const pack=contextPack.pack;setContextPack(null);try{const response=await fetch(api+'/api/library/files/pack-tracks/'+pack.id,{credentials:'include'});if(!response.ok)throw Error('Unable to load pack tracks');const result=await response.json();const tracks=(result.beats as BeatItem[]).map(beat=>({...beat,cover_file_id:beat.cover_file_id??pack.cover_file_id}));if(!tracks.length)return;if(!current)choose(tracks[0],tracks,pack.id);else setQueue(previous=>[...previous,...tracks])}catch(error){setPlayerError(error instanceof Error?error.message:'Unable to add pack to queue')}})()}}><ListPlus size={17}/><span>Add to queue</span></button>
   <button type="button" role="menuitem" className="v2-context-action" disabled title="Saving packs requires v2 API integration"><Bookmark size={17}/><span>Save</span></button>
@@ -219,7 +233,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility}:{onUpload:(
   <button type="button" role="menuitem" className="v2-context-action v2-context-danger" disabled title="Deleting packs requires confirmation and v2 API integration"><Trash2 size={17}/><span>Delete pack</span></button>
  </div>}
  {contextBeat&&<div className="v2-context-menu" role="menu" aria-label={'Beat actions for '+contextBeat.beat.title} style={{left:Math.min(contextBeat.x,Math.max(8,window.innerWidth-280))+'px',top:Math.min(contextBeat.y,Math.max(8,window.innerHeight-440))+'px'}} onPointerDown={e=>e.stopPropagation()} onContextMenu={e=>e.preventDefault()}>
-  <button type="button" role="menuitem" className="v2-context-action" disabled title="Publishing will be available after the v2 API integration"><Eye size={17}/><span>Publish</span></button>
+  <button type="button" role="menuitem" className="v2-context-action" onClick={()=>void togglePublish('beat',contextBeat.beat.id)}>{published.has(publicationKey('beat',contextBeat.beat.id))?<EyeOff size={17}/>:<Eye size={17}/>}<span>{published.has(publicationKey('beat',contextBeat.beat.id))?'Unpublish':'Publish'}</span></button>
   <div className="v2-context-separator"/>
   <button type="button" role="menuitem" className="v2-context-action" onClick={()=>addToQueue(contextBeat.beat)}><ListPlus size={17}/><span>Add to queue</span></button>
   <button type="button" role="menuitem" className="v2-context-action" onClick={()=>{toggleSavedBeat(contextBeat.beat.id);setContextBeat(null)}}><Bookmark size={17} fill={savedBeatIds.has(contextBeat.beat.id)?'currentColor':'none'}/><span>{savedBeatIds.has(contextBeat.beat.id)?'Unsave':'Save'}</span></button>
