@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { randomBytes, createHash, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import pg from 'pg';
+import { handleLibraryFiles } from './library-files.js';
 const scrypt=promisify(scryptCallback);
 const pool=new pg.Pool({connectionString:process.env.DATABASE_URL,ssl:process.env.DATABASE_SSL==='true'?{rejectUnauthorized:true}:undefined});
 const origin=process.env.WEB_ORIGIN || 'http://localhost:5173';
@@ -70,6 +71,8 @@ const server=createServer(async(req,res)=>{
  }
  if(!allowed && req.headers.origin)return json(res,403,{error:'Origin not allowed'});
  try{
+
+  if(await handleLibraryFiles(req,res,pathname,pool,currentUser))return;
 
   if(pathname==='/auth/google'&&req.method==='GET'){
    const config=googleConfig();
