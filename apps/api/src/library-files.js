@@ -1,6 +1,6 @@
 // Private Cloudflare R2 uploads for 1CE v2 only. No v1 resources.
-import { randomUUID } from 'node:crypto';
-import { S3Client, PutObjectCommand, HeadObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { randomUUID, createHash } from 'node:crypto';
+import { S3Client, PutObjectCommand, HeadObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 const limits={audio:150*1024*1024,cover:15*1024*1024,stems:250*1024*1024};
@@ -76,15 +76,17 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser){
  }
  if(req.method==='POST'&&segments.length===4&&segments[3]==='init'){
   let data;try{data=await bodyJSON(req)}catch{send(res,400,{error:'Invalid request'});return true;}
-  const {kind,name,contentType,size}=data||{};
+  const {kind,name,contentType,size,sha256}=data||{};
   const ext=typeof name==='string'?name.toLowerCase().split('.').pop():'';
   if(!Object.hasOwn(limits,kind)||typeof name!=='string'||name.length>240||name.length<1||/[\\/\x00-\x1f]/.test(name)||
    typeof contentType!=='string'||!types[kind]?.[contentType]?.includes(ext)||
-   !Number.isSafeInteger(size)||size<=0||size>limits[kind]){
+   !Number.isSafeInteger(size)||size<=0||size>limits[kind]||typeof sha256!=='string'||!/^[a-f0-9]{64}$/.test(sha256)){
    send(res,400,{error:'Unsupported file type or size'});return true;
   }
+  const existing=await pool.query("SELECT id FROM library_files WHERE user_id=$1 AND kind=$2 AND sha256=$3 AND status='ready' LIMIT 1",[user.id,kind,sha256]);
+  if(existing.rows[0]){send(res,200,{id:existing.rows[0].id,reused:true});return true;}
   const objectKey='users/'+user.id+'/assets/'+kind+'/'+randomUUID()+'.'+ext;
-  const inserted=await pool.query("INSERT INTO library_files(user_id,kind,object_key,original_name,content_type,byte_size,status) VALUES($1,$2,$3,$4,$5,$6,'pending') RETURNING id",[user.id,kind,objectKey,name,contentType,size]);
+  const inserted=await pool.query("INSERT INTO library_files(user_id,kind,object_key,original_name,content_type,byte_size,status,sha256) VALUES($1,$2,$3,$4,$5,$6,'pending',$7) RETURNING id",[user.id,kind,objectKey,name,contentType,size,sha256]);
   try{
    const uploadUrl=await getSignedUrl(s3,new PutObjectCommand({Bucket:cfg.bucket,Key:objectKey,ContentType:contentType,ContentLength:size}),{expiresIn:300});
    send(res,200,{id:inserted.rows[0].id,uploadUrl,expiresIn:300});
@@ -96,7 +98,7 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser){
  }
  if(req.method==='POST'&&segments.length===5&&segments[4]==='complete'&&/^\d+$/.test(segments[3])){
   const id=segments[3];
-  const q=await pool.query('SELECT id,object_key,content_type,byte_size,status FROM library_files WHERE id=$1 AND user_id=$2',[id,user.id]);
+  const q=await pool.query('SELECT id,kind,sha256,object_key,content_type,byte_size,status FROM library_files WHERE id=$1 AND user_id=$2',[id,user.id]);
   const file=q.rows[0];
   if(!file){send(res,404,{error:'File not found'});return true;}
   if(file.status==='ready'){send(res,200,{ok:true,id:file.id});return true;}
@@ -112,7 +114,25 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser){
    if(err?.name==='NotFound'||err?.$metadata?.httpStatusCode===404){send(res,409,{error:'Upload not found in storage'});return true;}
    throw err;
   }
-  await pool.query("UPDATE library_files SET status='ready',updated_at=now() WHERE id=$1 AND user_id=$2 AND status='pending'",[id,user.id]);
+  // Verify bytes on R2 server-side: never trust the hash provided by a browser.
+  const object=await s3.send(new GetObjectCommand({Bucket:cfg.bucket,Key:file.object_key}));
+  const hash=createHash('sha256');
+  for await(const chunk of object.Body)hash.update(chunk);
+  if(hash.digest('hex')!==file.sha256){
+   await s3.send(new DeleteObjectCommand({Bucket:cfg.bucket,Key:file.object_key}));
+   await pool.query("UPDATE library_files SET status='failed',updated_at=now() WHERE id=$1 AND user_id=$2",[id,user.id]);
+   send(res,422,{error:'File checksum mismatch'});return true;
+  }
+  try{
+   await pool.query("UPDATE library_files SET status='ready',updated_at=now() WHERE id=$1 AND user_id=$2 AND status='pending'",[id,user.id]);
+  }catch(err){
+   if(err?.code!=='23505')throw err;
+   const existing=await pool.query("SELECT id FROM library_files WHERE user_id=$1 AND kind=$2 AND sha256=$3 AND status='ready'",[user.id,file.kind,file.sha256]);
+   if(!existing.rows[0])throw err;
+   await s3.send(new DeleteObjectCommand({Bucket:cfg.bucket,Key:file.object_key}));
+   await pool.query("DELETE FROM library_files WHERE id=$1 AND user_id=$2 AND status='pending'",[id,user.id]);
+   send(res,200,{ok:true,id:existing.rows[0].id,reused:true});return true;
+  }
   send(res,200,{ok:true,id:file.id});return true;
  }
  send(res,404,{error:'Not found'});return true;
