@@ -232,8 +232,8 @@ function HeaderV2({view,user,onNavigate}){
  <header className="onece-workspace-header" aria-label="Workspace header">
  <div className="onece-workspace-brand"><img src="/1ce-logo.png" alt="1CE"/></div>
  <div className="onece-workspace-actions">
- <button type="button" className="library-settings library-profile-trigger" title="Public Profile" aria-label="Public Profile" onClick={()=>onNavigate('profile')}>
- {user?.customPicture||user?.picture ? <img src={user.customPicture||user.picture} alt="" referrerPolicy="no-referrer"/> : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="7" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2Z"/></svg>}
+ <button type="button" className="library-settings library-profile-trigger" title={view==='profile'?'Edit Profile':'Public Profile'} aria-label={view==='profile'?'Edit Profile':'Public Profile'} onClick={()=>onNavigate(view==='profile'?'account':'profile')}>
+ {view==='profile' ? <SettingsMark/> : user?.customPicture||user?.picture ? <img src={user.customPicture||user.picture} alt="" referrerPolicy="no-referrer"/> : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="7" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2Z"/></svg>}
  </button>
  <CompactWorkspaceNav view={view} disabled={false} onNavigate={onNavigate}/></div></header></>;
 }
