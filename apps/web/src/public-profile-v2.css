@@ -24,9 +24,9 @@
 @media(max-width:680px){.onece-public-profile{width:calc(100% - 32px)}.onece-profile-top{padding:25px 0 20px}.onece-profile-avatar{width:102px;height:102px;flex-basis:102px}.onece-profile-tabs button{font-size:11px}.onece-profile-name h1{font-size:19px}}
 
 .onece-profile-status{text-align:center;color:#aaa2b4;font-size:13px;padding:28px 0}
-.onece-profile-projects{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px 16px;padding-top:8px}
-.onece-profile-project{min-width:0;position:relative}
-.onece-profile-project-cover{width:100%;aspect-ratio:1;overflow:hidden;border-radius:9px;background:#26212f;display:grid;place-items:center;color:#bfb0d3;font-size:44px}
+.onece-profile-projects{display:flex;flex-wrap:wrap;justify-content:flex-start;align-items:flex-start;gap:32px;padding-top:8px}
+.onece-profile-project{box-sizing:border-box;flex:0 0 160px;width:160px;min-width:0;max-width:100%;position:relative}
+.onece-profile-project-cover{width:100%;aspect-ratio:1;overflow:hidden;border-radius:14px;background:#26212f;display:grid;place-items:center;color:#bfb0d3;font-size:44px}
 .onece-profile-project-cover img{width:100%;height:100%;object-fit:cover}
 .onece-profile-project-info{display:flex;flex-direction:column;gap:5px;padding:10px 0 0 2px}
 .onece-profile-project-info strong{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -49,3 +49,5 @@
 .onece-profile-project-art .v2-card-play.onece-profile-project-play svg{width:19px;height:19px}
 .onece-profile-project-art .v2-card-play.onece-profile-project-play:hover{background:#3a3a3a;transform:scale(1.04)}
 .onece-profile-project-art .v2-card-play.onece-profile-project-play:focus-visible{outline:2px solid #c4b5fd;outline-offset:3px}
+
+@media(max-width:420px){.onece-profile-projects{gap:20px 14px}.onece-profile-project{flex:0 0 min(160px,calc((100% - 14px)/2));width:min(160px,calc((100% - 14px)/2))}}
