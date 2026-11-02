@@ -3,7 +3,7 @@ import React,{useEffect,useRef,useState} from 'react';
 import {Play,Pause,SkipBack,SkipForward,Shuffle,Repeat,Repeat1,ListMusic,Volume2,VolumeX,X,Music2,ChevronLeft,Bookmark,Eye,EyeOff,ListPlus,FolderPlus,Pencil,Image as ImageIcon,Download,Layers,Trash2,ChevronRight,Link2} from 'lucide-react';
 import './library-items-v2.css';
 const api=import.meta.env.VITE_API_URL;
-type BeatItem = {published?:boolean;id:string;title:string;audio_file_id:number;cover_file_id:number|null;stems_file_id:number|null;pack_count:number;created_at:string;library_visible:boolean};
+type BeatItem = {published?:boolean;owner_id?:number;id:string;title:string;audio_file_id:number;cover_file_id:number|null;stems_file_id:number|null;pack_count:number;created_at:string;library_visible:boolean};
 type PackItem = {published?:boolean;id:string;title:string;cover_file_id:number|null;track_count:number;created_at:string};
 type LibraryData = {beats:BeatItem[];packs:PackItem[]};
 function Cover({id,title}:{id:number|null;title:string}){
@@ -20,17 +20,18 @@ function Cover({id,title}:{id:number|null;title:string}){
  return <div className="v2-item-cover">{url?<img src={url} alt={title+' cover'}/>:<span>{title.trim().charAt(0).toUpperCase()||'♪'}</span>}</div>;
 }
 // Private, per-page waveform cache. Start decoding before playback when possible.
-const waveCache=new Map<number,number[]>();
-const wavePending=new Map<number,Promise<number[]>>();
-function loadWaveform(fileId:number):Promise<number[]>{
- const cached=waveCache.get(fileId);
+const waveCache=new Map<string,number[]>();
+const wavePending=new Map<string,Promise<number[]>>();
+function loadWaveform(fileId:number,ownerId:number):Promise<number[]>{
+ const key=String(ownerId)+':'+String(fileId);
+ const cached=waveCache.get(key);
  if(cached)return Promise.resolve(cached);
- const existing=wavePending.get(fileId);
+ const existing=wavePending.get(key);
  if(existing)return existing;
  const pending=(async()=>{
   let context:AudioContext|null=null;
   try{
-   const response=await fetch(api+'/api/library/files/audio/'+fileId,{credentials:'include'});
+   const response=await fetch(api+'/api/public/audio/'+ownerId+'/'+fileId,{credentials:'include'});
    if(!response.ok)throw Error('Waveform unavailable');
    const bytes=await response.arrayBuffer();
    context=new AudioContext();
@@ -47,27 +48,28 @@ function loadWaveform(fileId:number):Promise<number[]>{
    const max=Math.max(...peaks,.001);
    const bars=peaks.map(value=>value/max);
    if(waveCache.size>=16)waveCache.delete(waveCache.keys().next().value!);
-   waveCache.set(fileId,bars);
+   waveCache.set(key,bars);
    return bars;
   }finally{
-   wavePending.delete(fileId);
+   wavePending.delete(key);
    if(context&&context.state!=='closed')await context.close().catch(()=>{});
   }
  })();
- wavePending.set(fileId,pending);
+ wavePending.set(key,pending);
  return pending;
 }
-function useWaveform(fileId:number|null){
+function useWaveform(fileId:number|null,ownerId:number|null){
  const [bars,setBars]=useState<number[]>([]);
  useEffect(()=>{
   let active=true;
-  setBars(fileId?waveCache.get(fileId)||[]:[]);
-  if(fileId)loadWaveform(fileId).then(value=>{if(active)setBars(value)}).catch(()=>{});
+  const key=ownerId&&fileId?String(ownerId)+':'+String(fileId):null;
+  setBars(key?waveCache.get(key)||[]:[]);
+  if(fileId&&ownerId)loadWaveform(fileId,ownerId).then(value=>{if(active)setBars(value)}).catch(()=>{});
   return()=>{active=false};
- },[fileId]);
+ },[fileId,ownerId]);
  return bars;
 }
-export default function LibraryItemsV2({onUpload,onPlayerVisibility,userId,active=true,playRequest}:{onUpload:()=>void;onPlayerVisibility?:(visible:boolean)=>void;userId?:number;active?:boolean;playRequest?:{kind:'beat'|'pack';id:string;nonce:number}|null}){
+export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackChange,userId,active=true,playRequest}:{onUpload:()=>void;onPlayerVisibility?:(visible:boolean)=>void;onPlaybackChange?:(state:{ownerId:number;kind:'beat'|'pack';id:string;playing:boolean}|null)=>void;userId?:number;active?:boolean;playRequest?:{ownerId:number;kind:'beat'|'pack';id:string;nonce:number}|null}){
  const [data,setData]=useState<LibraryData>({beats:[],packs:[]});
  const [loading,setLoading]=useState(true);
  const [current,setCurrent]=useState<BeatItem|null>(null);
@@ -146,7 +148,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,userId,activ
  };
  useEffect(()=>{if(!openedBeat)return;const close=(event:KeyboardEvent)=>{if(event.key==='Escape')setOpenedBeat(null)};document.addEventListener('keydown',close);return()=>document.removeEventListener('keydown',close)},[openedBeat]);
 
- const waveBars=useWaveform(current?.audio_file_id??null);
+ const waveBars=useWaveform(current?.audio_file_id??null,current?.owner_id??userId??null);
  const [queue,setQueue]=useState<BeatItem[]>([]);
  const [playing,setPlaying]=useState(false);
  const [activePackId,setActivePackId]=useState<string|null>(null);
@@ -167,38 +169,65 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,userId,activ
   if(!id||!api)return;
   let active=true;
   let objectUrl='';
-  fetch(api+'/api/library/files/cover/'+id,{credentials:'include'})
+  fetch(api+'/api/public/cover/'+(current?.owner_id??userId)+'/'+id,{credentials:'include'})
    .then(response=>{if(!response.ok)throw Error('Cover unavailable');return response.blob()})
    .then(blob=>{objectUrl=URL.createObjectURL(blob);if(active){setCoverUrl(objectUrl);setCoverLoadedId(id)}else URL.revokeObjectURL(objectUrl)})
    .catch(()=>{if(active){setCoverUrl('');setCoverLoadedId(null)}});
   return()=>{active=false;if(objectUrl)URL.revokeObjectURL(objectUrl)};
- },[current?.cover_file_id]);
+ },[current?.cover_file_id,current?.owner_id,userId]);
  useEffect(()=>{if(audioRef.current){audioRef.current.volume=volume;audioRef.current.muted=muted}},[volume,muted,current?.id]);
  useEffect(()=>{if(!popup)return;const key=(e:KeyboardEvent)=>{if(e.key==='Escape')setPopup(null)};document.addEventListener('keydown',key);return()=>document.removeEventListener('keydown',key)},[popup]);
  const audioRef=useRef<HTMLAudioElement|null>(null);
  useEffect(()=>{onPlayerVisibility?.(Boolean(current));return ()=>onPlayerVisibility?.(false)},[Boolean(current),onPlayerVisibility]);
- useEffect(()=>{const audio=audioRef.current;if(!audio||!current)return;audio.load();audio.play().then(()=>setPlaying(true)).catch(()=>{setPlaying(false);setPlayerError('Unable to play audio')})},[current?.id]);
+ useEffect(()=>{const audio=audioRef.current;if(!audio||!current)return;audio.load();audio.play().then(()=>setPlaying(true)).catch(()=>{setPlaying(false);setPlayerError('Unable to play audio')})},[current?.owner_id,current?.id,current?.audio_file_id]);
  const toggle=()=>{const a=audioRef.current;if(!a)return;if(a.paused)a.play().then(()=>setPlaying(true)).catch(()=>setPlayerError('Unable to play audio'));else{a.pause();setPlaying(false)}};
- const choose=(beat:BeatItem,list:BeatItem[],packId:string|null=null)=>{setPlayerError('');setActivePackId(packId);setQueue(list);if(current?.id===beat.id){toggle();return;}setElapsed(0);setDuration(0);setCurrent(beat)};
+ const choose=(beat:BeatItem,list:BeatItem[],packId:string|null=null)=>{
+  const tracks=list.map(item=>({...item,owner_id:item.owner_id??userId}));
+  const selected=tracks.find(item=>item.id===beat.id&&item.owner_id===(beat.owner_id??userId))||{...beat,owner_id:beat.owner_id??userId};
+  setPlayerError('');
+  if(current?.id===selected.id&&current?.owner_id===selected.owner_id&&activePackId===packId){toggle();return;}
+  setActivePackId(packId);setQueue(tracks);setElapsed(0);setDuration(0);setCurrent(selected);
+ };
  const addToQueue=(beat:BeatItem)=>{
   if(!current){choose(beat,[beat])}
-  else setQueue(previous=>[...previous,beat]);
+  else setQueue(previous=>[...previous,{...beat,owner_id:beat.owner_id??userId}]);
   setContextBeat(null);
  };
- const next=()=>{if(!current)return;if(repeat==='one'){if(audioRef.current){audioRef.current.currentTime=0;audioRef.current.play().catch(()=>{})}return;}const index=queue.findIndex(b=>b.id===current.id);const target=shuffle&&queue.length>1?queue.filter(b=>b.id!==current.id)[Math.floor(Math.random()*(queue.length-1))]:queue[index+1]||(repeat==='all'?queue[0]:null);if(target){setCurrent(target);setElapsed(0)}else{setPlaying(false)}};
- const previous=()=>{if(!current)return;const index=queue.findIndex(b=>b.id===current.id);if(index>0){setCurrent(queue[index-1]);setElapsed(0)}else if(audioRef.current)audioRef.current.currentTime=0};
- const playPack=async(p:PackItem)=>{if(activePackId===p.id&&current){toggle();return;}try{setPlayerError('');const response=await fetch(api+'/api/library/files/pack-tracks/'+p.id,{credentials:'include'});if(!response.ok)throw Error('Unable to load pack');const result=await response.json();const beats=(result.beats as BeatItem[]).map(beat=>({...beat,cover_file_id:beat.cover_file_id??p.cover_file_id}));if(beats[0])void loadWaveform(beats[0].audio_file_id).catch(()=>{});if(!beats.length)throw Error('Pack has no playable beats');choose(beats[0],beats,p.id)}catch(e){setPlayerError(e instanceof Error?e.message:'Unable to load pack')}};
+ const next=()=>{if(!current)return;if(repeat==='one'){if(audioRef.current){audioRef.current.currentTime=0;audioRef.current.play().catch(()=>{})}return;}const index=queue.findIndex(b=>b.id===current.id&&b.owner_id===current.owner_id);const target=shuffle&&queue.length>1?queue.filter(b=>b.id!==current.id||b.owner_id!==current.owner_id)[Math.floor(Math.random()*(queue.length-1))]:queue[index+1]||(repeat==='all'?queue[0]:null);if(target){setCurrent(target);setElapsed(0)}else{setPlaying(false)}};
+ const previous=()=>{if(!current)return;const index=queue.findIndex(b=>b.id===current.id&&b.owner_id===current.owner_id);if(index>0){setCurrent(queue[index-1]);setElapsed(0)}else if(audioRef.current)audioRef.current.currentTime=0};
+ const playPack=async(p:PackItem)=>{if(activePackId===p.id&&current){toggle();return;}try{setPlayerError('');const response=await fetch(api+'/api/library/files/pack-tracks/'+p.id,{credentials:'include'});if(!response.ok)throw Error('Unable to load pack');const result=await response.json();const beats=(result.beats as BeatItem[]).map(beat=>({...beat,cover_file_id:beat.cover_file_id??p.cover_file_id}));if(beats[0])void loadWaveform(beats[0].audio_file_id,userId!).catch(()=>{});if(!beats.length)throw Error('Pack has no playable beats');choose(beats[0],beats,p.id)}catch(e){setPlayerError(e instanceof Error?e.message:'Unable to load pack')}};
 
+ // A Profile/Catalog/Saves play request resolves the original owner's project.
+ // The owner-only Library list must never be used for cross-user playback.
  useEffect(()=>{
-  if(!playRequest)return;
-  if(playRequest.kind==='beat'){
-   const beat=data.beats.find(item=>item.id===playRequest.id);
-   if(beat)choose(beat,[beat]);else setPlayerError('This beat is not available in your Library yet');
-  }else{
-   const pack=data.packs.find(item=>item.id===playRequest.id);
-   if(pack)void playPack(pack);else setPlayerError('This pack is not available in your Library yet');
-  }
- },[playRequest?.nonce,data.beats,data.packs]);
+  if(!playRequest||!api)return;
+  const {ownerId,kind,id}=playRequest;
+  const sameProject=!!current&&current.owner_id===ownerId&&
+   (kind==='pack'?activePackId===id:activePackId===null&&current.id===id);
+  if(sameProject){toggle();return;}
+  const controller=new AbortController();
+  setPlayerError('');
+  void (async()=>{
+   try{
+    const response=await fetch(api+'/api/public/play/'+ownerId+'/'+kind+'/'+id,{credentials:'include',signal:controller.signal});
+    const result=await response.json().catch(()=>({}));
+    if(!response.ok)throw Error(result.error||'Project unavailable for playback');
+    const project=result.project;
+    const tracks=((project?.tracks||[]) as BeatItem[]).map(beat=>({
+     ...beat,owner_id:ownerId,cover_file_id:beat.cover_file_id??project.cover_file_id,
+     pack_count:0,created_at:'',library_visible:true
+    }));
+    if(!tracks.length)throw Error('Project has no playable audio');
+    if(!controller.signal.aborted)choose(tracks[0],tracks,kind==='pack'?id:null);
+   }catch(error){if(!controller.signal.aborted)setPlayerError(error instanceof Error?error.message:'Unable to play this project');}
+  })();
+  return()=>controller.abort();
+ },[playRequest?.nonce]);
+ useEffect(()=>{
+  if(!current){onPlaybackChange?.(null);return;}
+  onPlaybackChange?.({ownerId:current.owner_id??userId!,kind:activePackId?'pack':'beat',
+   id:activePackId||current.id,playing});
+ },[current?.owner_id,current?.id,activePackId,playing,onPlaybackChange,userId]);
  const [error,setError]=useState('');
  useEffect(()=>{
   const controller=new AbortController();
@@ -212,7 +241,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,userId,activ
  },[]);
  const standaloneBeats=data.beats.filter(b=>b.library_visible!==false);
  // Warm the first standalone waveform while the user browses the Library.
- useEffect(()=>{const first=data.beats.find(b=>b.library_visible!==false);if(first)void loadWaveform(first.audio_file_id).catch(()=>{})},[data.beats]);
+ useEffect(()=>{const first=data.beats.find(b=>b.library_visible!==false);if(first&&userId)void loadWaveform(first.audio_file_id,userId).catch(()=>{})},[data.beats]);
  const empty=!standaloneBeats.length&&!data.packs.length;
  return <section className={"beat-profile library-page onece-v2-library"+(!active?" onece-library-inactive":"")}><div className="beat-profile-content"><div className="library-items">
   {actionError&&<p role="alert" className="v2-library-status">{actionError}</p>}
@@ -244,7 +273,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,userId,activ
   <div className="v2-context-separator"/>
   <button type="button" role="menuitem" className="v2-context-action" onClick={()=>{const id=contextPack.pack.id;setContextPack(null);void toggleSavedProject('pack',id)}}><Bookmark size={17} fill={savedPackIds.has(contextPack.pack.id)?'currentColor':'none'}/><span>{savedPackIds.has(contextPack.pack.id)?'Unsave':'Save'}</span></button>
   <button type="button" role="menuitem" className="v2-context-action" onClick={()=>void copyProjectLink('pack',contextPack.pack.id)}><Link2 size={17}/><span>Copy link</span></button>
-  <button type="button" role="menuitem" className="v2-context-action" onClick={()=>{void (async()=>{const pack=contextPack.pack;setContextPack(null);try{const response=await fetch(api+'/api/library/files/pack-tracks/'+pack.id,{credentials:'include'});if(!response.ok)throw Error('Unable to load pack tracks');const result=await response.json();const tracks=(result.beats as BeatItem[]).map(beat=>({...beat,cover_file_id:beat.cover_file_id??pack.cover_file_id}));if(!tracks.length)return;if(!current)choose(tracks[0],tracks,pack.id);else setQueue(previous=>[...previous,...tracks])}catch(error){setPlayerError(error instanceof Error?error.message:'Unable to add pack to queue')}})()}}><ListPlus size={17}/><span>Add to queue</span></button>
+  <button type="button" role="menuitem" className="v2-context-action" onClick={()=>{void (async()=>{const pack=contextPack.pack;setContextPack(null);try{const response=await fetch(api+'/api/library/files/pack-tracks/'+pack.id,{credentials:'include'});if(!response.ok)throw Error('Unable to load pack tracks');const result=await response.json();const tracks=(result.beats as BeatItem[]).map(beat=>({...beat,cover_file_id:beat.cover_file_id??pack.cover_file_id}));if(!tracks.length)return;if(!current)choose(tracks[0],tracks,pack.id);else setQueue(previous=>[...previous,...tracks.map(beat=>({...beat,owner_id:userId}))])}catch(error){setPlayerError(error instanceof Error?error.message:'Unable to add pack to queue')}})()}}><ListPlus size={17}/><span>Add to queue</span></button>
   <button type="button" role="menuitem" className="v2-context-action" disabled title="Adding packs to collections requires v2 API integration"><FolderPlus size={17}/><span>Add to...</span><ChevronRight className="v2-context-chevron" size={15}/></button>
   <div className="v2-context-separator"/>
   <button type="button" role="menuitem" className="v2-context-action" disabled title="Renaming packs requires v2 API integration"><Pencil size={17}/><span>Rename</span></button>
@@ -315,7 +344,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,userId,activ
   {popup==='queue'&&<section className="onece-queue-popup" role="region" aria-label="Playback queue"><header><h2>Playback queue</h2><button type="button" className="onece-player-icon" aria-label="Close queue" onClick={()=>setPopup(null)}><X/></button></header><div className="onece-queue-current"><small>Now playing</small><p>{current.title}</p></div><ol>{queue.map((beat,index)=><li key={beat.id}><button type="button" className="onece-queue-track" onClick={()=>{setCurrent(beat);setPopup(null)}}><span>{String(index+1).padStart(2,'0')}</span><span>{beat.title}</span></button></li>)}</ol></section>}
  </div>}
  {playerError&&!current&&<p className="v2-player-error v2-player-notice" role="alert">{playerError}</p>}
- {current&&<audio ref={audioRef} crossOrigin="use-credentials" preload="metadata" src={api+'/api/library/files/audio/'+current.audio_file_id} onTimeUpdate={e=>setElapsed(e.currentTarget.currentTime)} onLoadedMetadata={e=>setDuration(Number.isFinite(e.currentTarget.duration)?e.currentTarget.duration:0)} onEnded={next} onPause={()=>setPlaying(false)} onPlay={()=>setPlaying(true)} onError={()=>{setPlaying(false);setPlayerError('Audio could not be loaded')}}/>}
+ {current&&<audio ref={audioRef} crossOrigin="use-credentials" preload="metadata" src={api+'/api/public/audio/'+(current.owner_id??userId)+'/'+current.audio_file_id} onTimeUpdate={e=>setElapsed(e.currentTarget.currentTime)} onLoadedMetadata={e=>setDuration(Number.isFinite(e.currentTarget.duration)?e.currentTarget.duration:0)} onEnded={next} onPause={()=>setPlaying(false)} onPlay={()=>setPlaying(true)} onError={()=>{setPlaying(false);setPlayerError('Audio could not be loaded')}}/>}
  </section>;
 }
 
