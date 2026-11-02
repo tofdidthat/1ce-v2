@@ -6,6 +6,7 @@ import {useNavigate,useLocation} from 'react-router-dom';
 import './workspace-v1.css';
 import LibraryUploadV2 from './library-upload-v1';
 import LibraryItemsV2 from './library-items-v2';
+import PublicProfileV2 from './public-profile-v2';
 function HomeMark() {
   // Same three-stroke mark shown in the empty Library state.
   return <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 4v16M9 4v16M14 4l4 16"/></svg>
@@ -256,6 +257,7 @@ export default function WorkspaceV2({user}){
  <main className="onece-v2-workspace-main">
  {view==='library'?<LibraryItemsV2 onUpload={()=>onNavigate('upload')} onPlayerVisibility={setPlayerVisible}/>:
  view==='upload'?<LibraryUploadV2/>:
+ view==='profile'?<PublicProfileV2 user={user} onSettings={()=>onNavigate('account')}/>:
  <section className="onece-workspace-placeholder"><h1>{view==='account'?'Settings':view==='profile'?'Public Profile':'Discover'}</h1><p>{view==='profile'?'Public profile publishing is not yet enabled in v2.':view==='account'?'Account settings are not yet available in v2.':'Discover is not yet available in v2.'}</p></section>}
  </main>
  {view==='library'&&!playerVisible&&<div className="onece-player-dock" aria-label="Add audio"><button type="button" className="onece-global-player" style={{display:'flex',justifyContent:'center',gap:10,width:'fit-content',maxWidth:'100%',marginInline:'auto',padding:'7px 26px',color:'inherit',font:'inherit',fontSize:13,cursor:'pointer'}} onClick={()=>onNavigate('upload')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>Add file</span></button></div>}
