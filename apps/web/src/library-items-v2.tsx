@@ -77,20 +77,27 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility}:{onUpload:(
  const [packError,setPackError]=useState('');
  const [openedBeat,setOpenedBeat]=useState<BeatItem|null>(null);
  const [contextBeat,setContextBeat]=useState<{beat:BeatItem;x:number;y:number}|null>(null);
+ const [contextPack,setContextPack]=useState<{pack:PackItem;x:number;y:number}|null>(null);
  const showBeatMenu=(event:React.MouseEvent,beat:BeatItem)=>{
   event.preventDefault();event.stopPropagation();
+  setContextPack(null);
   setContextBeat({beat,x:event.clientX,y:event.clientY});
  };
+ const showPackMenu=(event:React.MouseEvent,pack:PackItem)=>{
+  event.preventDefault();event.stopPropagation();
+  setContextBeat(null);
+  setContextPack({pack,x:event.clientX,y:event.clientY});
+ };
  useEffect(()=>{
-  if(!contextBeat)return;
-  const dismiss=()=>setContextBeat(null);
+  if(!contextBeat&&!contextPack)return;
+  const dismiss=()=>{setContextBeat(null);setContextPack(null)};
   const key=(event:KeyboardEvent)=>{if(event.key==='Escape')dismiss()};
   document.addEventListener('pointerdown',dismiss);
   document.addEventListener('keydown',key);
   window.addEventListener('scroll',dismiss,true);
   window.addEventListener('resize',dismiss);
   return()=>{document.removeEventListener('pointerdown',dismiss);document.removeEventListener('keydown',key);window.removeEventListener('scroll',dismiss,true);window.removeEventListener('resize',dismiss)};
- },[contextBeat]);
+ },[contextBeat,contextPack]);
 
  const [savedBeatIds,setSavedBeatIds]=useState<Set<string>>(()=>{
   try{return new Set<string>(JSON.parse(localStorage.getItem('onece-v2-saved-beats')||'[]'))}
@@ -185,7 +192,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility}:{onUpload:(
       <header className="library-pack-info"><div className="library-pack-title-row"><div className="library-pack-title-block"><h2>{openedPack.title}</h2><p>{openedTracks.length} {openedTracks.length===1?'beat':'beats'}</p></div><div className="library-pack-play-controls"><button type="button" className="library-pack-shuffle" aria-label="Shuffle pack" onClick={()=>{if(openedTracks.length){const mixed=[...openedTracks].sort(()=>Math.random()-.5);choose(mixed[0],mixed,openedPack.id)}}}><Shuffle size={19}/></button><button type="button" className="library-pack-play" aria-label={(activePackId===openedPack.id&&playing?'Pause ':'Play ')+openedPack.title} onClick={()=>playPack(openedPack)}>{activePackId===openedPack.id&&playing?<Pause/>:<Play/>}</button></div></div><button type="button" className="library-pack-add" disabled title="Add tracks is not yet available in v2"><span>+</span><span>Add tracks</span></button></header>
       {packLoading?<p className="v2-library-status">Loading beats…</p>:packError?<p role="alert">{packError}</p>:<ol className="beat-track-list">{openedTracks.map((beat,index)=><li key={beat.id} onContextMenu={e=>showBeatMenu(e,beat)} className={current?.id===beat.id?'beat-track-active':''}><button type="button" className="beat-track-play" onClick={()=>choose(beat,openedTracks,openedPack.id)} aria-label={(current?.id===beat.id&&playing?'Pause ':'Play ')+beat.title}><span className="beat-track-number">{current?.id===beat.id&&playing?'▥':index+1}</span><span><strong>{beat.title}</strong></span></button><div className="beat-track-menu"><button type="button" aria-label={'Open '+beat.title} onClick={()=>setOpenedBeat(beat)}>•••</button></div></li>)}</ol>}
      </div>:<div className="beat-pack-grid">
-     {data.packs.map((p,index)=><article key={'pack-'+p.id} className="v2-library-card">
+     {data.packs.map((p,index)=><article key={'pack-'+p.id} className="v2-library-card" onContextMenu={e=>showPackMenu(e,p)}>
       <div className={'beat-pack-art beat-art-'+index%3+' v2-art-openable'} role="button" tabIndex={0} onClick={()=>openPack(p)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openPack(p)}}} aria-label={'Open pack '+p.title}><Cover id={p.cover_file_id} title={p.title}/><button type="button" className="v2-card-play" aria-label={(activePackId===p.id&&playing?"Pause ":"Play ")+p.title} onClick={e=>{e.stopPropagation();playPack(p)}}>{activePackId===p.id&&playing?<PauseIcon/>:<PlayIcon/>}</button></div>
       <div className="beat-pack-caption"><span className="v2-card-name">{p.title}</span></div>
       <p>{p.track_count} beats</p>
@@ -198,6 +205,11 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility}:{onUpload:(
     </div>}
    </div>}
  </div></div>
+ {contextPack&&<div className="v2-context-menu" role="menu" aria-label={'Pack actions for '+contextPack.pack.title} style={{left:Math.min(contextPack.x,Math.max(8,window.innerWidth-280))+'px',top:Math.min(contextPack.y,Math.max(8,window.innerHeight-220))+'px'}} onPointerDown={e=>e.stopPropagation()} onContextMenu={e=>e.preventDefault()}>
+  <button type="button" role="menuitem" className="v2-context-action" onClick={()=>{void openPack(contextPack.pack);setContextPack(null)}}><FolderPlus size={17}/><span>Open pack</span></button>
+  <div className="v2-context-separator"/>
+  <button type="button" role="menuitem" className="v2-context-action" onClick={()=>{void playPack(contextPack.pack);setContextPack(null)}}>{activePackId===contextPack.pack.id&&playing?<Pause size={17}/>:<Play size={17}/>}<span>{activePackId===contextPack.pack.id&&playing?'Pause':'Play'} pack</span></button>
+ </div>}
  {contextBeat&&<div className="v2-context-menu" role="menu" aria-label={'Beat actions for '+contextBeat.beat.title} style={{left:Math.min(contextBeat.x,Math.max(8,window.innerWidth-280))+'px',top:Math.min(contextBeat.y,Math.max(8,window.innerHeight-440))+'px'}} onPointerDown={e=>e.stopPropagation()} onContextMenu={e=>e.preventDefault()}>
   <button type="button" role="menuitem" className="v2-context-action" disabled title="Publishing will be available after the v2 API integration"><Eye size={17}/><span>Publish</span></button>
   <div className="v2-context-separator"/>
