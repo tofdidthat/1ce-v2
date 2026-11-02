@@ -4,6 +4,7 @@
 import React,{useEffect,useState,useRef} from 'react';
 import {useNavigate,useLocation} from 'react-router-dom';
 import './workspace-v1.css';
+import LibraryUploadV2 from './library-upload-v1';
 function HomeMark() {
   return <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m3 10 9-7 9 7" /><path d="M5 9v11h14V9" /><path d="M9 20v-7h6v7" /></svg>
 }
@@ -242,13 +243,6 @@ function EmptyLibrary({onUpload}){
   </div>
  </section>;
 }
-function UploadView(){
- const input=useRef(null);const [selection,setSelection]=useState([]);
- return <section className="onece-workspace-placeholder"><h1>Upload</h1><p>Choose audio files for your Library. File storage is not enabled in the v2 API yet.</p>
- <input ref={input} type="file" accept="audio/*,.mp3,.wav,.flac,.aiff,.m4a" multiple onChange={event=>setSelection(Array.from(event.target.files||[]))} aria-label="Choose audio files"/>
- {selection.length>0&&<div role="status">{selection.map(f=><p key={f.name+f.size}>{f.name} · {(f.size/1024/1024).toFixed(2)} MB</p>)}<p>Selected locally; nothing uploaded.</p></div>}
- </section>;
-}
 export default function WorkspaceV2({user}){
  const navigate=useNavigate();const location=useLocation();
  const view=location.pathname==='/app/library'?'library':location.pathname.endsWith('/discover')?'discover':location.pathname.endsWith('/upload')?'upload':location.pathname.endsWith('/settings')?'account':'profile';
@@ -258,7 +252,7 @@ export default function WorkspaceV2({user}){
  <HeaderV2 view={view} user={user} onNavigate={onNavigate}/>
  <main className="onece-v2-workspace-main">
  {view==='library'?<EmptyLibrary onUpload={()=>onNavigate('upload')}/>:
- view==='upload'?<UploadView/>:
+ view==='upload'?<LibraryUploadV2/>:
  <section className="onece-workspace-placeholder"><h1>{view==='account'?'Settings':view==='profile'?'Public Profile':'Discover'}</h1><p>{view==='profile'?'Public profile publishing is not yet enabled in v2.':view==='account'?'Account settings are not yet available in v2.':'Discover is not yet available in v2.'}</p></section>}
  </main>
  {view==='library'&&<div className="onece-player-dock" aria-label="Add audio"><button type="button" className="onece-global-player" style={{display:'flex',justifyContent:'center',gap:10,width:'fit-content',maxWidth:'100%',marginInline:'auto',padding:'7px 26px',color:'inherit',font:'inherit',fontSize:13,cursor:'pointer'}} onClick={()=>onNavigate('upload')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>Add file</span></button></div>}
