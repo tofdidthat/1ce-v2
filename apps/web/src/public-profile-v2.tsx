@@ -15,7 +15,7 @@ function ProjectCover({project}:{project:PublicProject}){
  React.useEffect(()=>{
   if(!project.cover_file_id||!api)return;
   let alive=true,url='';
-  fetch(api+'/api/public/cover/'+project.owner_id+'/'+project.cover_file_id).then(r=>{if(!r.ok)throw Error('Cover unavailable');return r.blob()}).then(blob=>{url=URL.createObjectURL(blob);if(alive)setSrc(url);else URL.revokeObjectURL(url)}).catch(()=>{});
+  fetch(api+'/api/public/cover/'+project.owner_id+'/'+project.cover_file_id,{credentials:'include'}).then(r=>{if(!r.ok)throw Error('Cover unavailable');return r.blob()}).then(blob=>{url=URL.createObjectURL(blob);if(alive)setSrc(url);else URL.revokeObjectURL(url)}).catch(()=>{});
   return()=>{alive=false;if(url)URL.revokeObjectURL(url)};
  },[project.cover_file_id,project.owner_id]);
  return <div className="onece-profile-project-cover">{src?<img src={src} alt=""/>:<span>{project.title.charAt(0).toUpperCase()}</span>}</div>;
