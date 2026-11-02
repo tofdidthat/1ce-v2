@@ -10,14 +10,31 @@ function PlayIcon(){return <svg width="16" height="16" viewBox="0 0 24 24" fill=
 function PauseIcon(){return <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>}
 const api=import.meta.env.VITE_API_URL;
 type PublicProject={id:string;kind:'beat'|'pack';owner_id:number;title:string;cover_file_id:number|null;track_count:number|null;published_at:string};
-function ProjectCover({project}:{project:PublicProject}){
+function ProjectCover({project,currentUserId}:{project:PublicProject;currentUserId?:number}){
  const [src,setSrc]=useState('');
  React.useEffect(()=>{
+  setSrc('');
   if(!project.cover_file_id||!api)return;
   let alive=true,url='';
-  fetch(api+'/api/public/cover/'+project.owner_id+'/'+project.cover_file_id,{credentials:'include'}).then(r=>{if(!r.ok)throw Error('Cover unavailable');return r.blob()}).then(blob=>{url=URL.createObjectURL(blob);if(alive)setSrc(url);else URL.revokeObjectURL(url)}).catch(()=>{});
+  const owner=String(currentUserId||'')===String(project.owner_id);
+  const routes=owner
+   ? ['/api/library/files/cover/'+project.cover_file_id,'/api/public/cover/'+project.owner_id+'/'+project.cover_file_id]
+   : ['/api/public/cover/'+project.owner_id+'/'+project.cover_file_id];
+  (async()=>{
+   for(const route of routes){
+    try{
+     const response=await fetch(api+route,{credentials:'include'});
+     if(!response.ok)continue;
+     const blob=await response.blob();
+     if(!blob.type.startsWith('image/'))continue;
+     url=URL.createObjectURL(blob);
+     if(alive)setSrc(url);else URL.revokeObjectURL(url);
+     return;
+    }catch{ /* try alternate authorized route */ }
+   }
+  })();
   return()=>{alive=false;if(url)URL.revokeObjectURL(url)};
- },[project.cover_file_id,project.owner_id]);
+ },[project.cover_file_id,project.owner_id,currentUserId]);
  return <div className="onece-profile-project-cover">{src?<img src={src} alt=""/>:<span>{project.title.charAt(0).toUpperCase()}</span>}</div>;
 }
 type ProfileTab='catalog'|'saves'|'following';
@@ -118,7 +135,7 @@ export default function PublicProfileV2({user,onSettings,profileId,onPlayProject
     <div className="onece-profile-projects">{(tab==='catalog'?projects.catalog:projects.saves).map(project=>{
      const key=project.owner_id+':'+project.kind+':'+project.id;
      return <article className="onece-profile-project" key={key} onContextMenu={event=>{event.preventDefault();setMenu({project,x:event.clientX,y:event.clientY})}}>
-      <div className="onece-profile-project-art"><ProjectCover project={project}/>{onPlayProject&&ownerOf(project)&&<button type="button" className="v2-card-play onece-profile-project-play" aria-label={activeProject===key?'Pause project':'Play project'} title={activeProject===key?'Pause':'Play'} onClick={()=>{onPlayProject(project.kind,project.id);setActiveProject(activeProject===key?null:key)}}>{activeProject===key?<PauseIcon/>:<PlayIcon/>}</button>}</div>
+      <div className="onece-profile-project-art"><ProjectCover project={project} currentUserId={user?.id}/>{onPlayProject&&ownerOf(project)&&<button type="button" className="v2-card-play onece-profile-project-play" aria-label={activeProject===key?'Pause project':'Play project'} title={activeProject===key?'Pause':'Play'} onClick={()=>{onPlayProject(project.kind,project.id);setActiveProject(activeProject===key?null:key)}}>{activeProject===key?<PauseIcon/>:<PlayIcon/>}</button>}</div>
       <div className="onece-profile-project-info"><strong>{project.title}</strong><span>{project.kind==='pack'?(project.track_count||0)+' beats':'Beat'}</span></div>
      </article>;
     })}</div>:
