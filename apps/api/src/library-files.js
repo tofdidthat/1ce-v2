@@ -70,6 +70,29 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser){
    await client.query('COMMIT');send(res,201,{id});return true;
   }catch(err){await client.query('ROLLBACK');throw err;}finally{client.release();}
  }
+ if(req.method==='GET'&&segments.length===4&&segments[3]==='items'){
+  const [beats,packs]=await Promise.all([
+   pool.query(`SELECT b.id,b.title,b.created_at,b.audio_file_id,b.cover_file_id,b.stems_file_id,
+     a.original_name AS audio_name,a.byte_size AS audio_size,
+     (SELECT count(*)::int FROM library_pack_beats pb WHERE pb.beat_id=b.id) AS pack_count
+     FROM library_beats b JOIN library_files a ON a.id=b.audio_file_id AND a.status='ready'
+     WHERE b.user_id=$1 ORDER BY b.created_at DESC LIMIT 200`,[user.id]),
+   pool.query(`SELECT p.id,p.title,p.created_at,p.cover_file_id,
+     COUNT(pb.beat_id)::int AS track_count
+     FROM library_packs p LEFT JOIN library_pack_beats pb ON pb.pack_id=p.id
+     WHERE p.user_id=$1 GROUP BY p.id ORDER BY p.created_at DESC LIMIT 100`,[user.id])
+  ]);
+  send(res,200,{beats:beats.rows,packs:packs.rows});return true;
+ }
+ if(req.method==='GET'&&segments.length===5&&segments[3]==='cover'&&/^\\d+$/.test(segments[4])){
+  const id=segments[4];
+  const q=await pool.query("SELECT object_key,content_type FROM library_files WHERE id=$1 AND user_id=$2 AND kind='cover' AND status='ready'",[id,user.id]);
+  if(!q.rows[0]){send(res,404,{error:'Cover not found'});return true;}
+  const object=await s3.send(new GetObjectCommand({Bucket:cfg.bucket,Key:q.rows[0].object_key}));
+  res.writeHead(200,{'Content-Type':q.rows[0].content_type,'Cache-Control':'private, max-age=300','X-Content-Type-Options':'nosniff'});
+  for await(const chunk of object.Body)res.write(chunk);
+  res.end();return true;
+ }
  if(req.method==='GET'&&segments.length===3){
   const q=await pool.query("SELECT id,kind,original_name,content_type,byte_size,created_at FROM library_files WHERE user_id=$1 AND status='ready' ORDER BY created_at DESC LIMIT 100",[user.id]);
   send(res,200,{files:q.rows});return true;
