@@ -38,7 +38,7 @@ export default function PublicProfileV2({user,onSettings,profileId,onPlayProject
   const controller=new AbortController();
   setLoading(true);setError('');
   Promise.all([
-   fetch(api+'/api/public/profile/'+targetId,{signal:controller.signal}).then(async r=>{if(!r.ok)throw Error('Unable to load profile');return r.json()}),
+   fetch(api+'/api/public/profile/'+targetId,{credentials:'include',signal:controller.signal}).then(async r=>{if(!r.ok)throw Error('Unable to load profile');return r.json()}),
    user?.id?fetch(api+'/api/public/mine',{credentials:'include',signal:controller.signal}).then(r=>r.ok?r.json():{saved:[]}):Promise.resolve({saved:[]})
   ]).then(([result,mine])=>{
    setProjects({catalog:result.catalog||[],saves:result.saves||[]});
@@ -47,7 +47,7 @@ export default function PublicProfileV2({user,onSettings,profileId,onPlayProject
    setSaved(new Set((mine.saved||[]).map((p:{owner_id:number;kind:string;id:string})=>p.owner_id+':'+p.kind+':'+p.id)));
   }).catch(e=>{if(e.name!=='AbortError')setError(e.message||'Unable to load profile')}).finally(()=>{if(!controller.signal.aborted)setLoading(false)});
   return()=>controller.abort();
- },[targetId,user?.id]);
+ },[targetId,user?.id,tab]);
  const toggleSave=async(project:PublicProject)=>{
   const key=project.owner_id+':'+project.kind+':'+project.id;
   const already=saved.has(key);
@@ -55,7 +55,7 @@ export default function PublicProfileV2({user,onSettings,profileId,onPlayProject
    const response=await fetch(api+'/api/public/save/'+project.owner_id+'/'+project.kind+'/'+project.id,{method:already?'DELETE':'POST',credentials:'include'});
    if(!response.ok)throw Error((await response.json().catch(()=>({}))).error||'Unable to save');
    setSaved(prev=>{const next=new Set(prev);if(already)next.delete(key);else next.add(key);return next});
-   if(already&&tab==='saves'&&isOwner)setProjects(prev=>({...prev,saves:prev.saves.filter(p=>p.owner_id+':'+p.kind+':'+p.id!==key)}));
+   if(isOwner)setProjects(prev=>({...prev,saves:already?prev.saves.filter(p=>p.owner_id+':'+p.kind+':'+p.id!==key):[project,...prev.saves.filter(p=>p.owner_id+':'+p.kind+':'+p.id!==key)]}));
   }catch(e){setError(e instanceof Error?e.message:'Unable to save')}
  };
 
