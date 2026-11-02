@@ -842,3 +842,21 @@
  color:#a78bfa;
  background:transparent;
 }
+
+/* Beat modal only: solid white play/pause glyph without a white button disk. */
+.v2-beat-overlay .v2-beat-widget .v2-music-card .controls .ctrl-play,
+.v2-beat-overlay .v2-beat-widget .v2-music-card .controls .ctrl-play:hover,
+.v2-beat-overlay .v2-beat-widget .v2-music-card .controls .ctrl-play:active{
+ background:transparent;
+ border:0;
+ box-shadow:none;
+ color:#fff;
+}
+.v2-beat-overlay .v2-beat-widget .v2-music-card .controls .ctrl-play svg{
+ fill:currentColor;
+ stroke:currentColor;
+ stroke-width:1.2;
+}
+.v2-beat-overlay .v2-beat-widget .v2-music-card .controls .ctrl-play:hover{
+ color:#c4b5fd;
+}
