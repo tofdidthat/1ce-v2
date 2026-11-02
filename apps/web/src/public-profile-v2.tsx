@@ -3,6 +3,7 @@ import {Bookmark,Users,Share2,Eye,EyeOff,Link2,ListPlus,FolderPlus,Pencil,Image 
 import './public-profile-v2.css';
 import ProjectContextMenuV2 from './project-context-menu-v2';
 import ProjectCardV2 from './project-card-v2';
+import {setProjectPublishedV2,setProjectSavedV2,createProjectShareLinkV2} from './project-requests-v2';
 import ProjectActionDialogV2,{type ContextProject,type ProjectAction,type ChangedProject} from './project-action-dialog-v2';
 import {notifyV2DataChanged,subscribeV2DataChanges,subscribeV2Resume} from './data-refresh-v2';
 import {profilePictureV2} from './profile-picture-v2';
@@ -51,8 +52,7 @@ export default function PublicProfileV2({user,onSettings,profileId,onPlayProject
   const key=project.owner_id+':'+project.kind+':'+project.id;
   const already=saved.has(key);
   try{
-   const response=await fetch(api+'/api/public/save/'+project.owner_id+'/'+project.kind+'/'+project.id,{method:already?'DELETE':'POST',credentials:'include'});
-   if(!response.ok)throw Error((await response.json().catch(()=>({}))).error||'Unable to save');
+   await setProjectSavedV2(project.owner_id,project.kind,project.id,already);
    setSaved(prev=>{const next=new Set(prev);if(already)next.delete(key);else next.add(key);return next});
    if(isOwner)setProjects(prev=>({...prev,saves:already?prev.saves.filter(p=>p.owner_id+':'+p.kind+':'+p.id!==key):[project,...prev.saves.filter(p=>p.owner_id+':'+p.kind+':'+p.id!==key)]}));
    notifyV2DataChanged(['saves'],user?.id);
@@ -81,8 +81,7 @@ export default function PublicProfileV2({user,onSettings,profileId,onPlayProject
   setMenu(null);setError('');
   const key=project.kind+':'+project.id,already=published.has(key);
   try{
-   const response=await fetch(api+'/api/public/publish/'+project.kind+'/'+project.id,{method:already?'DELETE':'POST',credentials:'include'});
-   if(!response.ok)throw Error((await response.json().catch(()=>({}))).error||'Unable to change publication');
+   await setProjectPublishedV2(project.kind,project.id,already);
    setPublished(previous=>{const next=new Set(previous);if(already)next.delete(key);else next.add(key);return next});
    setProjects(previous=>({...previous,catalog:already?previous.catalog.filter(p=>p.kind+':'+p.id!==key):previous.catalog}));
    notifyV2DataChanged(['publications'],user?.id);
@@ -91,10 +90,8 @@ export default function PublicProfileV2({user,onSettings,profileId,onPlayProject
  const copyProjectLink=async(project:PublicProject)=>{
   setMenu(null);setError('');
   try{
-   const response=await fetch(api+'/api/public/share/'+project.kind+'/'+project.id,{method:'POST',credentials:'include'});
-   if(!response.ok)throw Error((await response.json().catch(()=>({}))).error||'Unable to share project');
-   const result=await response.json();
-   await navigator.clipboard.writeText(window.location.origin+'/shared/'+result.token);
+   const url=await createProjectShareLinkV2(project.kind,project.id);
+   await navigator.clipboard.writeText(url);
   }catch(e){setError(e instanceof Error?e.message:'Unable to copy link')}
  };
  React.useEffect(()=>{
