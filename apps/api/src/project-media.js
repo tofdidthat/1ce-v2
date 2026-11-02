@@ -27,14 +27,17 @@ WHERE EXISTS (
  WHERE pub.user_id=$2 AND pub.kind=project.kind AND pub.project_id=project.project_id
 ) OR (
  $4::integer IS NOT NULL AND EXISTS (
-  SELECT 1 FROM v2_project_access access
-  WHERE access.owner_id=$2 AND access.viewer_id=$4
-   AND access.kind=project.kind AND access.project_id=project.project_id
+  SELECT 1 FROM v2_project_access grant_access
+  WHERE grant_access.owner_id=$2 AND grant_access.viewer_id=$4
+   AND grant_access.kind=project.kind AND grant_access.project_id=project.project_id
  )
 )
 LIMIT 1`;
 
-function validId(id){return Number.isSafeInteger(Number(id))&&Number(id)>0;}
+function validId(id){
+ if(typeof id==='number')return Number.isSafeInteger(id)&&id>0;
+ return typeof id==='string'&&/^[1-9]\d*$/.test(id)&&Number.isSafeInteger(Number(id));
+}
 
 /**
  * Resolve an original ready R2 object, enforcing a single media access policy.
