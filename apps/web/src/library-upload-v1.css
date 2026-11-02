@@ -311,3 +311,10 @@
     align-items: stretch;
   }
 }
+
+.upload-file-actions { display:flex; align-items:center; gap:8px; flex-shrink:0; }
+.upload-file-actions button { max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+@media (max-width: 540px) {
+ .upload-file-list li { flex-wrap:wrap; }
+ .upload-file-actions { width:100%; justify-content:flex-end; }
+}
