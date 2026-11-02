@@ -1,13 +1,11 @@
 import React,{createContext,useCallback,useContext,useEffect,useMemo,useRef,useState} from 'react';
 import {notifyV2DataChanged,subscribeV2DataChanges,subscribeV2Resume} from './data-refresh-v2';
-import {setProjectPublishedV2,setProjectSavedV2,type ProjectKindV2} from './project-requests-v2';
+import {setProjectPublishedV2,setProjectSavedV2} from './project-requests-v2';
+import {normalizeViewerProjectFlagsV2,savedProjectKeyV2,publishedProjectKeyV2,type ProjectKindV2} from './project-identity-v2';
 
 const api=import.meta.env.VITE_API_URL;
 const EMPTY_SAVED:ReadonlySet<string>=new Set<string>();
 const EMPTY_PUBLISHED:ReadonlySet<string>=new Set<string>();
-
-export const savedProjectKeyV2=(ownerId:number,kind:ProjectKindV2,id:string)=>ownerId+':'+kind+':'+id;
-export const publishedProjectKeyV2=(kind:ProjectKindV2,id:string)=>kind+':'+id;
 
 type FlagsState={viewerId:number|null;saved:ReadonlySet<string>;published:ReadonlySet<string>};
 type FlagsContextValue={
@@ -21,11 +19,6 @@ type FlagsContextValue={
 const Context=createContext<FlagsContextValue|null>(null);
 const EMPTY:FlagsState={viewerId:null,saved:EMPTY_SAVED,published:EMPTY_PUBLISHED};
 
-type MineResponse={
- saved?:Array<{owner_id:number;kind:ProjectKindV2;id:string}>;
- published?:Array<{kind:ProjectKindV2;id:string}>;
-};
-
 // A single viewer-scoped copy of /api/public/mine for both Library and Profile.
 // It cannot grant authorization: all mutations and media reads are server checked.
 export function ProjectFlagsProviderV2({viewerId,children}:{viewerId?:number|null;children:React.ReactNode}){
@@ -33,6 +26,8 @@ export function ProjectFlagsProviderV2({viewerId,children}:{viewerId?:number|nul
  const [flags,setFlags]=useState<FlagsState>(EMPTY);
  const [revision,setRevision]=useState(0);
  const pending=useRef(new Set<string>());
+ const activeViewer=useRef(id);
+ activeViewer.current=id;
  const refresh=useCallback(()=>setRevision(value=>value+1),[]);
  // Changing accounts must never expose the prior account's saved/published flags.
  const saved=flags.viewerId===id?flags.saved:EMPTY_SAVED;
@@ -47,11 +42,9 @@ export function ProjectFlagsProviderV2({viewerId,children}:{viewerId?:number|nul
    try{
     const response=await fetch(api+'/api/public/mine',{credentials:'include',cache:'no-store',signal:controller.signal});
     if(!response.ok)throw Error('Project flags unavailable');
-    const payload=(await response.json()) as MineResponse;
-    if(controller.signal.aborted)return;
-    const savedKeys=new Set((payload.saved||[]).filter(p=>p&&p.owner_id&&['beat','pack'].includes(p.kind)).map(p=>savedProjectKeyV2(Number(p.owner_id),p.kind,String(p.id))));
-    const publishedKeys=new Set((payload.published||[]).filter(p=>p&&['beat','pack'].includes(p.kind)).map(p=>publishedProjectKeyV2(p.kind,String(p.id))));
-    setFlags({viewerId:id,saved:savedKeys,published:publishedKeys});
+    const payload:unknown=await response.json();
+    if(controller.signal.aborted||activeViewer.current!==id)return;
+    setFlags(normalizeViewerProjectFlagsV2(id,payload));
    }catch{
     // Preserve the last confirmed state after a transient network error.
     // Server remains authoritative and will revalidate on focus/notifications.
@@ -73,6 +66,7 @@ export function ProjectFlagsProviderV2({viewerId,children}:{viewerId?:number|nul
   const wasSaved=saved.has(key);
   try{
    await setProjectSavedV2(ownerId,kind,projectId,wasSaved);
+   if(activeViewer.current!==id){notifyV2DataChanged(['saves'],id);return !wasSaved;}
    setFlags(previous=>{
     const updated=new Set(previous.viewerId===id?previous.saved:EMPTY_SAVED);
     if(wasSaved)updated.delete(key);else updated.add(key);
@@ -91,6 +85,7 @@ export function ProjectFlagsProviderV2({viewerId,children}:{viewerId?:number|nul
   const wasPublished=published.has(key);
   try{
    await setProjectPublishedV2(kind,projectId,wasPublished);
+   if(activeViewer.current!==id){notifyV2DataChanged(['publications'],id);return !wasPublished;}
    setFlags(previous=>{
     const updated=new Set(previous.viewerId===id?previous.published:EMPTY_PUBLISHED);
     if(wasPublished)updated.delete(key);else updated.add(key);
