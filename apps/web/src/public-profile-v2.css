@@ -33,3 +33,10 @@
 .onece-profile-project-info span{font-size:12px;color:#938a9f}
 .onece-profile-project-save{position:absolute;right:1px;bottom:8px;border:0;background:transparent;color:#a99bb7;padding:6px;cursor:pointer}
 .onece-profile-project-save:hover,.onece-profile-project-save[aria-pressed="true"]{color:#f8f6fc}
+
+.onece-profile-context-menu{width:230px;padding:7px;background:#18171b;border:1px solid #302d34;border-radius:15px;box-shadow:0 16px 44px #0009;display:flex;flex-direction:column;gap:1px}
+.onece-profile-context-menu button{display:flex;align-items:center;gap:12px;width:100%;min-height:37px;padding:8px 11px;border:0;border-radius:8px;background:transparent;color:#f3f0f5;font:inherit;font-size:13px;font-weight:500;text-align:left;cursor:pointer}
+.onece-profile-context-menu button:hover:not(:disabled){background:#302c35}
+.onece-profile-context-menu button:disabled{opacity:.38;cursor:not-allowed}
+.onece-profile-context-menu button span{flex:1}
+.onece-profile-context-separator{height:1px;background:#343038;margin:5px 8px}
