@@ -204,8 +204,8 @@ export default function LibraryUploadV2(){
               <button
                 type="button"
                 className="upload-primary-action"
-                disabled
-                title="Saving to Library is not available yet"
+                disabled={!audioFiles.length || saving}
+                onClick={save}
               >
                 {saving ? "Saving…" : "Save to Library"}
               </button>
