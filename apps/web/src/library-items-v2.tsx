@@ -7,7 +7,7 @@ import useProjectFlagsV2 from './project-flags-v2';
 import ProjectContextMenuV2 from './project-context-menu-v2';
 import ProjectCoverV2 from './project-cover-v2';
 import ProjectCardV2 from './project-card-v2';
-import {setProjectPublishedV2,setProjectSavedV2,createProjectShareLinkV2} from './project-requests-v2';
+import {createProjectShareLinkV2} from './project-requests-v2';
 import ProjectActionDialogV2,{type ContextProject,type ProjectAction,type ChangedProject} from './project-action-dialog-v2';
 const api=import.meta.env.VITE_API_URL;
 type BeatItem = {published?:boolean;owner_id?:number;id:string;title:string;audio_file_id:number;cover_file_id:number|null;stems_file_id:number|null;pack_count:number;created_at:string;library_visible:boolean};
