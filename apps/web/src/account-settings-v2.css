@@ -1,4 +1,4 @@
-.onece-account-settings{width:100%;padding:28px 24px 24px;color:#f5f3ff}
+.onece-account-settings{width:100%;padding:100px 24px 24px;color:#f5f3ff}
 .onece-account-layout{display:grid;grid-template-columns:minmax(0,234px) minmax(0,318px);align-items:start;justify-content:center;gap:34px;max-width:760px;width:100%;margin:0 auto}
 .onece-account-left,.onece-account-right{min-width:0}
 .onece-account-right{display:flex;flex-direction:column;gap:14px}
