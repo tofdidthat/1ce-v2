@@ -19,47 +19,51 @@ function Cover({id,title}:{id:number|null;title:string}){
  },[id]);
  return <div className="v2-item-cover">{url?<img src={url} alt={title+' cover'}/>:<span>{title.trim().charAt(0).toUpperCase()||'♪'}</span>}</div>;
 }
-// Reuse the v1 waveform sampling, but authenticate requests against private v2 R2 audio.
+// Private, per-page waveform cache. Start decoding before playback when possible.
 const waveCache=new Map<number,number[]>();
+const wavePending=new Map<number,Promise<number[]>>();
+function loadWaveform(fileId:number):Promise<number[]>{
+ const cached=waveCache.get(fileId);
+ if(cached)return Promise.resolve(cached);
+ const existing=wavePending.get(fileId);
+ if(existing)return existing;
+ const pending=(async()=>{
+  let context:AudioContext|null=null;
+  try{
+   const response=await fetch(api+'/api/library/files/audio/'+fileId,{credentials:'include'});
+   if(!response.ok)throw Error('Waveform unavailable');
+   const bytes=await response.arrayBuffer();
+   context=new AudioContext();
+   const decoded=await context.decodeAudioData(bytes);
+   const samples=decoded.getChannelData(0);
+   const count=84;
+   const size=Math.max(1,Math.floor(samples.length/count));
+   const peaks=Array.from({length:count},(_,index)=>{
+    let peak=0;
+    const end=Math.min(samples.length,(index+1)*size);
+    for(let i=index*size;i<end;i+=32)peak=Math.max(peak,Math.abs(samples[i]));
+    return peak;
+   });
+   const max=Math.max(...peaks,.001);
+   const bars=peaks.map(value=>value/max);
+   if(waveCache.size>=16)waveCache.delete(waveCache.keys().next().value!);
+   waveCache.set(fileId,bars);
+   return bars;
+  }finally{
+   wavePending.delete(fileId);
+   if(context&&context.state!=='closed')await context.close().catch(()=>{});
+  }
+ })();
+ wavePending.set(fileId,pending);
+ return pending;
+}
 function useWaveform(fileId:number|null){
  const [bars,setBars]=useState<number[]>([]);
  useEffect(()=>{
+  let active=true;
   setBars(fileId?waveCache.get(fileId)||[]:[]);
-  if(!fileId||!api||waveCache.has(fileId))return;
-  const controller=new AbortController();
-  let cancelled=false;
-  let context:AudioContext|null=null;
-  const decode=async()=>{
-   try{
-    const response=await fetch(api+'/api/library/files/audio/'+fileId,{credentials:'include',signal:controller.signal});
-    if(!response.ok)throw Error('Waveform audio unavailable');
-    const bytes=await response.arrayBuffer();
-    if(cancelled)return;
-    context=new AudioContext();
-    const buffer=await context.decodeAudioData(bytes);
-    if(cancelled)return;
-    const samples=buffer.getChannelData(0);
-    const count=84;
-    const size=Math.max(1,Math.floor(samples.length/count));
-    const peaks=Array.from({length:count},(_,index)=>{
-     let peak=0;
-     const end=Math.min(samples.length,(index+1)*size);
-     for(let i=index*size;i<end;i+=32)peak=Math.max(peak,Math.abs(samples[i]));
-     return peak;
-    });
-    const max=Math.max(...peaks,.001);
-    const normalized=peaks.map(value=>value/max);
-    if(waveCache.size>=8)waveCache.delete(waveCache.keys().next().value!);
-    waveCache.set(fileId,normalized);
-    setBars(normalized);
-   }catch{
-    // Keep the v1 seek-line fallback if decoding is unsupported.
-   }finally{
-    if(context&&context.state!=='closed')context.close().catch(()=>{});
-   }
-  };
-  void decode();
-  return()=>{cancelled=true;controller.abort()};
+  if(fileId)loadWaveform(fileId).then(value=>{if(active)setBars(value)}).catch(()=>{});
+  return()=>{active=false};
  },[fileId]);
  return bars;
 }
@@ -89,7 +93,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility}:{onUpload:(
  const choose=(beat:BeatItem,list:BeatItem[])=>{setPlayerError('');setQueue(list);if(current?.id===beat.id){toggle();return;}setElapsed(0);setDuration(0);setCurrent(beat)};
  const next=()=>{if(!current)return;if(repeat==='one'){if(audioRef.current){audioRef.current.currentTime=0;audioRef.current.play().catch(()=>{})}return;}const index=queue.findIndex(b=>b.id===current.id);const target=shuffle&&queue.length>1?queue.filter(b=>b.id!==current.id)[Math.floor(Math.random()*(queue.length-1))]:queue[index+1]||(repeat==='all'?queue[0]:null);if(target){setCurrent(target);setElapsed(0)}else{setPlaying(false)}};
  const previous=()=>{if(!current)return;const index=queue.findIndex(b=>b.id===current.id);if(index>0){setCurrent(queue[index-1]);setElapsed(0)}else if(audioRef.current)audioRef.current.currentTime=0};
- const playPack=async(p:PackItem)=>{try{setPlayerError('');const response=await fetch(api+'/api/library/files/pack-tracks/'+p.id,{credentials:'include'});if(!response.ok)throw Error('Unable to load pack');const result=await response.json();const beats=result.beats as BeatItem[];if(!beats.length)throw Error('Pack has no playable beats');choose(beats[0],beats)}catch(e){setPlayerError(e instanceof Error?e.message:'Unable to load pack')}};
+ const playPack=async(p:PackItem)=>{try{setPlayerError('');const response=await fetch(api+'/api/library/files/pack-tracks/'+p.id,{credentials:'include'});if(!response.ok)throw Error('Unable to load pack');const result=await response.json();const beats=result.beats as BeatItem[];if(beats[0])void loadWaveform(beats[0].audio_file_id).catch(()=>{});if(!beats.length)throw Error('Pack has no playable beats');choose(beats[0],beats)}catch(e){setPlayerError(e instanceof Error?e.message:'Unable to load pack')}};
 
  const [error,setError]=useState('');
  useEffect(()=>{
@@ -103,6 +107,8 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility}:{onUpload:(
   return ()=>controller.abort();
  },[]);
  const standaloneBeats=data.beats.filter(b=>b.library_visible!==false);
+ // Warm the first standalone waveform while the user browses the Library.
+ useEffect(()=>{const first=data.beats.find(b=>b.library_visible!==false);if(first)void loadWaveform(first.audio_file_id).catch(()=>{})},[data.beats]);
  const empty=!standaloneBeats.length&&!data.packs.length;
  return <section className="beat-profile library-page onece-v2-library"><div className="beat-profile-content"><div className="library-items">
   {loading?<p className="v2-library-status">Loading your Library…</p>:
@@ -115,7 +121,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility}:{onUpload:(
       <div className="beat-pack-caption"><span className="v2-card-name">{p.title}</span><button type="button" className="v2-card-play" aria-label={"Play "+p.title} onClick={()=>playPack(p)}><PlayIcon/></button></div>
       <p>{p.track_count} beats</p>
      </article>)}
-     {standaloneBeats.map((b,index)=><article key={'beat-'+b.id} className="v2-library-card beat-single-card">
+     {standaloneBeats.map((b,index)=><article key={'beat-'+b.id} className="v2-library-card beat-single-card" onPointerEnter={()=>{void loadWaveform(b.audio_file_id).catch(()=>{})}} onFocusCapture={()=>{void loadWaveform(b.audio_file_id).catch(()=>{})}}>
       <div className={'beat-pack-art beat-art-'+(data.packs.length+index)%3} aria-label={'Beat '+b.title}><Cover id={b.cover_file_id} title={b.title}/></div>
       <div className="beat-pack-caption"><span className="v2-card-name">{b.title}</span><button type="button" className="v2-card-play" aria-label={(current?.id===b.id&&playing?"Pause ":"Play ")+b.title} onClick={()=>choose(b,[b])}>{current?.id===b.id&&playing?<PauseIcon/>:<PlayIcon/>}</button></div>
       <p>{b.created_at?new Date(b.created_at).toLocaleDateString('en-US',{month:'short',day:'2-digit'}):'Beat'}</p>
