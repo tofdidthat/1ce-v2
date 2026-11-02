@@ -42,15 +42,20 @@ export default function LibraryUploadV2(){
   const upload=async(file,kind)=>{
    const mime=kind==='audio'?(file.name.toLowerCase().endsWith('.mp3')?'audio/mpeg':'audio/wav'):
     kind==='stems'?'application/zip':file.type;
-   const response=await fetch(api+'/api/library/files/init',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,name:file.name,contentType:mime,size:file.size})});
+   setStage('Checking existing '+kind+'…');
+   const bytes=await file.arrayBuffer();
+   const digest=await crypto.subtle.digest('SHA-256',bytes);
+   const sha256=Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('');
+   const response=await fetch(api+'/api/library/files/init',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,name:file.name,contentType:mime,size:file.size,sha256})});
    const data=await response.json().catch(()=>({}));
    if(!response.ok)throw new Error(data.error||'Unable to start upload');
+   if(data.reused)return Number(data.id);
    const put=await fetch(data.uploadUrl,{method:'PUT',headers:{'Content-Type':mime},body:file});
    if(!put.ok)throw new Error('Storage upload failed ('+put.status+'). Check R2 CORS settings.');
    const done=await fetch(api+'/api/library/files/'+data.id+'/complete',{method:'POST',credentials:'include'});
    const completion=await done.json().catch(()=>({}));
    if(!done.ok)throw new Error(completion.error||'Unable to finalize upload');
-   return Number(data.id);
+   return Number(completion.id);
   };
   try{
    let coverId=null;
