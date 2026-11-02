@@ -1,0 +1,118 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {Readable} from 'node:stream';
+import {handleProjectActions} from '../src/project-actions.js';
+
+const beat='75f80bde-7b6a-4b18-8b1f-4e52eb98f776';
+const second='5fd06bbc-c6a7-43f6-9205-bac180ba9273';
+const pack='e2c0e2e6-2e40-4cdf-a207-1ba6cc66cc2a';
+const pack2='36a40238-f0d5-47d5-8193-36b9309c53b7';
+
+function fixture({owner=1,missing=false,badCover=false,members=[]}={}){
+ const calls=[];
+ const rows={
+  beat:{id:beat,title:'Original',cover_file_id:15},
+  pack:{id:pack,title:'Original pack',cover_file_id:15}
+ };
+ const ctx={
+  calls,query:async(sql,args=[])=>{
+   calls.push({sql,args});
+   if(sql==='BEGIN'||sql==='COMMIT'||sql==='ROLLBACK')return {rowCount:0,rows:[]};
+   if(sql.includes('FOR UPDATE')){
+    const type=sql.includes('library_beats')?'beat':'pack';
+    const correct=Number(args[1])===owner&&(!missing)&&(type==='beat'?args[0]===beat:args[0]===pack||args[0]===pack2);
+    return {rowCount:correct?1:0,rows:correct?[rows[type]]:[]};
+   }
+   if(sql.startsWith("SELECT id FROM library_files"))return {rowCount:badCover?0:1,rows:badCover?[]:[{id:100}]};
+   if(sql.startsWith('SELECT id FROM library_beats'))return {rowCount:missing?0:1,rows:missing?[]:[{id:beat}]};
+   if(sql.includes('SELECT b.id FROM library_packs'))return {rowCount:missing?0:2,rows:missing?[]:[{id:beat},{id:second}]};
+   if(sql.startsWith('SELECT beat_id,position FROM library_pack_beats'))return {rowCount:members.length,rows:members};
+   if(sql.startsWith('SELECT beat_id FROM library_pack_beats'))return {rowCount:members.length,rows:members};
+   if(sql.startsWith('UPDATE library_'))return {rowCount:1,rows:[{id:args[1],title:args[0]??'Original',cover_file_id:args[0]}]};
+   return {rowCount:1,rows:[]};
+  },connect:async()=>({query:(...args)=>ctx.query(...args),release(){calls.push({sql:'RELEASE'})}})};
+ return ctx;
+}
+async function invoke(pool,method,path,body,user={id:1}){
+ const req=Readable.from(body===undefined?[]:[Buffer.from(JSON.stringify(body))]);
+ req.method=method;req.headers={};
+ const response={status:null,body:null,writeHead(status){this.status=status;},end(body){this.body=body?JSON.parse(body):null;}};
+ const handled=await handleProjectActions(req,response,'/api/library/projects/'+path,pool,async()=>user);
+ assert.equal(handled,true);
+ return response;
+}
+test('rejects anonymous and non-owner access without leaking project info',async()=>{
+ const db=fixture({owner:1,missing:true});
+ assert.equal((await invoke(db,'PATCH','beat/'+beat,{title:'X'},null)).status,401);
+ assert.equal((await invoke(db,'DELETE','beat/'+beat)).status,404);
+ assert.equal(db.calls.some(x=>x.sql.startsWith('DELETE FROM')),false);
+});
+test('rename validates input and changes only the owner project title',async()=>{
+ const db=fixture();
+ assert.equal((await invoke(db,'PATCH','beat/'+beat,{title:''})).status,400);
+ const out=await invoke(db,'PATCH','beat/'+beat,{title:'  Fresh title  '});
+ assert.equal(out.status,200);
+ const update=db.calls.find(x=>x.sql.includes('UPDATE library_beats'));
+ assert.deepEqual(update.args,['Fresh title',beat,1]);
+ assert.equal(update.sql.includes('title=$1'),true);
+ assert.equal(db.calls.at(-2).sql,'COMMIT');
+});
+test('cover change requires ready owner cover and permits explicit null',async()=>{
+ const denied=fixture({badCover:true});
+ assert.equal((await invoke(denied,'PATCH','beat/'+beat,{coverFileId:100})).status,400);
+ assert.equal(denied.calls.some(x=>x.sql.includes('UPDATE library_')),false);
+ const db=fixture();
+ assert.equal((await invoke(db,'PATCH','pack/'+pack,{coverFileId:null})).status,200);
+ const update=db.calls.find(x=>x.sql.includes('UPDATE library_packs'));
+ assert.equal(update.args[0],null);
+ assert.equal(update.sql.includes('cover_file_id=$1'),true);
+});
+test('add a beat to existing pack adds only missing references in transaction',async()=>{
+ const db=fixture();
+ const result=await invoke(db,'POST','pack/'+pack+'/add',{sourceKind:'beat',sourceId:beat});
+ assert.equal(result.status,200);
+ assert.equal(result.body.added,1);
+ assert.equal(db.calls.filter(x=>x.sql.startsWith('INSERT INTO library_pack_beats')).length,1);
+ assert.equal(db.calls.some(x=>x.sql.includes('INSERT INTO library_files')),false);
+ assert.equal(db.calls.at(-2).sql,'COMMIT');
+});
+test('pack-to-pack Add to flattens ordered beat references, never nests packs',async()=>{
+ const db=fixture({members:[{beat_id:beat,position:0}]});
+ const result=await invoke(db,'POST','pack/'+pack2+'/add',{sourceKind:'pack',sourceId:pack});
+ assert.equal(result.status,200);
+ assert.equal(result.body.added,1);
+ const inserted=db.calls.filter(x=>x.sql.startsWith('INSERT INTO library_pack_beats'));
+ assert.equal(inserted.length,1);
+ assert.equal(inserted[0].args[1],second);
+ assert.equal(db.calls.some(x=>x.sql.includes('INSERT INTO library_packs')),false);
+ assert.equal((await invoke(db,'POST','pack/'+pack+'/add',{sourceKind:'pack',sourceId:pack})).status,400);
+});
+test('new project creates a pack with references even from a single beat',async()=>{
+ const db=fixture();
+ const result=await invoke(db,'POST','packs/from',{sourceKind:'beat',sourceId:beat,title:'New project'});
+ assert.equal(result.status,201);
+ assert.equal(result.body.track_count,1);
+ assert.equal(db.calls.filter(x=>x.sql.startsWith('INSERT INTO library_packs')).length,1);
+ assert.equal(db.calls.filter(x=>x.sql.startsWith('INSERT INTO library_pack_beats')).length,1);
+ assert.equal(db.calls.filter(x=>x.sql.includes('library_files')&&x.sql.startsWith('INSERT')),0);
+});
+test('delete beat clears all public references and pack links without deleting media',async()=>{
+ const db=fixture();
+ const result=await invoke(db,'DELETE','beat/'+beat);
+ assert.equal(result.status,200);
+ assert.equal(result.body.mediaRetained,true);
+ const queries=db.calls.map(x=>x.sql);
+ for(const table of ['v2_public_projects','v2_public_saves','v2_project_access','v2_project_share_links','library_pack_beats','library_beats']){
+  assert.equal(queries.some(sql=>sql.startsWith('DELETE FROM '+table)),true,table);
+ }
+ assert.equal(queries.some(sql=>sql.startsWith('DELETE FROM library_files')),false);
+ assert.ok(queries.indexOf('DELETE FROM library_pack_beats WHERE beat_id=$1')<queries.indexOf('DELETE FROM library_beats WHERE id=$1 AND user_id=$2'));
+});
+test('delete pack removes associations but never deletes member beats or R2',async()=>{
+ const db=fixture();
+ const response=await invoke(db,'DELETE','pack/'+pack);
+ assert.equal(response.status,200);
+ assert.equal(db.calls.some(x=>x.sql.startsWith('DELETE FROM library_beats')),false);
+ assert.equal(db.calls.some(x=>x.sql.startsWith('DELETE FROM library_files')),false);
+ assert.equal(db.calls.some(x=>x.sql.startsWith('DELETE FROM library_packs')),true);
+});
