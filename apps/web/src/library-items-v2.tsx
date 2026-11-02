@@ -67,7 +67,7 @@ function useWaveform(fileId:number|null){
  },[fileId]);
  return bars;
 }
-export default function LibraryItemsV2({onUpload,onPlayerVisibility}:{onUpload:()=>void;onPlayerVisibility?:(visible:boolean)=>void}){
+export default function LibraryItemsV2({onUpload,onPlayerVisibility,userId}:{onUpload:()=>void;onPlayerVisibility?:(visible:boolean)=>void;userId?:number}){
  const [data,setData]=useState<LibraryData>({beats:[],packs:[]});
  const [loading,setLoading]=useState(true);
  const [current,setCurrent]=useState<BeatItem|null>(null);
@@ -111,18 +111,20 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility}:{onUpload:(
    setPublished(prev=>{const next=new Set(prev);if(isPublished)next.delete(key);else next.add(key);return next});
   }catch(error){setActionError(error instanceof Error?error.message:'Unable to update publication')}
  };
- useEffect(()=>{if(!api)return;fetch(api+'/api/public/mine',{credentials:'include'}).then(r=>r.ok?r.json():Promise.reject()).then(data=>setPublished(new Set((data.published||[]).map((item:{kind:string;id:string})=>item.kind+':'+item.id)))).catch(()=>{})},[]);
- const [savedBeatIds,setSavedBeatIds]=useState<Set<string>>(()=>{
-  try{return new Set<string>(JSON.parse(localStorage.getItem('onece-v2-saved-beats')||'[]'))}
-  catch{return new Set<string>()}
- });
- const toggleSavedBeat=(id:string)=>{
-  setSavedBeatIds(previous=>{
-   const next=new Set(previous);
-   if(next.has(id))next.delete(id);else next.add(id);
-   try{localStorage.setItem('onece-v2-saved-beats',JSON.stringify([...next]))}catch{}
-   return next;
-  });
+ useEffect(()=>{if(!api)return;fetch(api+'/api/public/mine',{credentials:'include'}).then(r=>r.ok?r.json():Promise.reject()).then(data=>{setPublished(new Set((data.published||[]).map((item:{kind:string;id:string})=>item.kind+':'+item.id)));setSavedBeatIds(new Set((data.saved||[]).filter((item:{owner_id:number;kind:string})=>item.owner_id===userId&&item.kind==='beat').map((item:{id:string})=>item.id)));setSavedPackIds(new Set((data.saved||[]).filter((item:{owner_id:number;kind:string})=>item.owner_id===userId&&item.kind==='pack').map((item:{id:string})=>item.id)))}).catch(()=>{})},[]);
+ const [savedBeatIds,setSavedBeatIds]=useState<Set<string>>(new Set());
+ const [savedPackIds,setSavedPackIds]=useState<Set<string>>(new Set());
+ const toggleSavedProject=async(kind:'beat'|'pack',id:string)=>{
+  if(!userId){setActionError('Sign in to save public projects');return;}
+  if(!published.has(publicationKey(kind,id))){setActionError('Publish this project before saving it publicly');return;}
+  const already=(kind==='beat'?savedBeatIds:savedPackIds).has(id);
+  setActionError('');
+  try{
+   const response=await fetch(api+'/api/public/save/'+userId+'/'+kind+'/'+id,{method:already?'DELETE':'POST',credentials:'include'});
+   if(!response.ok)throw Error((await response.json().catch(()=>({}))).error||'Unable to save');
+   const setter=kind==='beat'?setSavedBeatIds:setSavedPackIds;
+   setter(previous=>{const next=new Set(previous);if(already)next.delete(id);else next.add(id);return next});
+  }catch(e){setActionError(e instanceof Error?e.message:'Unable to save')}
  };
  const openPack=async(pack:PackItem)=>{
   setOpenedPack(pack);setOpenedTracks([]);setPackError('');setPackLoading(true);
@@ -223,7 +225,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility}:{onUpload:(
   <button type="button" role="menuitem" className="v2-context-action" onClick={()=>void togglePublish('pack',contextPack.pack.id)}>{published.has(publicationKey('pack',contextPack.pack.id))?<EyeOff size={17}/>:<Eye size={17}/>}<span>{published.has(publicationKey('pack',contextPack.pack.id))?'Unpublish':'Publish'}</span></button>
   <div className="v2-context-separator"/>
   <button type="button" role="menuitem" className="v2-context-action" onClick={()=>{void (async()=>{const pack=contextPack.pack;setContextPack(null);try{const response=await fetch(api+'/api/library/files/pack-tracks/'+pack.id,{credentials:'include'});if(!response.ok)throw Error('Unable to load pack tracks');const result=await response.json();const tracks=(result.beats as BeatItem[]).map(beat=>({...beat,cover_file_id:beat.cover_file_id??pack.cover_file_id}));if(!tracks.length)return;if(!current)choose(tracks[0],tracks,pack.id);else setQueue(previous=>[...previous,...tracks])}catch(error){setPlayerError(error instanceof Error?error.message:'Unable to add pack to queue')}})()}}><ListPlus size={17}/><span>Add to queue</span></button>
-  <button type="button" role="menuitem" className="v2-context-action" disabled title="Saving packs requires v2 API integration"><Bookmark size={17}/><span>Save</span></button>
+  <button type="button" role="menuitem" className="v2-context-action" onClick={()=>{const id=contextPack.pack.id;setContextPack(null);void toggleSavedProject('pack',id)}}><Bookmark size={17} fill={savedPackIds.has(contextPack.pack.id)?'currentColor':'none'}/><span>{savedPackIds.has(contextPack.pack.id)?'Unsave':'Save'}</span></button>
   <button type="button" role="menuitem" className="v2-context-action" disabled title="Adding packs to collections requires v2 API integration"><FolderPlus size={17}/><span>Add to...</span><ChevronRight className="v2-context-chevron" size={15}/></button>
   <div className="v2-context-separator"/>
   <button type="button" role="menuitem" className="v2-context-action" disabled title="Renaming packs requires v2 API integration"><Pencil size={17}/><span>Rename</span></button>
@@ -236,7 +238,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility}:{onUpload:(
   <button type="button" role="menuitem" className="v2-context-action" onClick={()=>void togglePublish('beat',contextBeat.beat.id)}>{published.has(publicationKey('beat',contextBeat.beat.id))?<EyeOff size={17}/>:<Eye size={17}/>}<span>{published.has(publicationKey('beat',contextBeat.beat.id))?'Unpublish':'Publish'}</span></button>
   <div className="v2-context-separator"/>
   <button type="button" role="menuitem" className="v2-context-action" onClick={()=>addToQueue(contextBeat.beat)}><ListPlus size={17}/><span>Add to queue</span></button>
-  <button type="button" role="menuitem" className="v2-context-action" onClick={()=>{toggleSavedBeat(contextBeat.beat.id);setContextBeat(null)}}><Bookmark size={17} fill={savedBeatIds.has(contextBeat.beat.id)?'currentColor':'none'}/><span>{savedBeatIds.has(contextBeat.beat.id)?'Unsave':'Save'}</span></button>
+  <button type="button" role="menuitem" className="v2-context-action" onClick={()=>{void toggleSavedProject('beat',contextBeat.beat.id);setContextBeat(null)}}><Bookmark size={17} fill={savedBeatIds.has(contextBeat.beat.id)?'currentColor':'none'}/><span>{savedBeatIds.has(contextBeat.beat.id)?'Unsave':'Save'}</span></button>
   <button type="button" role="menuitem" className="v2-context-action" disabled title="Adding to packs will be available after the v2 API integration"><FolderPlus size={17}/><span>Add to...</span><ChevronRight className="v2-context-chevron" size={15}/></button>
   <div className="v2-context-separator"/>
   <button type="button" role="menuitem" className="v2-context-action" disabled title="Rename will be available after the v2 API integration"><Pencil size={17}/><span>Rename</span></button>
@@ -248,7 +250,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility}:{onUpload:(
  </div>}
  {openedBeat&&<div className="beat-player-overlay v2-beat-overlay" role="dialog" aria-modal="true" aria-label={openedBeat.title} onClick={()=>setOpenedBeat(null)}>
   <div className="beat-player-widget v2-beat-widget" onClick={e=>e.stopPropagation()}>
-   <button type="button" className={'v2-beat-save'+(savedBeatIds.has(openedBeat.id)?' is-saved':'')} aria-label={savedBeatIds.has(openedBeat.id)?'Unsave beat':'Save beat'} aria-pressed={savedBeatIds.has(openedBeat.id)} onClick={()=>toggleSavedBeat(openedBeat.id)}><Bookmark size={18} fill={savedBeatIds.has(openedBeat.id)?'currentColor':'none'}/></button>
+   <button type="button" className={'v2-beat-save'+(savedBeatIds.has(openedBeat.id)?' is-saved':'')} aria-label={savedBeatIds.has(openedBeat.id)?'Unsave beat':'Save beat'} aria-pressed={savedBeatIds.has(openedBeat.id)} onClick={()=>void toggleSavedProject('beat',openedBeat.id)}><Bookmark size={18} fill={savedBeatIds.has(openedBeat.id)?'currentColor':'none'}/></button>
    <button type="button" className="beat-player-close v2-beat-close" aria-label="Close player" onClick={()=>setOpenedBeat(null)}><X size={16} strokeWidth={1.8}/></button>
    <div className="card v2-music-card">
     <div className={'mask'+(playing&&current?.id===openedBeat.id?' is-playing':'')}><div className="spin"><Cover id={openedBeat.cover_file_id} title={openedBeat.title}/></div><div className="hole"><div className="hole-inner"/></div></div>
