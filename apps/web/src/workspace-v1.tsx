@@ -7,6 +7,8 @@ import './workspace-v1.css';
 import LibraryUploadV2 from './library-upload-v1';
 import LibraryItemsV2 from './library-items-v2';
 import PublicProfileV2 from './public-profile-v2';
+import AccountSettingsV2 from './account-settings-v2';
+import {profilePictureV2} from './profile-picture-v2';
 function HomeMark() {
   // Same three-stroke mark shown in the empty Library state.
   return <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 4v16M9 4v16M14 4l4 16"/></svg>
@@ -157,6 +159,7 @@ function CompactWorkspaceNav({ view, disabled, onNavigate }) {
 
 
 function HeaderV2({view,user,onNavigate}){
+ const picture=profilePictureV2(user);
  return <>
  <style>{`.onece-workspace-header {
   position: fixed;
@@ -234,7 +237,7 @@ function HeaderV2({view,user,onNavigate}){
  <div className="onece-workspace-brand"><img src="/1ce-logo.png" alt="1CE"/></div>
  <div className="onece-workspace-actions">
  <button type="button" className="library-settings library-profile-trigger" title={view==='profile'?'Edit Profile':'Public Profile'} aria-label={view==='profile'?'Edit Profile':'Public Profile'} onClick={()=>onNavigate(view==='profile'?'edit-profile':'profile')}>
- {view==='profile' ? <EditProfileMark/> : user?.customPicture||user?.picture ? <img src={user.customPicture||user.picture} alt="" referrerPolicy="no-referrer"/> : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="7" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2Z"/></svg>}
+ {view==='profile' ? <EditProfileMark/> : picture ? <img src={picture} alt="" referrerPolicy="no-referrer"/> : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="7" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2Z"/></svg>}
  </button>
  <CompactWorkspaceNav view={view} disabled={false} onNavigate={onNavigate}/></div></header></>;
 }
@@ -249,6 +252,8 @@ function EmptyLibrary({onUpload}){
 }
 export default function WorkspaceV2({user}){
  const navigate=useNavigate();const location=useLocation();
+ const [account,setAccount]=useState(user);
+ const logout=async()=>{const api=import.meta.env.VITE_API_URL;if(!api)throw Error('API is not configured');const response=await fetch(api+'/auth/logout',{method:'POST',credentials:'include'});if(!response.ok)throw Error('Could not log out');window.location.assign('/login');};
  const [playerVisible,setPlayerVisible]=useState(false);
  const [playRequest,setPlayRequest]=useState<{kind:'beat'|'pack';id:string;nonce:number}|null>(null);
  const view=location.pathname==='/app/library'?'library':location.pathname.endsWith('/discover')?'discover':location.pathname.endsWith('/upload')?'upload':location.pathname.endsWith('/settings')?'account':location.pathname.endsWith('/profile/edit')?'edit-profile':'profile';
@@ -256,12 +261,13 @@ export default function WorkspaceV2({user}){
  useEffect(()=>{document.title=({library:'Library',discover:'Discover',upload:'Upload',account:'Settings',profile:'Profile','edit-profile':'Edit Profile'}[view]||'Library')+' — 1CE'},[view]);
  return <div className={'onece-workspace-shell'+(view==='library'?' onece-library-view':'')}>
  <style>{`.onece-library-inactive{position:static!important;padding:0!important;margin:0!important;min-height:0!important;height:0!important;overflow:visible!important}.onece-library-inactive>.beat-profile-content{display:none!important}`}</style>
- <HeaderV2 view={view} user={user} onNavigate={onNavigate}/>
+ <HeaderV2 view={view} user={account} onNavigate={onNavigate}/>
  <main className="onece-v2-workspace-main">
  <LibraryItemsV2 active={view==='library'} playRequest={playRequest} userId={user?.id} onUpload={()=>onNavigate('upload')} onPlayerVisibility={setPlayerVisible}/>
  {view==='library'?null:
  view==='upload'?<LibraryUploadV2/>:
- view==='profile'?<PublicProfileV2 user={user} onPlayProject={(kind,id)=>setPlayRequest({kind,id,nonce:Date.now()})} onSettings={()=>onNavigate('edit-profile')}/>: view==='edit-profile'?<section className="onece-workspace-placeholder"><h1>Edit Profile</h1><p>Profile editing is not yet available in v2.</p></section>:
+ view==='account'?<AccountSettingsV2 user={account} onUserChange={setAccount} onViewProfile={()=>onNavigate('profile')} onLogout={logout}/>:
+ view==='profile'?<PublicProfileV2 user={account} onPlayProject={(kind,id)=>setPlayRequest({kind,id,nonce:Date.now()})} onSettings={()=>onNavigate('edit-profile')}/>: view==='edit-profile'?<section className="onece-workspace-placeholder"><h1>Edit Profile</h1><p>Profile editing is not yet available in v2.</p></section>:
  <section className="onece-workspace-placeholder"><h1>{view==='account'?'Settings':view==='profile'?'Public Profile':'Discover'}</h1><p>{view==='profile'?'Public profile publishing is not yet enabled in v2.':view==='account'?'Account settings are not yet available in v2.':'Discover is not yet available in v2.'}</p></section>}
  </main>
  {view==='library'&&!playerVisible&&<div className="onece-player-dock" aria-label="Add audio"><button type="button" className="onece-global-player" style={{display:'flex',justifyContent:'center',gap:10,width:'fit-content',maxWidth:'100%',marginInline:'auto',padding:'7px 26px',color:'inherit',font:'inherit',fontSize:13,cursor:'pointer'}} onClick={()=>onNavigate('upload')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>Add file</span></button></div>}

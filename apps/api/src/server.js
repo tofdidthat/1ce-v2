@@ -4,6 +4,7 @@ import { promisify } from 'node:util';
 import pg from 'pg';
 import { handleLibraryFiles } from './library-files.js';
 import { handlePublicProfiles } from './public-profiles.js';
+import { handleProfileIdentity } from './profile-identity.js';
 const scrypt=promisify(scryptCallback);
 const pool=new pg.Pool({connectionString:process.env.DATABASE_URL,ssl:process.env.DATABASE_SSL==='true'?{rejectUnauthorized:true}:undefined});
 const origin=process.env.WEB_ORIGIN || 'http://localhost:5173';
@@ -15,7 +16,7 @@ const attempts=new Map();
 function rateLimited(ip){const now=Date.now();const a=(attempts.get(ip)||[]).filter(t=>now-t<15*60*1000);a.push(now);attempts.set(ip,a);if(attempts.size>10000)for(const [k,v] of attempts)if(v.every(t=>now-t>15*60*1000))attempts.delete(k);return a.length>20;}
 async function verify(password,stored){const p=(stored||'').split('$');if(p.length!==3||p[0]!=='scrypt'||!/^[a-f0-9]{32}$/i.test(p[1])||!/^[a-f0-9]{128}$/i.test(p[2]))return false;const expected=Buffer.from(p[2],'hex');const derived=await scrypt(password,Buffer.from(p[1],'hex'),expected.length,{N:16384,r:8,p:1});return timingSafeEqual(derived,expected);}
 function cookie(token,maxAge){return cookieName+'='+token+'; HttpOnly; Secure; SameSite=None; Path=/; Max-Age='+maxAge;}
-async function currentUser(req){const token=parseCookies(req.headers.cookie)[cookieName];if(!token||!/^[a-f0-9]{64}$/.test(token))return null;const q=await pool.query('SELECT u.id,u.email,u.name,u.picture FROM account_sessions s JOIN account_users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>now()',[hash(token)]);return q.rows[0]||null;}
+async function currentUser(req){const token=parseCookies(req.headers.cookie)[cookieName];if(!token||!/^[a-f0-9]{64}$/.test(token))return null;const q=await pool.query('SELECT u.id,u.email,u.name,u.picture,u.username,(u.avatar_key IS NOT NULL) AS has_avatar,u.avatar_updated_at FROM account_sessions s JOIN account_users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>now()',[hash(token)]);return q.rows[0]||null;}
 
 const googleStateCookie='onece_v2_google_state';
 const shaBase64=s=>createHash('sha256').update(s).digest('base64url');
@@ -64,7 +65,7 @@ const server=createServer(async(req,res)=>{
  const pathname=new URL(req.url,'http://localhost').pathname;
  const allowed=req.headers.origin===origin;
  if(allowed){res.setHeader('Access-Control-Allow-Origin',origin);res.setHeader('Access-Control-Allow-Credentials','true');res.setHeader('Vary','Origin');}
- if(req.method==='OPTIONS'){res.writeHead(allowed?204:403,{'Access-Control-Allow-Methods':'GET,POST,DELETE,OPTIONS','Access-Control-Allow-Headers':'Content-Type'});return res.end();}
+ if(req.method==='OPTIONS'){res.writeHead(allowed?204:403,{'Access-Control-Allow-Methods':'GET,POST,PATCH,DELETE,OPTIONS','Access-Control-Allow-Headers':'Content-Type'});return res.end();}
  if(pathname==='/health'&&req.method==='GET')return json(res,200,{ok:true,service:'1ce-v2-api'});
  if(pathname==='/health/db'&&req.method==='GET'){
   try{await pool.query('SELECT 1');return json(res,200,{ok:true,database:'connected'});}
@@ -73,6 +74,7 @@ const server=createServer(async(req,res)=>{
  if(!allowed && req.headers.origin)return json(res,403,{error:'Origin not allowed'});
  try{
 
+  if(await handleProfileIdentity(req,res,pathname,pool,currentUser))return;
   if(await handlePublicProfiles(req,res,pathname,pool,currentUser))return;
   if(await handleLibraryFiles(req,res,pathname,pool,currentUser))return;
 

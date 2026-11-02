@@ -55,10 +55,19 @@ export async function handlePublicProfiles(req,res,pathname,pool,currentUser){
   for await(const chunk of obj.Body)res.write(chunk);
   res.end();return true;
  }
- if(parts.length===4&&parts[2]==='profile'&&/^\d+$/.test(parts[3])&&req.method==='GET'){
-  const profileId=parts[3];
-  const [profile,catalog,saves]=await Promise.all([
-   pool.query('SELECT id,name,picture,custom_picture FROM account_users WHERE id=$1',[profileId]),
+ if(parts.length===4&&parts[2]==='profile'&&req.method==='GET'){
+  const slug=parts[3].toLowerCase();
+  const byId=/^[0-9]+$/.test(slug);
+  if(!byId&&!/^[a-z0-9][a-z0-9._]{1,22}[a-z0-9]$/.test(slug)){send(res,404,{error:'Profile not found'});return true;}
+  const numericId=Number(slug);
+  if(byId&&(!Number.isSafeInteger(numericId)||numericId>2147483647)){send(res,404,{error:'Profile not found'});return true;}
+  const profile=await pool.query(
+   'SELECT id,name,picture,username,(avatar_key IS NOT NULL) AS has_avatar,avatar_updated_at FROM account_users WHERE '+(byId?'id=$1':'username=$1'),
+   [byId?numericId:slug]
+  );
+  if(!profile.rowCount){send(res,404,{error:'Profile not found'});return true;}
+  const profileId=profile.rows[0].id;
+  const [catalog,saves]=await Promise.all([
    pool.query(selectProjects+' AND pub.user_id=$1 ORDER BY pub.published_at DESC LIMIT 200',[profileId]),
    pool.query(`SELECT s.kind,s.project_id AS id,s.owner_id,COALESCE(b.title,p.title) AS title,COALESCE(b.cover_file_id,p.cover_file_id) AS cover_file_id,
     CASE WHEN s.kind='pack' THEN (SELECT count(*)::int FROM library_pack_beats pb WHERE pb.pack_id=p.id) ELSE NULL END AS track_count,s.saved_at AS published_at
@@ -70,7 +79,6 @@ export async function handlePublicProfiles(req,res,pathname,pool,currentUser){
     OR EXISTS(SELECT 1 FROM v2_project_access a WHERE a.owner_id=s.owner_id AND a.viewer_id=$2 AND a.kind=s.kind AND a.project_id=s.project_id))
     ORDER BY s.saved_at DESC LIMIT 200`,[profileId,user?.id||null])
   ]);
-  if(!profile.rowCount){send(res,404,{error:'Profile not found'});return true;}
   send(res,200,{profile:profile.rows[0],catalog:catalog.rows,saves:saves.rows});return true;
  }
  if(!user){send(res,401,{error:'Not authenticated'});return true;}
