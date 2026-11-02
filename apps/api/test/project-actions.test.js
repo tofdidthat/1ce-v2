@@ -94,7 +94,7 @@ test('new project creates a pack with references even from a single beat',async(
  assert.equal(result.body.track_count,1);
  assert.equal(db.calls.filter(x=>x.sql.startsWith('INSERT INTO library_packs')).length,1);
  assert.equal(db.calls.filter(x=>x.sql.startsWith('INSERT INTO library_pack_beats')).length,1);
- assert.equal(db.calls.filter(x=>x.sql.includes('library_files')&&x.sql.startsWith('INSERT')),0);
+ assert.equal(db.calls.filter(x=>x.sql.includes('library_files')&&x.sql.startsWith('INSERT')).length,0);
 });
 test('delete beat clears all public references and pack links without deleting media',async()=>{
  const db=fixture();
