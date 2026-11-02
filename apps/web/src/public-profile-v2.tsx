@@ -68,7 +68,7 @@ export default function PublicProfileV2({user,onSettings,profileId}:{user:any;on
    <div className="onece-profile-name">
     <h1>{handle?'@'+handle.replace(/^@/,''):name}</h1>
     <div className="onece-profile-actions">
-     <button type="button" onClick={()=>{if(navigator.share)void navigator.share({title:name,url:window.location.href}).catch(()=>{});else if(navigator.clipboard)void navigator.clipboard.writeText(window.location.href)}} aria-label="Share profile" title="Share profile"><Share2 size={15}/></button>
+     <button type="button" onClick={()=>{if(navigator.share)void navigator.share({title:name,url:window.location.origin+'/u/'+targetId}).catch(()=>{});else if(navigator.clipboard)void navigator.clipboard.writeText(window.location.origin+'/u/'+targetId)}} aria-label="Share profile" title="Share profile"><Share2 size={15}/></button>
     </div>
    </div>
    {handle&&name.toLowerCase()!==handle.toLowerCase()&&<p className="onece-profile-display-name">{name}</p>}
