@@ -1,6 +1,6 @@
 # Protocol for complete change batches — read before changing 1CE v2
 
-> **START HERE — AI/engineering handoff:** [Phase C state, module map, release protocol, open decisions and acceptance matrix](phase-c-handoff.md). This file is the architecture contract; the linked handoff is its up-to-date execution guide. **Current priority: finish Phase C before undertaking D/E.** No agent should need previous ChatGPT conversation or memories; verify current GitHub main/PRs and production status rather than assuming a dated snapshot is live.
+> **START HERE — SINGLE SOURCE OF TRUTH:** This document is both the permanent architecture guide AND the full Phase C AI handoff. Read the **"Phase C — zero-memory AI continuation guide"** section below for the current code/module map, implementation ledger, product decisions and exit checklist. **Complete Phase C before D/E.** Verify GitHub and deployments; no prior chat history should be required.
 
 > **Mandatory working agreement (2026-11-02).** Whenever the user requests a complete feature, a refactor, several changes, or a production correction, **first read this entire `docs/architecture.md` and the relevant behavior/contract documentation** (notably `docs/refactor-phase-a-inventory.md`, `docs/shared-playback-v2.md`, `docs/reactive-refresh-v2.md`, and related migration/rollout notes). Compare the guide against the live code, the current branch, tests and deployment state; update this document when a decision or phase status changes **before implementing the feature**. Do not rely on historical chat descriptions or stale snapshots to declare work complete.
 
@@ -11,7 +11,7 @@
 3. **Implement and verify:** batch commits rather than deploying at every intermediate change; use GitHub Actions for API tests, frontend tests, TypeScript/build and regression checks. Test both ownership and cross-user access, missing optional cover/stems, navigation and persistent-player preservation. Be honest when live end-to-end testing cannot be done.
 4. **Release gate:** review migration and runtime dependencies, confirm CI green, inspect diff and verify target branch/commit. **Do not merge or deploy unless the user authorizes this batch's publication**, or explicitly requests immediate release. On approval, deploy API/migrations in safe order then frontend, check Vercel READY/alias, Railway health and database, and report incomplete verification.
 5. **Economize Vercel:** automatic previews for v2 are disabled to conserve Hobby deployment quota; **do not re-enable without permission**. Prefer CI-only validation on feature branches, no manual deployments for each commit and no duplicate retry loops. One deployment for a complete reviewed batch; handle build quota limits transparently.
-6. **Documentation before code, then ledger:** maintain an accurate implemented vs validated vs pending phase ledger below, and update acceptance scenarios, docs/tests, or explicit decisions within the same PR. Before every future complete request, check this protocol **and behavioral contracts** again.
+6. **Documentation before code, then ledger:** maintain an accurate implemented vs validated vs pending phase ledger below, and update acceptance scenarios, docs/tests, or explicit decisions within the same PR. **Use this single `docs/architecture.md` as the handoff and progress record, not a separate phase-specific guide.** Before every future complete request, check this protocol **and behavioral contracts** again.
 
 **Shared project actions — mandatory single-component contract:** The right-click/ellipsis project context menu is ONE shared React component used by Library and Profile (owner Catalog and Saves), with identical owner actions, labels, disabled states, confirmation dialogs and API semantics. Neither screen may maintain a separate copied menu implementation or placeholder action buttons. Only view-specific callbacks (publish/save/share/queue) may be supplied as props; all permanent project mutations use the same `ProjectActionDialogV2` and server routes. Any future menu change MUST be tested in Library and Profile, including cross-account read-only permissions, without introducing a duplicate menu. A fix that works only in Library is incomplete.
 
@@ -20,6 +20,80 @@
 **PR #5 Phase C consolidation (merged; dated 2026-11-02):** First document and implement the lower-risk shared UI foundations: one `ProjectCoverV2` (canonical authorized `/api/public/cover/:ownerId/:fileId`, optional-cover fallback, cancellation and object-URL cleanup), one `ProjectCardV2` (Library/owned Catalog/Saves presentation variants, shared play affordance and context-event contract) and a small shared typed API helper for save/publish/share mutation calls. Preserve visual variants and existing player callbacks. These steps are NOT a claim that all Phase C/D/E work is complete; global player ownership, centralized query/cache state, legacy media route removal, and other consumers remain later work. Validate the three views, owner/non-owner permissions, missing covers, pack order, playback and refreshing in one CI batch before merging.
 
 **Binding boundaries:** do not change/download stems or unrelated features without request; never change v1 or its database/bucket. Published and explicitly shared permissions remain server-authoritative; saving is not an authorization grant. Preserve a single active player and original project identities. No destructive action without explicit user confirmation in the interface and safe server checks.
+
+
+## Phase C — zero-memory AI continuation guide (single source of truth)
+
+> **Priority and scope:** Complete Phase C (shared UI and project-data architecture) before the Phase D global-player extraction or Phase E cleanup. This section replaces the temporary handoff file; **do not create a separate Phase C handoff Markdown**. An AI inheriting this project must be able to resume using this one guide plus the repository without prior conversations, saved memory or credentials. Dates below are snapshots, not claims about the current deployment.
+
+### Current status and verification snapshot
+
+1. **Repository:** `tofdidthat/1ce-v2`; production deploy branch `main`. Frontend: React/TypeScript/Vite in `apps/web` (Vercel project `1ce-v2`). Backend: Node in `apps/api` (Railway service `1ce-v2`), its own PostgreSQL, private v2 Cloudflare R2. **Never touch v1** (`1ce`, `1ce-server`, v1 DB/bucket).
+2. **Last confirmed integrated:** PR #1 account identity; #2 authorized shared playback; #3 refresh without F5; #4 permanent owner project actions; #5 shared menu/card/cover/request helper; #6 Add-to chevron layout. PR #6 merged at `8663903a4e256c47e3c185722c5491183b79a747`; Vercel build observed READY, Railway build was in progress at last observation (check again). No future AI should treat old progress tables as more authoritative than Git.
+3. **Current working branch:** `refactor/v2-phase-c-data-and-handoff` (initial work documented here). Goal: owner-scoped **single source of truth for project saved/published flags**, deduplicated refresh/mutations across Library/Profile, then remaining Phase C items. Work in batches and PRs, no deploy/merge without explicit approval. Vercel preview builds intentionally disabled to save quota. GitHub Actions performs API tests, Node web tests, `tsc -b && vite build`.
+4. **Implemented in PR #7 branch (NOT on main):** `apps/web/src/project-flags-v2.tsx` adds a single `ProjectFlagsProviderV2` above mounted Library/Profile, fetching `GET /api/public/mine` once per refresh and providing shared saved/published state, scope/focus revalidation and mutation callbacks. `apps/web/src/project-identity-v2.ts` holds typed identity and pure normalization; `project-requests-v2.ts` now uses the canonical kind. Library and Profile no longer independently fetch `/api/public/mine` or keep flag Sets. `apps/web/test/project-data-v2.test.mjs` and the shared-component contract tests cover the normalization/isolation and same-provider wiring. This is **C2 code implemented, not merged, not manually E2E validated**. Profile and Library still fetch separate view metadata intentionally; the player is still Library-owned.
+ `library-items-v2.tsx` and `public-profile-v2.tsx` independently `GET /api/public/mine`, hold separate sets and mutation handlers. `ProjectCardV2`, `ProjectCoverV2`, `ProjectContextMenuV2`, `ProjectActionDialogV2` and `project-requests-v2.ts` already exist. `data-refresh-v2.ts` delivers **invalidation only**, not canonical state. `WorkspaceV2` in `workspace-v1.tsx` mounts Library invisibly to preserve the player. Do NOT move/unmount that player during Phase C.
+5. **Check status before declaring complete:** CI green at exact PR head; run manual browser tests owner / different logged-in user / anonymous; validate public/private cover/audio through authorized routes; Vercel and Railway health only if a release is approved. An automated source-code regex test is NOT a visual or real-DB E2E test.
+
+### Component and service ownership
+
+| Responsibility | Canonical code today | Phase C work |
+| --- | --- | --- |
+| Navigation/container | `apps/web/src/workspace-v1.tsx` `WorkspaceV2` | Host one viewer-scoped project-data provider above Library+Profile; preserve mounted player |
+| Library view | `apps/web/src/library-items-v2.tsx` | Consume shared flags, queries/selectors, mutation results; keep player controls/view layout |
+| Profile Catalog/Saves | `apps/web/src/public-profile-v2.tsx` | Consume same viewer flags and normalized projects; keep profile layout and owner/other-user permissions |
+| Project card | `project-card-v2.tsx` | Already shared; visual variants library/profile |
+| Cover | `project-cover-v2.tsx` | Already shared `GET /api/public/cover/:ownerId/:fileId` with session; extend only after security review |
+| Right-click actions | `project-context-menu-v2.tsx` | Already shared. Add-to chevron alignment fixed in PR #6 |
+| Mutating dialog | `project-action-dialog-v2.tsx` | Already shared; uses `/api/library/projects/*`; backend remains authoritative |
+| Save/publish/share HTTP | `project-requests-v2.ts` | Already shared transport. Use common viewer state mutation layer to avoid duplicate local sets |
+| Refresh transport | `data-refresh-v2.ts` | Emits scoped local/cross-tab invalidations; focus events; no auth or authoritative cache |
+| Playback manifests | `apps/api/src/project-media.js`, `/api/public/play/:owner/:kind/:id` | Keep untouched for C; Phase D will move controller |
+| Legacy private/library API | `apps/api/src/library-files.js` | Keep backwards-compatible; canonical API consolidation is B/E, not C |
+
+### Frontend data contract (Phase C target)
+
+- One **viewer-scoped** project flags store or context, above Library and Profile, keyed to the authenticated viewer ID. It fetches `GET /api/public/mine` **once per refresh**, holds saved keys `ownerId:kind:projectId` and own publication keys `kind:projectId`, and exposes `isSaved`, `isPublished` and shared mutation methods.
+- On a successful Save/Unsave or Publish/Unpublish: update the viewer store once, emit the appropriate scoped `notifyV2DataChanged`, then revalidate from the server. On error keep the previous state and display feedback. Cross-tab/focus signals trigger server refetch; no polling. Abort/ignore stale requests on viewer changes or unmount. Never share flags across accounts.
+- Profile Catalog/Saves lists and Library items are **different server resources**; they may keep view-specific metadata while consuming the *same* flag state. Do not conflate a project appearing in Catalog with being saved. All list changes must revalidate via existing scopes. Optimistic removal from a list is a presentation detail only.
+- Do **not** introduce a parallel React Query/Zustand store or global persistence solely for this increment. Avoid exposing R2 keys or credentials. If a shared query cache is introduced later, document invalidation, TTL, ownership, permission revocation, and which view owns the request.
+- `ProjectCoverV2` owns image fetch/abort/blob revocation; `ProjectCardV2` owns card play affordance; the view supplies the playback callback and on-context-menu callback. The player itself remains mounted in Library temporarily.
+
+### Phase C ordered checklist and exit gates
+
+Status legend: **done/merged**, **working**, **pending**, **blocked by product decision**.
+
+| Item | Status at handoff | Definition of done |
+| --- | --- | --- |
+| C1. Reusable menu/card/cover/dialog/HTTP helpers | **Done/merged (#4–#6)** | Same actions/visuals in Library and Profile; correct ownership |
+| C2. Shared viewer saved/published flags and mutation state | **Implemented in draft PR #7; automated build/tests passed, manual verification pending** | One fetch/cache per signed-in Workspace, one mutation path, no independent local flags; cross-tab and focus tests |
+| C3. Typed project identities/read selectors | **Partially implemented (identity/flag normalization in draft PR #7; list read selectors pending)** | Common typed `ownerId/kind/projectId`, stable normalization for Library/Catalog/Saves, no project/media copies |
+| C4. Loading/error/revalidation behavior | **Pending** | No F5, safe abort on navigation/viewer switch, no stale privilege leakage, no player disruption |
+| C5. Cross-view acceptance and regression | **Pending** | Browser owner/non-owner/anonymous matrix; save/unpublish/rename/delete/cover/add-to on both views; pack order, null cover, queue/playing stable |
+| C6. Phase C exit/release sign-off | **Pending** | User approves user-visible choices, tests green, manual matrix complete; ledger accurately updated; user authorizes merge/deploy |
+
+**Do not claim Phase C complete because the shared card and menu exist.** C2–C5 still require implementation and live/manual verification. Phase B backend resolver consolidation, Phase D player extraction, Phase E cleanup stay separate. When adding work, mark exactly what is integrated vs branch-only vs tested vs still unverified.
+
+### Product decisions (confirmed vs pending)
+
+- **Saved item publication/access:** when someone unpublishes a project previously saved by another person, should it immediately disappear from that person's Saves unless they have an explicit share grant? Security default is **yes**; never retain private playback via stale client state. Check actual server semantics and discuss the UX.
+- **CONFIRMED 2026-11-02 — Unsave in Saves tab:** when the user clicks **Unsave**, the corresponding card must disappear **immediately after the server confirms success**, without F5 or switching tabs. On request failure, it stays visible and the error is surfaced. Apply consistently to own Saves and shared components. The decision is final unless the user explicitly changes it.
+- **Playback after metadata edits/deletions:** preserve audio uninterrupted for rename/cover; deletion must stop or remove the affected owned beat; details and cross-user revocation require review before D.
+- Ask **one focused question at a time**, tied to a visible UI behavior; record the user answer **in this architecture guide**, with date and implementation/testing status, before implementation. Pending questions are not implementation approval.
+
+### How to resume independently, without chat history
+
+1. **Verify actual GitHub state:** repository `tofdidthat/1ce-v2`, current `main` and open PR heads, checks, deployments. Do not assume historical branch/PR status remains true. Follow the batch/release protocol at the start of this guide.
+2. **Inspect source and backend shapes:** `GET /api/public/mine`, `/api/library/files/items`, `GET /api/public/profile/:identifier`, Save/Publish/Share mutations, media and ownership checks, and all UI consumers before adding state/routes.
+3. **Implement one shared responsibility:** reuse existing `ProjectCardV2`, `ProjectCoverV2`, `ProjectContextMenuV2`, `ProjectActionDialogV2`, and `ProjectFlagsProviderV2` (branch only until PR #7 merges); keep list/presentation concerns inside appropriate views. Do not clone projects or introduce parallel caches.
+4. **Check regression gates:** GitHub Actions runs `npm test --prefix apps/api`, `node --experimental-strip-types --test apps/web/test/*.test.mjs`, and `npm run build --prefix apps/web`. CI source-contract tests alone are not visual or database E2E tests. Manual matrix must cover owner/non-owner/anonymous, Library/Catalog/Saves, null cover/stems, Save/Unsave, Publish/Unpublish, Add to, Rename, Delete, focus/cross-tab, and playback continuity.
+5. **Update this guide within the same PR:** exact branch/PR/SHA, what is on `main` vs branch-only, validations run, missing real-environment verification, open user choices, next Phase C item and release status. **No new handoff file, no merge or deploy without the user's authorization.** Vercel previews are intentionally disabled to conserve the Hobby deployment quota.
+
+### Dated Phase C implementation handoff log
+
+- **2026-11-02:** User made Phase C the priority ahead of D/E and requires single components/services wherever responsibilities match.
+- **2026-11-02 — draft PR #7:** [PR #7](https://github.com/tofdidthat/1ce-v2/pull/7) on `refactor/v2-phase-c-data-and-handoff`. Code branch only: one viewer-scoped `ProjectFlagsProviderV2`, removal of per-view `/api/public/mine` fetches/flag Sets, typed `project-identity-v2.ts`, normalization + regression tests. Code commit `bbaeb6fa` passed API, web tests and TypeScript/Vite build. An earlier CI run failed due to obsolete imports; these were fixed. **No merge or deploy** at this handoff. Manual multiuser/focus/account-switch/playback testing still missing.
+- **2026-11-02 — product decision:** User confirmed Unsave removes the project card from their Saves immediately on successful server response. User also required this **single `docs/architecture.md`** as the authoritative guide; the temporary `docs/phase-c-handoff.md` must not be retained in the PR.
 
 ---
 
