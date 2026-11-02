@@ -77,10 +77,8 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility}:{onUpload:(
  const [packError,setPackError]=useState('');
  const [openedBeat,setOpenedBeat]=useState<BeatItem|null>(null);
  const [contextBeat,setContextBeat]=useState<{beat:BeatItem;x:number;y:number}|null>(null);
- const [contextNotice,setContextNotice]=useState('');
  const showBeatMenu=(event:React.MouseEvent,beat:BeatItem)=>{
   event.preventDefault();event.stopPropagation();
-  setContextNotice('');
   setContextBeat({beat,x:event.clientX,y:event.clientY});
  };
  useEffect(()=>{
@@ -153,10 +151,8 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility}:{onUpload:(
  const toggle=()=>{const a=audioRef.current;if(!a)return;if(a.paused)a.play().then(()=>setPlaying(true)).catch(()=>setPlayerError('Unable to play audio'));else{a.pause();setPlaying(false)}};
  const choose=(beat:BeatItem,list:BeatItem[],packId:string|null=null)=>{setPlayerError('');setActivePackId(packId);setQueue(list);if(current?.id===beat.id){toggle();return;}setElapsed(0);setDuration(0);setCurrent(beat)};
  const addToQueue=(beat:BeatItem)=>{
-  setQueue(previous=>{
-   if(!current){setCurrent(beat);return [beat]}
-   return [...previous,beat];
-  });
+  if(!current){choose(beat,[beat])}
+  else setQueue(previous=>[...previous,beat]);
   setContextBeat(null);
  };
  const next=()=>{if(!current)return;if(repeat==='one'){if(audioRef.current){audioRef.current.currentTime=0;audioRef.current.play().catch(()=>{})}return;}const index=queue.findIndex(b=>b.id===current.id);const target=shuffle&&queue.length>1?queue.filter(b=>b.id!==current.id)[Math.floor(Math.random()*(queue.length-1))]:queue[index+1]||(repeat==='all'?queue[0]:null);if(target){setCurrent(target);setElapsed(0)}else{setPlaying(false)}};
