@@ -5,7 +5,7 @@ import {resolvePlayableProject} from '../src/project-media.js';
 const beatId='bbf80bde-7b6a-4b18-8b1f-4e52eb98f776';
 const extraBeatId='aa01aa01-7b6a-4b18-8b1f-4e52eb98f776';
 const packId='e2c0e2e6-2e40-4cdf-a207-1ba6cc66cc2a';
-function fixture({published=[],grants=[],ready=true,cover=12,stems=13}={}){
+function fixture({published=[],grants=[],saves=[],ready=true,cover=12,stems=13}={}){
  const calls=[];
  const beats=[
   {id:beatId,title:'Original beat',user_id:1,owner_id:1,audio_file_id:11,cover_file_id:cover,stems_file_id:stems},
@@ -14,7 +14,8 @@ function fixture({published=[],grants=[],ready=true,cover=12,stems=13}={}){
  const packs=[{id:packId,title:'Original pack',user_id:1,owner_id:1,cover_file_id:30,beatIds:[beatId,extraBeatId]}];
  function allowed(kind,id,viewer){
   return viewer===1||published.some(p=>p.kind===kind&&p.id===id)||
-   (viewer!=null&&grants.some(g=>g.kind===kind&&g.id===id&&g.viewer===viewer));
+   (viewer!=null&&(grants.some(g=>g.kind===kind&&g.id===id&&g.viewer===viewer)||
+      saves.some(s=>s.kind===kind&&s.id===id&&s.saver===viewer)));
  }
  return {calls,async query(sql,args){
   calls.push({sql,args});
@@ -58,14 +59,34 @@ test('owner and published visitors resolve one canonical playable beat',async()=
  const owner=await resolve(pool,'beat',beatId,1);
  assert.equal(owner.tracks[0].stems_file_id,13);
 });
-test('private projects are denied to strangers and saved status is not permission',async()=>{
+test('private projects are denied to strangers without their own save or grant',async()=>{
  const pool=fixture();
  assert.equal(await resolve(pool,'beat',beatId,2),null);
  assert.equal(await resolve(pool,'pack',packId,2),null);
  assert.equal(await resolve(pool,'beat',beatId),null);
  assert.equal(pool.calls.length,3);
- assert.ok(pool.calls.every(c=>!c.sql.includes('v2_public_saves')));
+ assert.ok(pool.calls.some(c=>c.sql.includes('v2_public_saves')));
 });
+test('private beat remains playable to the saver, not a third party, after Unpublish',async()=>{
+ const pool=fixture({saves:[{kind:'beat',id:beatId,saver:2}]});
+ const saved=await resolve(pool,'beat',beatId,2);
+ assert.equal(saved?.id,beatId);
+ assert.equal(saved.tracks[0].audio_file_id,11);
+ assert.equal(saved.tracks[0].stems_file_id,null);
+ assert.equal(await resolve(pool,'beat',beatId,3),null);
+ assert.equal(await resolve(pool,'beat',beatId),null);
+ assert.match(pool.calls[0].sql,/v2_public_saves saved/);
+ assert.match(pool.calls[0].sql,/saved\.user_id=\$3/);
+});
+
+test('saving an unpublished pack does not directly publish member beats',async()=>{
+ const pool=fixture({saves:[{kind:'pack',id:packId,saver:2}]});
+ const pack=await resolve(pool,'pack',packId,2);
+ assert.deepEqual(pack.tracks.map(track=>track.id),[beatId,extraBeatId]);
+ assert.equal(await resolve(pool,'beat',beatId,2),null);
+ assert.equal(await resolve(pool,'pack',packId,3),null);
+});
+
 test('explicit share grants the original beat, not its R2 stems',async()=>{
  const pool=fixture({grants:[{kind:'beat',id:beatId,viewer:2}]});
  assert.equal((await resolve(pool,'beat',beatId,2)).tracks[0].audio_file_id,11);
