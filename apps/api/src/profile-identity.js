@@ -54,7 +54,7 @@ async function removeOldAvatar(s3,bucket,key,userId){
  try{await s3.send(new DeleteObjectCommand({Bucket:bucket,Key:key}));}
  catch(error){console.error('Unable to remove obsolete v2 avatar:',error?.message);}
 }
-export async function handleProfileIdentity(req,res,pathname,pool,currentUser){
+export async function handleProfileIdentity(req,res,pathname,pool,currentUser,{storageFactory=storage}={}){
  const avatarMatch=/^\/api\/public\/avatar\/(\d+)$/.exec(pathname);
  if(avatarMatch){
   if(req.method!=='GET'){send(res,405,{error:'Method not allowed'});return true;}
@@ -63,7 +63,7 @@ export async function handleProfileIdentity(req,res,pathname,pool,currentUser){
   const key=result.rows[0]?.avatar_key;
   const type=typeof key==='string'&&key.startsWith('users/'+id+'/avatar/')?avatarType(key):null;
   if(!type){send(res,404,{error:'Avatar not found'});return true;}
-  const store=storage();
+  const store=storageFactory();
   if(!store){send(res,503,{error:'Storage unavailable'});return true;}
   let object;
   try{object=await store.s3.send(new GetObjectCommand({Bucket:store.bucket,Key:key}));}
@@ -88,7 +88,7 @@ export async function handleProfileIdentity(req,res,pathname,pool,currentUser){
   if(!['POST','DELETE'].includes(req.method)){send(res,405,{error:'Method not allowed'});return true;}
   const user=await currentUser(req);
   if(!user){send(res,401,{error:'Not authenticated'});return true;}
-  const store=storage();
+  const store=storageFactory();
   if(!store){send(res,503,{error:'Storage unavailable'});return true;}
   if(req.method==='DELETE'){
    const changed=await changeAvatar(pool,user.id,null);
