@@ -1,6 +1,7 @@
 // One lightweight HTTP mutation layer for projects. View-specific UI state and
 // navigation remain in their callers until the centralized store phase.
-export type ProjectKindV2='beat'|'pack';
+import type {ProjectKindV2} from './project-identity-v2';
+export type {ProjectKindV2} from './project-identity-v2';
 const api=import.meta.env.VITE_API_URL;
 
 async function projectMutation(path:string,method:'POST'|'DELETE',fallback:string){

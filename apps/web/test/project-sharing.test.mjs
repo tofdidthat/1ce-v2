@@ -9,6 +9,8 @@ const menu=file('project-context-menu-v2.tsx');
 const card=file('project-card-v2.tsx');
 const cover=file('project-cover-v2.tsx');
 const requests=file('project-requests-v2.ts');
+const flags=file('project-flags-v2.tsx');
+const workspace=file('workspace-v1.tsx');
 
 test('Library and Profile use the same card, context menu and mutation dialog',()=>{
  for(const view of [library,profile]){
@@ -41,15 +43,26 @@ test('single authorized cover path and no duplicated view-specific fetch fallbac
  assert.doesNotMatch(profile,/\/api\/library\/files\/cover\//);
 });
 
-test('save publish and share mutations share their HTTP implementation',()=>{
+test('shared viewer flags own publish and save state across Library and Profile',()=>{
  for(const view of [library,profile]){
-  assert.match(view,/setProjectPublishedV2/);
-  assert.match(view,/setProjectSavedV2/);
-  assert.match(view,/createProjectShareLinkV2/);
+  assert.match(view,/useProjectFlagsV2/);
+  assert.match(view,/toggleSaved/);
+  assert.match(view,/togglePublished/);
+  assert.doesNotMatch(view,/\/api\/public\/mine/);
+  assert.doesNotMatch(view,/setProjectSavedV2|setProjectPublishedV2/);
   assert.doesNotMatch(view,/\/api\/public\/(?:save|publish|share)\//);
  }
+ assert.match(workspace,/<ProjectFlagsProviderV2/);
+ assert.match(flags,/\/api\/public\/mine/);
+ assert.match(flags,/flags\.viewerId===id/);
+ assert.match(flags,/controller\.abort\(\)/);
+ assert.match(flags,/subscribeV2DataChanges/);
+ assert.match(flags,/subscribeV2Resume/);
+ assert.match(flags,/setProjectSavedV2/);
+ assert.match(flags,/setProjectPublishedV2/);
  assert.match(sharedPage,/setProjectSavedV2/);
  assert.doesNotMatch(sharedPage,/\/api\/public\/save\//);
  for(const route of ['publish','save','share'])assert.match(requests,new RegExp('/api/public/'+route+'/'));
  assert.match(requests,/credentials:'include'/);
+
 });

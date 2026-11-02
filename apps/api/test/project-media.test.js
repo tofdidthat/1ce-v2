@@ -8,7 +8,7 @@ import {resolveAuthorizedMediaFile} from '../src/project-media.js';
 function fixture({
  files=[{id:11,owner:1,kind:'audio',ready:true},{id:12,owner:1,kind:'cover',ready:true},{id:13,owner:1,kind:'stems',ready:true}],
  beats=[{id:'beat-a',owner:1,audio:11,cover:12,stems:13}],
- packs=[],published=[],grants=[]
+ packs=[],published=[],grants=[],saves=[]
 }={}){
  const calls=[];
  return {
@@ -32,7 +32,8 @@ function fixture({
     ];
     const canRead=linked.some(p=>
      published.some(x=>x.owner===owner&&x.kind===p.kind&&x.id===p.id)||
-     viewer!==null&&grants.some(x=>x.owner===owner&&x.viewer===viewer&&x.kind===p.kind&&x.id===p.id)
+     viewer!==null&&(grants.some(x=>x.owner===owner&&x.viewer===viewer&&x.kind===p.kind&&x.id===p.id)||
+      saves.some(x=>x.owner===owner&&x.saver===viewer&&x.kind===p.kind&&x.id===p.id))
     );
     return {rowCount:canRead?1:0,rows:canRead?[{'?column?':1}]:[]};
    }
@@ -75,10 +76,31 @@ test('an authorized recipient can read a shared private beat, other visitors can
  assert.equal(await read(pool,'cover',12,3),null);
 });
 
-test('a save relationship alone is not a grant',async()=>{
+test('a private beat is denied to viewers who neither own, saved, nor received it',async()=>{
  const pool=fixture();
  assert.equal(await read(pool,'audio',11,2),null);
  assert.equal(await read(pool,'cover',12,2),null);
+});
+
+test('a saved project retains personal audio and cover access after Unpublish',async()=>{
+ const pool=fixture({saves:[{owner:1,saver:2,kind:'beat',id:'beat-a'}]});
+ assert.ok(await read(pool,'audio',11,2));
+ assert.ok(await read(pool,'cover',12,2));
+ assert.equal(await read(pool,'audio',11,3),null,'A third party cannot borrow the saver permission');
+ assert.equal(await read(pool,'cover',12,3),null);
+ assert.equal(await read(pool,'audio',11),null,'Anonymous visitors are denied');
+ assert.equal(await read(pool,'stems',13,2),null,'Saved relation never grants stems');
+ const authorization=pool.calls.find(c=>c.sql.startsWith('SELECT 1 FROM (')).sql;
+ assert.match(authorization,/v2_public_saves saved/);
+ assert.match(authorization,/saved\.owner_id=\$2 AND saved\.user_id=\$4/);
+ assert.match(authorization,/saved\.kind=project\.kind AND saved\.project_id=project\.project_id/);
+});
+
+test('Unsave removes the saver’s retained permission unless another grant remains',async()=>{
+ const before=fixture({saves:[{owner:1,saver:2,kind:'beat',id:'beat-a'}]});
+ assert.ok(await read(before,'audio',11,2));
+ const after=fixture();
+ assert.equal(await read(after,'audio',11,2),null);
 });
 
 test('stems remain owner-only pending explicit product policy, even for published/shared beats',async()=>{
@@ -138,13 +160,14 @@ test('invalid identifiers and unknown file kinds never reach the database',async
  assert.equal(pool.calls.length,0);
 });
 
-test('authorization SQL ties access to project identity rather than saved flags or bare file IDs',async()=>{
+test('authorization SQL binds published, granted and personal saved access to original projects',async()=>{
  const pool=fixture({published:[{owner:1,kind:'beat',id:'beat-a'}]});
  await read(pool,'cover',12,2);
  const authSql=pool.calls[1].sql;
  for(const name of ['library_beats','library_packs','v2_public_projects','v2_project_access','project_id','cover_file_id','audio_file_id']){
   assert.ok(authSql.includes(name),'missing authorization condition: '+name);
  }
- assert.ok(!authSql.includes('v2_public_saves'));
+ assert.match(authSql,/v2_public_saves saved/);
+ assert.match(authSql,/saved\.user_id=\$4/);
  assert.deepEqual(pool.calls[1].params,[12,1,'cover',2]);
 });
