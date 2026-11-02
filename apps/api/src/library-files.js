@@ -34,23 +34,41 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser){
  const s3=client(),cfg=config();
  if(!s3){send(res,503,{error:'Storage is not configured'});return true;}
  const segments=pathname.split('/').filter(Boolean);
- if(req.method==='POST'&&segments.length===4&&segments[3]==='collections'){
+ if(req.method==='POST'&&segments.length===4&&segments[3]==='beats'){
   let data;try{data=await bodyJSON(req)}catch{send(res,400,{error:'Invalid request'});return true;}
   const title=typeof data?.title==='string'?data.title.trim():'';
-  const type=data?.type;
-  if(!['beat','pack'].includes(type)||!title||title.length>180){send(res,400,{error:'Invalid collection'});return true;}
+  if(!title||title.length>180||!Number.isSafeInteger(data.audioFileId)||data.audioFileId<1){send(res,400,{error:'Invalid beat'});return true;}
+  const ids=[data.audioFileId,data.coverFileId,data.stemsFileId].filter(x=>x!=null);
+  if(ids.some(x=>!Number.isSafeInteger(x)||x<1)){send(res,400,{error:'Invalid asset IDs'});return true;}
+  const q=await pool.query("SELECT id,kind FROM library_files WHERE user_id=$1 AND status='ready' AND id=ANY($2::bigint[])",[user.id,ids]);
+  const valid=new Map(q.rows.map(x=>[Number(x.id),x.kind]));
+  if(valid.get(data.audioFileId)!=='audio'||data.coverFileId!=null&&valid.get(data.coverFileId)!=='cover'||data.stemsFileId!=null&&valid.get(data.stemsFileId)!=='stems'){send(res,400,{error:'Assets must be owned by you and ready'});return true;}
+  const existing=await pool.query("SELECT id FROM library_beats WHERE user_id=$1 AND audio_file_id=$2",[user.id,data.audioFileId]);
+  if(existing.rows[0]){send(res,200,{id:existing.rows[0].id,reused:true});return true;}
   const id=randomUUID();
-  await pool.query("INSERT INTO library_collections(id,user_id,type,title) VALUES($1,$2,$3,$4)",[id,user.id,type,title]);
+  await pool.query("INSERT INTO library_beats(id,user_id,title,audio_file_id,cover_file_id,stems_file_id) VALUES($1,$2,$3,$4,$5,$6)",[id,user.id,title,data.audioFileId,data.coverFileId||null,data.stemsFileId||null]);
   send(res,201,{id});return true;
  }
- if(req.method==='POST'&&segments.length===6&&segments[3]==='collections'&&segments[5]==='complete'&&/^[a-f0-9-]{36}$/i.test(segments[4])){
-  const collectionId=segments[4];
-  const q=await pool.query("SELECT c.id,c.type,COUNT(f.id) FILTER (WHERE f.kind='audio' AND f.status='ready')::int AS audio_count,COUNT(f.id) FILTER (WHERE f.status='pending')::int AS pending_count FROM library_collections c LEFT JOIN library_files f ON f.collection_id=c.id WHERE c.id=$1 AND c.user_id=$2 GROUP BY c.id,c.type",[collectionId,user.id]);
-  const row=q.rows[0];
-  if(!row){send(res,404,{error:'Collection not found'});return true;}
-  if(row.pending_count>0||row.audio_count<(row.type==='pack'?2:1)||row.type==='beat'&&row.audio_count!==1){send(res,409,{error:'Collection is incomplete'});return true;}
-  await pool.query("UPDATE library_collections SET status='ready' WHERE id=$1 AND user_id=$2",[collectionId,user.id]);
-  send(res,200,{ok:true});return true;
+ if(req.method==='POST'&&segments.length===4&&segments[3]==='packs'){
+  let data;try{data=await bodyJSON(req)}catch{send(res,400,{error:'Invalid request'});return true;}
+  const title=typeof data?.title==='string'?data.title.trim():'';
+  const beatIds=data?.beatIds;
+  if(!title||title.length>180||!Array.isArray(beatIds)||beatIds.length<2||beatIds.length>100||new Set(beatIds).size!==beatIds.length||beatIds.some(id=>typeof id!=='string'||!/^[a-f0-9-]{36}$/i.test(id))){send(res,400,{error:'Invalid pack'});return true;}
+  if(data.coverFileId!=null&&(!Number.isSafeInteger(data.coverFileId)||data.coverFileId<1)){send(res,400,{error:'Invalid cover'});return true;}
+  const client=await pool.connect();
+  try{
+   await client.query('BEGIN');
+   const owned=await client.query('SELECT id FROM library_beats WHERE user_id=$1 AND id=ANY($2::uuid[])',[user.id,beatIds]);
+   if(owned.rowCount!==beatIds.length){await client.query('ROLLBACK');send(res,403,{error:'Beat not owned by you'});return true;}
+   if(data.coverFileId!=null){
+    const cover=await client.query("SELECT id FROM library_files WHERE id=$1 AND user_id=$2 AND kind='cover' AND status='ready'",[data.coverFileId,user.id]);
+    if(!cover.rowCount){await client.query('ROLLBACK');send(res,403,{error:'Cover not owned by you'});return true;}
+   }
+   const id=randomUUID();
+   await client.query('INSERT INTO library_packs(id,user_id,title,cover_file_id) VALUES($1,$2,$3,$4)',[id,user.id,title,data.coverFileId||null]);
+   for(let i=0;i<beatIds.length;i++)await client.query('INSERT INTO library_pack_beats(pack_id,beat_id,position) VALUES($1,$2,$3)',[id,beatIds[i],i]);
+   await client.query('COMMIT');send(res,201,{id});return true;
+  }catch(err){await client.query('ROLLBACK');throw err;}finally{client.release();}
  }
  if(req.method==='GET'&&segments.length===3){
   const q=await pool.query("SELECT id,kind,original_name,content_type,byte_size,created_at FROM library_files WHERE user_id=$1 AND status='ready' ORDER BY created_at DESC LIMIT 100",[user.id]);
@@ -58,30 +76,15 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser){
  }
  if(req.method==='POST'&&segments.length===4&&segments[3]==='init'){
   let data;try{data=await bodyJSON(req)}catch{send(res,400,{error:'Invalid request'});return true;}
-  const {kind,name,contentType,size,collectionId,trackId}=data||{};
+  const {kind,name,contentType,size}=data||{};
   const ext=typeof name==='string'?name.toLowerCase().split('.').pop():'';
   if(!Object.hasOwn(limits,kind)||typeof name!=='string'||name.length>240||name.length<1||/[\\/\x00-\x1f]/.test(name)||
    typeof contentType!=='string'||!types[kind]?.[contentType]?.includes(ext)||
    !Number.isSafeInteger(size)||size<=0||size>limits[kind]){
    send(res,400,{error:'Unsupported file type or size'});return true;
   }
-  let objectKey='users/'+user.id+'/'+kind+'/'+randomUUID()+'.'+ext;
-  if(collectionId!==undefined){
-   if(typeof collectionId!=='string'||!/^[a-f0-9-]{36}$/i.test(collectionId)){send(res,400,{error:'Invalid collection ID'});return true;}
-   const c=await pool.query("SELECT type,status FROM library_collections WHERE id=$1 AND user_id=$2",[collectionId,user.id]);
-   if(!c.rows[0]||c.rows[0].status!=='draft'){send(res,404,{error:'Collection not available'});return true;}
-   if(kind==='cover'&&trackId!=null||kind!=='cover'&&(typeof trackId!=='string'||!/^[a-f0-9-]{36}$/i.test(trackId))){send(res,400,{error:'Invalid track ID'});return true;}
-   const folder=c.rows[0].type==='pack'?'packs':'beats';
-   const suffix=kind==='cover'?'cover.'+ext:kind==='audio'?'tracks/'+trackId+'.'+ext:'stems/'+trackId+'.zip';
-   objectKey='users/'+user.id+'/'+folder+'/'+collectionId+'/'+suffix;
-  }
-  let inserted;
-  try{
-   inserted=await pool.query("INSERT INTO library_files(user_id,kind,object_key,original_name,content_type,byte_size,status,collection_id,track_id) VALUES($1,$2,$3,$4,$5,$6,'pending',$7,$8) RETURNING id",[user.id,kind,objectKey,name,contentType,size,collectionId||null,kind==='cover'?null:trackId||null]);
-  }catch(err){
-   if(err?.code==='23505'){send(res,409,{error:'File already added to collection'});return true;}
-   throw err;
-  }
+  const objectKey='users/'+user.id+'/assets/'+kind+'/'+randomUUID()+'.'+ext;
+  const inserted=await pool.query("INSERT INTO library_files(user_id,kind,object_key,original_name,content_type,byte_size,status) VALUES($1,$2,$3,$4,$5,$6,'pending') RETURNING id",[user.id,kind,objectKey,name,contentType,size]);
   try{
    const uploadUrl=await getSignedUrl(s3,new PutObjectCommand({Bucket:cfg.bucket,Key:objectKey,ContentType:contentType,ContentLength:size}),{expiresIn:300});
    send(res,200,{id:inserted.rows[0].id,uploadUrl,expiresIn:300});
