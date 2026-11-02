@@ -671,3 +671,13 @@
  outline:2px solid #a78bfa;
  outline-offset:2px;
 }
+
+/* Pack shuffle: icon only, no button background in any interaction state. */
+.onece-v2-library .v2-pack-detail .library-pack-play-controls .library-pack-shuffle,
+.onece-v2-library .v2-pack-detail .library-pack-play-controls .library-pack-shuffle:hover,
+.onece-v2-library .v2-pack-detail .library-pack-play-controls .library-pack-shuffle:active,
+.onece-v2-library .v2-pack-detail .library-pack-play-controls .library-pack-shuffle:focus-visible{
+ background:transparent;
+ box-shadow:none;
+ border:0;
+}
