@@ -73,6 +73,33 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser){
    await client.query('COMMIT');send(res,201,{id});return true;
   }catch(err){await client.query('ROLLBACK');throw err;}finally{client.release();}
  }
+ if(req.method==='GET'&&segments.length===5&&segments[3]==='audio'&&/^\d+$/.test(segments[4])){
+  const id=segments[4];
+  const q=await pool.query("SELECT object_key,content_type,byte_size FROM library_files WHERE id=$1 AND user_id=$2 AND kind='audio' AND status='ready'",[id,user.id]);
+  if(!q.rows[0]){send(res,404,{error:'Audio not found'});return true;}
+  const file=q.rows[0],range=req.headers.range;
+  let start=0,end=Number(file.byte_size)-1,status=200;
+  if(range){
+   const match=/^bytes=(\d*)-(\d*)$/.exec(range);
+   if(!match||(!match[1]&&!match[2])){res.writeHead(416,{'Content-Range':'bytes */'+file.byte_size});res.end();return true;}
+   if(!match[1]){const suffix=Number(match[2]);if(!Number.isSafeInteger(suffix)||suffix<=0){res.writeHead(416,{'Content-Range':'bytes */'+file.byte_size});res.end();return true;}start=Math.max(0,Number(file.byte_size)-suffix);}
+   else {start=Number(match[1]);if(match[2])end=Number(match[2]);}
+   if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start>end||start>=Number(file.byte_size)){res.writeHead(416,{'Content-Range':'bytes */'+file.byte_size});res.end();return true;}
+   end=Math.min(end,Number(file.byte_size)-1);status=206;
+  }
+  const object=await s3.send(new GetObjectCommand({Bucket:cfg.bucket,Key:file.object_key,...(status===206?{Range:'bytes='+start+'-'+end}:{})}));
+  res.writeHead(status,{'Content-Type':file.content_type,'Content-Length':end-start+1,'Accept-Ranges':'bytes','Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff',...(status===206?{'Content-Range':'bytes '+start+'-'+end+'/'+file.byte_size}:{})});
+  for await(const chunk of object.Body)res.write(chunk);
+  res.end();return true;
+ }
+ if(req.method==='GET'&&segments.length===5&&segments[3]==='pack-tracks'&&/^[a-f0-9-]{36}$/i.test(segments[4])){
+  const q=await pool.query(`SELECT b.id,b.title,b.audio_file_id,b.cover_file_id
+   FROM library_packs p JOIN library_pack_beats pb ON pb.pack_id=p.id
+   JOIN library_beats b ON b.id=pb.beat_id AND b.user_id=p.user_id
+   JOIN library_files f ON f.id=b.audio_file_id AND f.status='ready'
+   WHERE p.id=$1 AND p.user_id=$2 ORDER BY pb.position ASC`,[segments[4],user.id]);
+  send(res,200,{beats:q.rows});return true;
+ }
  if(req.method==='GET'&&segments.length===4&&segments[3]==='items'){
   const [beats,packs]=await Promise.all([
    pool.query(`SELECT b.id,b.title,b.created_at,b.audio_file_id,b.cover_file_id,b.stems_file_id,b.library_visible,
