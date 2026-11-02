@@ -16,7 +16,9 @@ export default function LibraryUploadV2(){
  const audioInput=useRef(null);
  const coverInput=useRef(null);
  const stemsInput=useRef(null);
- const saving=false;
+ const [saving,setSaving]=useState(false);
+ const [stage,setStage]=useState('');
+ const [result,setResult]=useState('');
  const isPack=audioFiles.length>1;
  const coverUrl=useMemo(()=>cover?URL.createObjectURL(cover):'',[cover]);
  useEffect(()=>()=>{if(coverUrl)URL.revokeObjectURL(coverUrl)},[coverUrl]);
@@ -29,6 +31,35 @@ export default function LibraryUploadV2(){
   if(!itemName&&valid.length===1)setItemName(fileTitle(valid[0]));
  };
  const removeFile=file=>{setAudioFiles(current=>current.filter(item=>item!==file));setError('')};
+ const save=async()=>{
+  if(saving||!audioFiles.length)return;
+  const api=import.meta.env.VITE_API_URL;
+  if(!api){setError('Upload API is not configured');return;}
+  setSaving(true);setError('');setResult('');
+  const upload=async(file,kind)=>{
+   const mime=kind==='audio'?(file.name.toLowerCase().endsWith('.mp3')?'audio/mpeg':'audio/wav'):
+    kind==='stems'?'application/zip':file.type;
+   const response=await fetch(api+'/api/library/files/init',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,name:file.name,contentType:mime,size:file.size})});
+   const data=await response.json().catch(()=>({}));
+   if(!response.ok)throw new Error(data.error||'Unable to start upload');
+   const put=await fetch(data.uploadUrl,{method:'PUT',headers:{'Content-Type':mime},body:file});
+   if(!put.ok)throw new Error('Storage upload failed ('+put.status+'). Check R2 CORS settings.');
+   const done=await fetch(api+'/api/library/files/'+data.id+'/complete',{method:'POST',credentials:'include'});
+   const completion=await done.json().catch(()=>({}));
+   if(!done.ok)throw new Error(completion.error||'Unable to finalize upload');
+  };
+  try{
+   for(const [index,file] of audioFiles.entries()){
+    setStage('Uploading audio '+(index+1)+'/'+audioFiles.length+'…');
+    await upload(file,'audio');
+   }
+   if(cover){setStage('Uploading cover…');await upload(cover,'cover');}
+   if(stems){setStage('Uploading stems…');await upload(stems,'stems');}
+   setAudioFiles([]);setCover(null);setStems(null);setItemName('');
+   setResult('Files saved to your private Library.');
+  }catch(e){setError(e instanceof Error?e.message:'Upload failed');}
+  finally{setSaving(false);setStage('');}
+ };
    return (
     <section className="library-upload" aria-label="Upload audio">
       <div className="library-upload-card">
@@ -165,6 +196,8 @@ export default function LibraryUploadV2(){
             )}
 
             {error && <p className="upload-error" role="alert">{error}</p>}
+            {stage && <p className="upload-stage" role="status">{stage}</p>}
+            {result && <p className="upload-result" role="status">{result}</p>}
 
 
             <div className="upload-actions">
@@ -174,7 +207,7 @@ export default function LibraryUploadV2(){
                 disabled
                 title="Saving to Library is not available yet"
               >
-                Save to Library
+                {saving ? "Saving…" : "Save to Library"}
               </button>
               {!isPack && audioFiles.length === 1 && (
                 <button
