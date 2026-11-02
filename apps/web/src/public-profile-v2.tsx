@@ -1,6 +1,8 @@
 import React,{useState} from 'react';
 import {Bookmark,Users,Share2,Eye,EyeOff,Link2,ListPlus,FolderPlus,Pencil,Image as ImageIcon,Download,Layers,Trash2,ChevronRight,Play,Pause} from 'lucide-react';
 import './public-profile-v2.css';
+import ProjectContextMenuV2 from './project-context-menu-v2';
+import ProjectActionDialogV2,{type ContextProject,type ProjectAction,type ChangedProject} from './project-action-dialog-v2';
 import {notifyV2DataChanged,subscribeV2DataChanges,subscribeV2Resume} from './data-refresh-v2';
 import {profilePictureV2} from './profile-picture-v2';
 
@@ -46,6 +48,8 @@ export default function PublicProfileV2({user,onSettings,profileId,onPlayProject
  const [saved,setSaved]=useState<Set<string>>(new Set());
  const [published,setPublished]=useState<Set<string>>(new Set());
  const [menu,setMenu]=useState<{project:PublicProject;x:number;y:number}|null>(null);
+ const [actionDialog,setActionDialog]=useState<{project:ContextProject;action:ProjectAction}|null>(null);
+ const [ownerPacks,setOwnerPacks]=useState<{id:string;title:string;track_count:number}[]>([]);
  const [profileUser,setProfileUser]=useState<any>(null);
  const [loading,setLoading]=useState(true);
  const [error,setError]=useState('');
@@ -84,6 +88,23 @@ export default function PublicProfileV2({user,onSettings,profileId,onPlayProject
  };
 
  const ownerOf=(project:PublicProject)=>!!user?.id&&String(user.id)===String(project.owner_id);
+ const showProjectAction=(action:ProjectAction,project:PublicProject)=>{
+  if(!ownerOf(project))return;
+  setMenu(null);
+  setActionDialog({action,project:{kind:project.kind,id:project.id,title:project.title,cover_file_id:project.cover_file_id}});
+  if(action==='add')void fetch(api+'/api/library/files/items',{credentials:'include'}).then(r=>{if(!r.ok)throw Error('Unable to load packs');return r.json()}).then(data=>setOwnerPacks(data.packs||[])).catch(e=>setError(e instanceof Error?e.message:'Unable to load packs'));
+ };
+ const onProjectChanged=(change:ChangedProject)=>{
+  setActionDialog(null);
+  const matches=(p:PublicProject)=>p.id===change.source.id&&p.kind===change.source.kind&&ownerOf(p);
+  if(change.action==='delete')setProjects(prev=>({catalog:prev.catalog.filter(p=>!matches(p)),saves:prev.saves.filter(p=>!matches(p))}));
+  if(change.action==='rename'||change.action==='cover'){
+   const update=(rows:PublicProject[])=>rows.map(p=>matches(p)?{...p,...(change.action==='rename'?{title:change.title!}:{cover_file_id:change.coverFileId??null})}:p);
+   setProjects(prev=>({catalog:update(prev.catalog),saves:update(prev.saves)}));
+  }
+  setRefreshRevision(v=>v+1);
+ };
+
  const publishProject=async(project:PublicProject)=>{
   setMenu(null);setError('');
   const key=project.kind+':'+project.id,already=published.has(key);
@@ -151,19 +172,8 @@ export default function PublicProfileV2({user,onSettings,profileId,onPlayProject
     tab==='catalog'?<div className="onece-profile-empty"><CatalogLibraryIcon size={27}/><h2>No public releases yet</h2><p>Beats and packs will appear here when published. Private Library files are never displayed automatically.</p></div>:
     <div className="onece-profile-empty"><Bookmark size={27}/><h2>No saves yet</h2><p>Saved projects will appear here.</p></div>}
   </div>
-  {menu&&<div className="onece-profile-context-menu" role="menu" aria-label={'Actions for '+menu.project.title} style={{position:'fixed',left:Math.max(8,Math.min(menu.x,window.innerWidth-248)),top:Math.max(8,Math.min(menu.y,window.innerHeight-430)),zIndex:1000}} onPointerDown={e=>e.stopPropagation()} onContextMenu={e=>e.preventDefault()}>
-   {ownerOf(menu.project)&&<><button type="button" role="menuitem" onClick={()=>void publishProject(menu.project)}>{published.has(menu.project.kind+':'+menu.project.id)?<EyeOff size={17}/>:<Eye size={17}/>}<span>{published.has(menu.project.kind+':'+menu.project.id)?'Unpublish':'Publish'}</span></button><div className="onece-profile-context-separator"/></>}
-   <button type="button" role="menuitem" onClick={()=>{const project=menu.project;setMenu(null);void toggleSave(project)}}><Bookmark size={17}/><span>{saved.has(menu.project.owner_id+':'+menu.project.kind+':'+menu.project.id)?'Unsave':'Save'}</span></button>
-   {ownerOf(menu.project)&&<button type="button" role="menuitem" onClick={()=>void copyProjectLink(menu.project)}><Link2 size={17}/><span>Copy link</span></button>}
-   <button type="button" role="menuitem" disabled title="Public profile playback queue is not yet connected"><ListPlus size={17}/><span>Add to queue</span></button>
-   {ownerOf(menu.project)&&<><button type="button" role="menuitem" disabled title="Collections are not yet connected"><FolderPlus size={17}/><span>Add to...</span><ChevronRight size={15}/></button>
-   <div className="onece-profile-context-separator"/>
-   <button type="button" role="menuitem" disabled title="Rename is not yet connected"><Pencil size={17}/><span>Rename</span></button>
-   <button type="button" role="menuitem" disabled title="Changing covers is not yet connected"><ImageIcon size={17}/><span>Change cover</span></button>
-   <button type="button" role="menuitem" disabled title="Download is not yet connected"><Download size={17}/><span>{menu.project.kind==='pack'?'Download ZIP':'Download MP3'}</span></button>
-   {menu.project.kind==='beat'&&<button type="button" role="menuitem" disabled title="Stems management is not yet connected"><Layers size={17}/><span>Stems</span></button>}
-   <div className="onece-profile-context-separator"/>
-   <button type="button" role="menuitem" disabled title="Deletion is not yet connected"><Trash2 size={17}/><span>Delete {menu.project.kind}</span></button></>}
-  </div>}
- </section>
+  {menu&&<ProjectContextMenuV2 project={menu.project} x={menu.x} y={menu.y} owner={ownerOf(menu.project)} published={published.has(menu.project.kind+':'+menu.project.id)} saved={saved.has(menu.project.owner_id+':'+menu.project.kind+':'+menu.project.id)}
+   onPublish={()=>void publishProject(menu.project)} onSave={()=>{const project=menu.project;setMenu(null);void toggleSave(project)}} onShare={()=>void copyProjectLink(menu.project)} onAction={action=>showProjectAction(action,menu.project)}/>}
+  {actionDialog&&<ProjectActionDialogV2 key={actionDialog.action+':'+actionDialog.project.id} project={actionDialog.project} action={actionDialog.action} packs={ownerPacks} userId={user?.id} onClose={()=>setActionDialog(null)} onChanged={onProjectChanged}/>}
+  </section>
 }
