@@ -8,8 +8,10 @@ const fileSql=`SELECT f.object_key,f.content_type,f.byte_size
  WHERE f.id=$1 AND f.user_id=$2 AND f.kind=$3 AND f.status='ready'
  LIMIT 1`;
 
-// Non-owner media access is always tied to a real beat or pack referencing
-// the requested file. A saved relationship by itself is not an access grant.
+// Non-owner media access is tied to an original beat/pack referencing the
+// file. Saves are durable *personal* audio/cover entitlements created only
+// with permission at Save time; they never publish a project, grant stems,
+// grant access to unrelated files, or expose private Saves to third parties.
 const authorizedProjectSql=`SELECT 1 FROM (
  SELECT 'beat'::text AS kind,b.id AS project_id
  FROM library_beats b
@@ -41,6 +43,10 @@ WHERE EXISTS (
   SELECT 1 FROM v2_project_access grant_access
   WHERE grant_access.owner_id=$2 AND grant_access.viewer_id=$4
    AND grant_access.kind=project.kind AND grant_access.project_id=project.project_id
+ ) OR EXISTS (
+  SELECT 1 FROM v2_public_saves saved
+  WHERE saved.owner_id=$2 AND saved.user_id=$4
+   AND saved.kind=project.kind AND saved.project_id=project.project_id
  )
 )
 LIMIT 1`;
@@ -56,6 +62,7 @@ function validId(id){
  * Owner: access to owned ready files, retaining current upload/Library behavior.
  * Published: cover/audio of a linked published project, including anonymous viewers.
  * Shared: cover/audio of a linked project for a viewer with an explicit grant.
+ * Saved: cover/audio for the original saver, including after Unpublish.
  * Stems: owner-only until a separate stems-download policy is approved.
  *
  * Returns null for missing or unauthorized files. The caller should use the
@@ -92,6 +99,9 @@ const projectPermission=(alias,kind)=>`
     OR ($3::integer IS NOT NULL AND EXISTS(SELECT 1 FROM v2_project_access grant_access
        WHERE grant_access.owner_id=${alias}.user_id AND grant_access.viewer_id=$3
          AND grant_access.kind='${kind}' AND grant_access.project_id=${alias}.id))
+    OR ($3::integer IS NOT NULL AND EXISTS(SELECT 1 FROM v2_public_saves saved
+       WHERE saved.owner_id=${alias}.user_id AND saved.user_id=$3
+         AND saved.kind='${kind}' AND saved.project_id=${alias}.id))
   )`;
 
 const playableBeatSql=`SELECT b.id,b.title,b.user_id AS owner_id,b.audio_file_id,b.cover_file_id,
@@ -115,8 +125,9 @@ const playablePackMembersSql=`SELECT b.id,b.title,b.user_id AS owner_id,b.audio_
 
 /**
  * Resolve a beat or pack for playback by canonical (ownerId, kind, projectId).
- * Private projects return null unless the viewer owns them or has an explicit
- * share grant. Published projects remain playable to anonymous visitors.
+ * Private projects require ownership, an explicit share grant, or a personal
+ * saved reference. Published projects remain playable to anonymous visitors.
+ * A saver's private Saves listing is never exposed to another viewer.
  *
  * This check is repeated for each byte-stream request by resolveAuthorizedMediaFile,
  * so revoking access prevents subsequent reads even with a known file ID.
