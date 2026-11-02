@@ -19,10 +19,55 @@ function Cover({id,title}:{id:number|null;title:string}){
  },[id]);
  return <div className="v2-item-cover">{url?<img src={url} alt={title+' cover'}/>:<span>{title.trim().charAt(0).toUpperCase()||'♪'}</span>}</div>;
 }
+// Reuse the v1 waveform sampling, but authenticate requests against private v2 R2 audio.
+const waveCache=new Map<number,number[]>();
+function useWaveform(fileId:number|null){
+ const [bars,setBars]=useState<number[]>([]);
+ useEffect(()=>{
+  setBars(fileId?waveCache.get(fileId)||[]:[]);
+  if(!fileId||!api||waveCache.has(fileId))return;
+  const controller=new AbortController();
+  let cancelled=false;
+  let context:AudioContext|null=null;
+  const decode=async()=>{
+   try{
+    const response=await fetch(api+'/api/library/files/audio/'+fileId,{credentials:'include',signal:controller.signal});
+    if(!response.ok)throw Error('Waveform audio unavailable');
+    const bytes=await response.arrayBuffer();
+    if(cancelled)return;
+    context=new AudioContext();
+    const buffer=await context.decodeAudioData(bytes);
+    if(cancelled)return;
+    const samples=buffer.getChannelData(0);
+    const count=84;
+    const size=Math.max(1,Math.floor(samples.length/count));
+    const peaks=Array.from({length:count},(_,index)=>{
+     let peak=0;
+     const end=Math.min(samples.length,(index+1)*size);
+     for(let i=index*size;i<end;i+=32)peak=Math.max(peak,Math.abs(samples[i]));
+     return peak;
+    });
+    const max=Math.max(...peaks,.001);
+    const normalized=peaks.map(value=>value/max);
+    if(waveCache.size>=8)waveCache.delete(waveCache.keys().next().value!);
+    waveCache.set(fileId,normalized);
+    setBars(normalized);
+   }catch{
+    // Keep the v1 seek-line fallback if decoding is unsupported.
+   }finally{
+    if(context&&context.state!=='closed')context.close().catch(()=>{});
+   }
+  };
+  void decode();
+  return()=>{cancelled=true;controller.abort()};
+ },[fileId]);
+ return bars;
+}
 export default function LibraryItemsV2({onUpload,onPlayerVisibility}:{onUpload:()=>void;onPlayerVisibility?:(visible:boolean)=>void}){
  const [data,setData]=useState<LibraryData>({beats:[],packs:[]});
  const [loading,setLoading]=useState(true);
  const [current,setCurrent]=useState<BeatItem|null>(null);
+ const waveBars=useWaveform(current?.audio_file_id??null);
  const [queue,setQueue]=useState<BeatItem[]>([]);
  const [playing,setPlaying]=useState(false);
  const [elapsed,setElapsed]=useState(0);
@@ -83,7 +128,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility}:{onUpload:(
    <div className="onece-player-cover" aria-hidden="true">{coverUrl?<img src={coverUrl} alt=""/>:<Music2 size={20}/>}</div>
    <div className="onece-player-meta"><span className="onece-player-title" title={current.title}>{current.title}</span><span className="onece-player-author">1CE</span></div>
    <div className="onece-player-wave" style={{'--played':(duration?elapsed/duration*100:0)+'%'} as React.CSSProperties}>
-    <div className="onece-wave-bars is-loading" aria-hidden="true"/><span className="onece-wave-cursor" aria-hidden="true"/>
+    <div className={'onece-wave-bars'+(!waveBars.length?' is-loading':'')} aria-hidden="true">{waveBars.map((height,index)=><span key={index} className={index/waveBars.length*100<=(duration?elapsed/duration*100:0)?'is-played':''} style={{height:Math.max(2,height*34)+'px'}}/>)}</div><span className="onece-wave-cursor" aria-hidden="true"/>
     <input type="range" min="0" max={duration||1} step="0.1" value={Math.min(elapsed,duration||1)} disabled={!duration} aria-label="Playback position" onChange={e=>{if(audioRef.current)audioRef.current.currentTime=Number(e.target.value)}}/>
    </div>
    <div className="onece-player-time">{formatTime(elapsed)} <span>/</span> {formatTime(duration)}</div>
