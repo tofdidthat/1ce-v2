@@ -89,9 +89,9 @@ const projectPermission=(alias,kind)=>`
   ( ${alias}.user_id=$3::integer
     OR EXISTS(SELECT 1 FROM v2_public_projects pub
        WHERE pub.user_id=${alias}.user_id AND pub.kind='${kind}' AND pub.project_id=${alias}.id)
-    OR ($3::integer IS NOT NULL AND EXISTS(SELECT 1 FROM v2_project_access access
-       WHERE access.owner_id=${alias}.user_id AND access.viewer_id=$3
-         AND access.kind='${kind}' AND access.project_id=${alias}.id))
+    OR ($3::integer IS NOT NULL AND EXISTS(SELECT 1 FROM v2_project_access grant_access
+       WHERE grant_access.owner_id=${alias}.user_id AND grant_access.viewer_id=$3
+         AND grant_access.kind='${kind}' AND grant_access.project_id=${alias}.id))
   )`;
 
 const playableBeatSql=`SELECT b.id,b.title,b.user_id AS owner_id,b.audio_file_id,b.cover_file_id,
