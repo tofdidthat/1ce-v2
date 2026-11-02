@@ -813,3 +813,32 @@
 .v2-beat-overlay .v2-beat-widget .v2-beat-close:focus-visible{
  outline:2px solid #a78bfa;outline-offset:2px;
 }
+
+/* Modal close icon: same top alignment and purple hover as Save, no pill. */
+.v2-beat-overlay .v2-beat-widget .v2-beat-close,
+.v2-beat-overlay .v2-beat-widget .v2-beat-close:hover,
+.v2-beat-overlay .v2-beat-widget .v2-beat-close:active{
+ position:absolute;
+ top:15px;
+ right:16px;
+ z-index:3;
+ display:grid;
+ place-items:center;
+ box-sizing:border-box;
+ width:28px;
+ height:28px;
+ padding:0;
+ border:0;
+ border-radius:8px;
+ background:transparent;
+ box-shadow:none;
+ transform:none;
+}
+.v2-beat-overlay .v2-beat-widget .v2-beat-close{
+ color:#9692a1;
+ transition:color 180ms ease;
+}
+.v2-beat-overlay .v2-beat-widget .v2-beat-close:hover{
+ color:#a78bfa;
+ background:transparent;
+}
