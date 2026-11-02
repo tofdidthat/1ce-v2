@@ -246,16 +246,17 @@ function EmptyLibrary({onUpload}){
 }
 export default function WorkspaceV2({user}){
  const navigate=useNavigate();const location=useLocation();
+ const [playerVisible,setPlayerVisible]=useState(false);
  const view=location.pathname==='/app/library'?'library':location.pathname.endsWith('/discover')?'discover':location.pathname.endsWith('/upload')?'upload':location.pathname.endsWith('/settings')?'account':'profile';
  const onNavigate=(next)=>navigate(next==='library'?'/app/library':next==='account'?'/app/settings':'/app/'+next);
  useEffect(()=>{document.title=({library:'Library',discover:'Discover',upload:'Upload',account:'Settings',profile:'Profile'}[view]||'Library')+' — 1CE'},[view]);
  return <div className={'onece-workspace-shell'+(view==='library'?' onece-library-view':'')}>
  <HeaderV2 view={view} user={user} onNavigate={onNavigate}/>
  <main className="onece-v2-workspace-main">
- {view==='library'?<LibraryItemsV2 onUpload={()=>onNavigate('upload')}/>:
+ {view==='library'?<LibraryItemsV2 onUpload={()=>onNavigate('upload')} onPlayerVisibility={setPlayerVisible}/>:
  view==='upload'?<LibraryUploadV2/>:
  <section className="onece-workspace-placeholder"><h1>{view==='account'?'Settings':view==='profile'?'Public Profile':'Discover'}</h1><p>{view==='profile'?'Public profile publishing is not yet enabled in v2.':view==='account'?'Account settings are not yet available in v2.':'Discover is not yet available in v2.'}</p></section>}
  </main>
- {view==='library'&&<div className="onece-player-dock" aria-label="Add audio"><button type="button" className="onece-global-player" style={{display:'flex',justifyContent:'center',gap:10,width:'fit-content',maxWidth:'100%',marginInline:'auto',padding:'7px 26px',color:'inherit',font:'inherit',fontSize:13,cursor:'pointer'}} onClick={()=>onNavigate('upload')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>Add file</span></button></div>}
+ {view==='library'&&!playerVisible&&<div className="onece-player-dock" aria-label="Add audio"><button type="button" className="onece-global-player" style={{display:'flex',justifyContent:'center',gap:10,width:'fit-content',maxWidth:'100%',marginInline:'auto',padding:'7px 26px',color:'inherit',font:'inherit',fontSize:13,cursor:'pointer'}} onClick={()=>onNavigate('upload')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>Add file</span></button></div>}
  </div>;
 }
