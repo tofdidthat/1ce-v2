@@ -129,3 +129,30 @@
 /* 2% smaller than the 44px reference overlay, including its icon. */
 .onece-v2-library .beat-pack-art .v2-card-play{width:43.12px;height:43.12px}
 .onece-v2-library .beat-pack-art .v2-card-play svg{width:18.62px;height:18.62px}
+
+/* Reference-style volume tower, adapted to the 1CE purple palette. */
+.onece-player-volume .v2-volume-popup{
+ bottom:calc(100% + 6px);right:-5px;width:46px;
+ padding:14px 6px 8px;gap:8px;border-radius:24px;
+ border:0;background:#444148;box-shadow:0 10px 28px #0007;
+}
+.v2-volume-track{height:106px;width:100%;display:flex;justify-content:center;align-items:center}
+.onece-player-volume .v2-volume-popup input[type="range"]{
+ appearance:none;-webkit-appearance:none;writing-mode:vertical-lr;direction:rtl;
+ height:100px;width:18px;margin:0;padding:0;border:0;border-radius:0;
+ background:transparent;cursor:pointer;accent-color:#a78bfa;
+}
+.onece-player-volume .v2-volume-popup input[type="range"]::-webkit-slider-runnable-track{
+ width:3px;border-radius:99px;
+ background:linear-gradient(to top,#a78bfa var(--volume-level),#807b85 var(--volume-level));
+}
+.onece-player-volume .v2-volume-popup input[type="range"]::-webkit-slider-thumb{
+ appearance:none;-webkit-appearance:none;width:12px;height:12px;
+ margin-left:-4.5px;border:0;border-radius:50%;background:#c4b5fd;
+ box-shadow:0 0 0 1px #c4b5fd44;
+}
+.onece-player-volume .v2-volume-popup input[type="range"]::-moz-range-track{width:3px;background:#807b85;border-radius:99px}
+.onece-player-volume .v2-volume-popup input[type="range"]::-moz-range-progress{width:3px;background:#a78bfa;border-radius:99px}
+.onece-player-volume .v2-volume-popup input[type="range"]::-moz-range-thumb{width:12px;height:12px;border:0;border-radius:50%;background:#c4b5fd}
+.onece-player-volume .v2-volume-popup .v2-volume-mute{width:30px;height:30px;flex-basis:30px;color:#e9e5f0}
+.onece-player-volume .v2-volume-popup .v2-volume-mute svg{width:19px;height:19px}
