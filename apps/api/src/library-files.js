@@ -34,21 +34,54 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser){
  const s3=client(),cfg=config();
  if(!s3){send(res,503,{error:'Storage is not configured'});return true;}
  const segments=pathname.split('/').filter(Boolean);
+ if(req.method==='POST'&&segments.length===4&&segments[3]==='collections'){
+  let data;try{data=await bodyJSON(req)}catch{send(res,400,{error:'Invalid request'});return true;}
+  const title=typeof data?.title==='string'?data.title.trim():'';
+  const type=data?.type;
+  if(!['beat','pack'].includes(type)||!title||title.length>180){send(res,400,{error:'Invalid collection'});return true;}
+  const id=randomUUID();
+  await pool.query("INSERT INTO library_collections(id,user_id,type,title) VALUES($1,$2,$3,$4)",[id,user.id,type,title]);
+  send(res,201,{id});return true;
+ }
+ if(req.method==='POST'&&segments.length===6&&segments[3]==='collections'&&segments[5]==='complete'&&/^[a-f0-9-]{36}$/i.test(segments[4])){
+  const collectionId=segments[4];
+  const q=await pool.query("SELECT c.id,c.type,COUNT(f.id) FILTER (WHERE f.kind='audio' AND f.status='ready')::int AS audio_count,COUNT(f.id) FILTER (WHERE f.status='pending')::int AS pending_count FROM library_collections c LEFT JOIN library_files f ON f.collection_id=c.id WHERE c.id=$1 AND c.user_id=$2 GROUP BY c.id,c.type",[collectionId,user.id]);
+  const row=q.rows[0];
+  if(!row){send(res,404,{error:'Collection not found'});return true;}
+  if(row.pending_count>0||row.audio_count<(row.type==='pack'?2:1)||row.type==='beat'&&row.audio_count!==1){send(res,409,{error:'Collection is incomplete'});return true;}
+  await pool.query("UPDATE library_collections SET status='ready' WHERE id=$1 AND user_id=$2",[collectionId,user.id]);
+  send(res,200,{ok:true});return true;
+ }
  if(req.method==='GET'&&segments.length===3){
   const q=await pool.query("SELECT id,kind,original_name,content_type,byte_size,created_at FROM library_files WHERE user_id=$1 AND status='ready' ORDER BY created_at DESC LIMIT 100",[user.id]);
   send(res,200,{files:q.rows});return true;
  }
  if(req.method==='POST'&&segments.length===4&&segments[3]==='init'){
   let data;try{data=await bodyJSON(req)}catch{send(res,400,{error:'Invalid request'});return true;}
-  const {kind,name,contentType,size}=data||{};
+  const {kind,name,contentType,size,collectionId,trackId}=data||{};
   const ext=typeof name==='string'?name.toLowerCase().split('.').pop():'';
   if(!Object.hasOwn(limits,kind)||typeof name!=='string'||name.length>240||name.length<1||/[\\/\x00-\x1f]/.test(name)||
    typeof contentType!=='string'||!types[kind]?.[contentType]?.includes(ext)||
    !Number.isSafeInteger(size)||size<=0||size>limits[kind]){
    send(res,400,{error:'Unsupported file type or size'});return true;
   }
-  const objectKey='users/'+user.id+'/'+kind+'/'+randomUUID()+'.'+ext;
-  const inserted=await pool.query("INSERT INTO library_files(user_id,kind,object_key,original_name,content_type,byte_size,status) VALUES($1,$2,$3,$4,$5,$6,'pending') RETURNING id",[user.id,kind,objectKey,name,contentType,size]);
+  let objectKey='users/'+user.id+'/'+kind+'/'+randomUUID()+'.'+ext;
+  if(collectionId!==undefined){
+   if(typeof collectionId!=='string'||!/^[a-f0-9-]{36}$/i.test(collectionId)){send(res,400,{error:'Invalid collection ID'});return true;}
+   const c=await pool.query("SELECT type,status FROM library_collections WHERE id=$1 AND user_id=$2",[collectionId,user.id]);
+   if(!c.rows[0]||c.rows[0].status!=='draft'){send(res,404,{error:'Collection not available'});return true;}
+   if(kind==='cover'&&trackId!=null||kind!=='cover'&&(typeof trackId!=='string'||!/^[a-f0-9-]{36}$/i.test(trackId))){send(res,400,{error:'Invalid track ID'});return true;}
+   const folder=c.rows[0].type==='pack'?'packs':'beats';
+   const suffix=kind==='cover'?'cover.'+ext:kind==='audio'?'tracks/'+trackId+'.'+ext:'stems/'+trackId+'.zip';
+   objectKey='users/'+user.id+'/'+folder+'/'+collectionId+'/'+suffix;
+  }
+  let inserted;
+  try{
+   inserted=await pool.query("INSERT INTO library_files(user_id,kind,object_key,original_name,content_type,byte_size,status,collection_id,track_id) VALUES($1,$2,$3,$4,$5,$6,'pending',$7,$8) RETURNING id",[user.id,kind,objectKey,name,contentType,size,collectionId||null,kind==='cover'?null:trackId||null]);
+  }catch(err){
+   if(err?.code==='23505'){send(res,409,{error:'File already added to collection'});return true;}
+   throw err;
+  }
   try{
    const uploadUrl=await getSignedUrl(s3,new PutObjectCommand({Bucket:cfg.bucket,Key:objectKey,ContentType:contentType,ContentLength:size}),{expiresIn:300});
    send(res,200,{id:inserted.rows[0].id,uploadUrl,expiresIn:300});
