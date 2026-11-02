@@ -94,7 +94,7 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser){
   res.end();return true;
  }
  if(req.method==='GET'&&segments.length===5&&segments[3]==='pack-tracks'&&/^[a-f0-9-]{36}$/i.test(segments[4])){
-  const q=await pool.query(`SELECT b.id,b.title,b.audio_file_id,b.cover_file_id
+  const q=await pool.query(`SELECT b.id,b.title,b.audio_file_id,b.cover_file_id,b.stems_file_id
    FROM library_packs p JOIN library_pack_beats pb ON pb.pack_id=p.id
    JOIN library_beats b ON b.id=pb.beat_id AND b.user_id=p.user_id
    JOIN library_files f ON f.id=b.audio_file_id AND f.status='ready'
