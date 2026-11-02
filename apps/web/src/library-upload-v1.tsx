@@ -39,10 +39,10 @@ export default function LibraryUploadV2(){
   const api=import.meta.env.VITE_API_URL;
   if(!api){setError('Upload API is not configured');return;}
   setSaving(true);setError('');setResult('');
-  const upload=async(file,kind,collectionId,trackId)=>{
+  const upload=async(file,kind)=>{
    const mime=kind==='audio'?(file.name.toLowerCase().endsWith('.mp3')?'audio/mpeg':'audio/wav'):
     kind==='stems'?'application/zip':file.type;
-   const response=await fetch(api+'/api/library/files/init',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,name:file.name,contentType:mime,size:file.size,collectionId,trackId})});
+   const response=await fetch(api+'/api/library/files/init',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,name:file.name,contentType:mime,size:file.size})});
    const data=await response.json().catch(()=>({}));
    if(!response.ok)throw new Error(data.error||'Unable to start upload');
    const put=await fetch(data.uploadUrl,{method:'PUT',headers:{'Content-Type':mime},body:file});
@@ -50,22 +50,29 @@ export default function LibraryUploadV2(){
    const done=await fetch(api+'/api/library/files/'+data.id+'/complete',{method:'POST',credentials:'include'});
    const completion=await done.json().catch(()=>({}));
    if(!done.ok)throw new Error(completion.error||'Unable to finalize upload');
+   return Number(data.id);
   };
   try{
-   const collectionResponse=await fetch(api+'/api/library/files/collections',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({type:isPack?'pack':'beat',title:itemName.trim()||fileTitle(audioFiles[0])})});
-   const collection=await collectionResponse.json().catch(()=>({}));
-   if(!collectionResponse.ok)throw new Error(collection.error||'Unable to create collection');
+   let coverId=null;
+   if(cover){setStage('Uploading shared cover…');coverId=await upload(cover,'cover');}
+   const beatIds=[];
    for(const [index,file] of audioFiles.entries()){
-    const trackId=crypto.randomUUID();
     setStage('Uploading audio '+(index+1)+'/'+audioFiles.length+'…');
-    await upload(file,'audio',collection.id,trackId);
+    const audioId=await upload(file,'audio');
     const stems=stemsByAudio[fileKey(file)];
-    if(stems){setStage('Uploading stems for '+file.name+'…');await upload(stems,'stems',collection.id,trackId);}
+    let stemsId=null;
+    if(stems){setStage('Uploading stems for '+file.name+'…');stemsId=await upload(stems,'stems');}
+    const beatResponse=await fetch(api+'/api/library/files/beats',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:isPack?fileTitle(file):itemName.trim()||fileTitle(file),audioFileId:audioId,coverFileId:isPack?null:coverId,stemsFileId:stemsId})});
+    const beat=await beatResponse.json().catch(()=>({}));
+    if(!beatResponse.ok)throw new Error(beat.error||'Unable to save beat');
+    beatIds.push(beat.id);
    }
-   if(cover){setStage('Uploading shared cover…');await upload(cover,'cover',collection.id,null);}
-   const complete=await fetch(api+'/api/library/files/collections/'+collection.id+'/complete',{method:'POST',credentials:'include'});
-   const completed=await complete.json().catch(()=>({}));
-   if(!complete.ok)throw new Error(completed.error||'Unable to finalize collection');
+   if(isPack){
+    setStage('Creating pack…');
+    const packResponse=await fetch(api+'/api/library/files/packs',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:itemName.trim()||'New pack',coverFileId:coverId,beatIds})});
+    const pack=await packResponse.json().catch(()=>({}));
+    if(!packResponse.ok)throw new Error(pack.error||'Unable to create pack');
+   }
    setAudioFiles([]);setCover(null);setStemsByAudio({});setItemName('');
    setResult('Files saved to your private Library.');
   }catch(e){setError(e instanceof Error?e.message:'Upload failed');}
