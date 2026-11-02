@@ -6,6 +6,7 @@ import {notifyV2DataChanged,subscribeV2DataChanges,subscribeV2Resume} from './da
 import ProjectContextMenuV2 from './project-context-menu-v2';
 import ProjectCoverV2 from './project-cover-v2';
 import ProjectCardV2 from './project-card-v2';
+import {setProjectPublishedV2,setProjectSavedV2,createProjectShareLinkV2} from './project-requests-v2';
 import ProjectActionDialogV2,{type ContextProject,type ProjectAction,type ChangedProject} from './project-action-dialog-v2';
 const api=import.meta.env.VITE_API_URL;
 type BeatItem = {published?:boolean;owner_id?:number;id:string;title:string;audio_file_id:number;cover_file_id:number|null;stems_file_id:number|null;pack_count:number;created_at:string;library_visible:boolean};
@@ -160,8 +161,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
   const key=publicationKey(kind,id),isPublished=published.has(key);
   setContextBeat(null);setContextPack(null);setActionError('');
   try{
-   const response=await fetch(api+'/api/public/publish/'+kind+'/'+id,{method:isPublished?'DELETE':'POST',credentials:'include'});
-   if(!response.ok)throw Error((await response.json().catch(()=>({}))).error||'Unable to update publication');
+   await setProjectPublishedV2(kind,id,isPublished);
    setPublished(prev=>{const next=new Set(prev);if(isPublished)next.delete(key);else next.add(key);return next});
    notifyV2DataChanged(['publications'],userId);
   }catch(error){setActionError(error instanceof Error?error.message:'Unable to update publication')}
@@ -184,10 +184,8 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
  const copyProjectLink=async(kind:'beat'|'pack',id:string)=>{
   setContextBeat(null);setContextPack(null);setActionError('');
   try{
-   const response=await fetch(api+'/api/public/share/'+kind+'/'+id,{method:'POST',credentials:'include'});
-   if(!response.ok)throw Error((await response.json().catch(()=>({}))).error||'Unable to create share link');
-   const result=await response.json();
-   await navigator.clipboard.writeText(window.location.origin+'/shared/'+result.token);
+   const url=await createProjectShareLinkV2(kind,id);
+   await navigator.clipboard.writeText(url);
   }catch(e){setActionError(e instanceof Error?e.message:'Unable to copy link')}
  };
  const toggleSavedProject=async(kind:'beat'|'pack',id:string)=>{
@@ -195,8 +193,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
   const already=(kind==='beat'?savedBeatIds:savedPackIds).has(id);
   setActionError('');
   try{
-   const response=await fetch(api+'/api/public/save/'+userId+'/'+kind+'/'+id,{method:already?'DELETE':'POST',credentials:'include'});
-   if(!response.ok)throw Error((await response.json().catch(()=>({}))).error||'Unable to save');
+   await setProjectSavedV2(userId,kind,id,already);
    const setter=kind==='beat'?setSavedBeatIds:setSavedPackIds;
    setter(previous=>{const next=new Set(previous);if(already)next.delete(id);else next.add(id);return next});
    notifyV2DataChanged(['saves'],userId);
