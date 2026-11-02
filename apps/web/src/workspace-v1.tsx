@@ -237,10 +237,6 @@ function EmptyLibrary({onUpload}){
  return <section className="beat-profile library-page onece-v2-library">
   <div className="beat-profile-content">
    <div className="library-items">
-    <div className="beat-tabs" role="tablist" aria-label="Library sections">
-      <button type="button" role="tab" aria-selected="true">Beats</button>
-      <button type="button" role="tab" aria-selected="false" disabled>Packs</button>
-    </div>
     <div className="library-empty"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M4 4v16M9 4v16M14 4l4 16"/></svg><h2>Your Library is Empty</h2><button type="button" className="library-add-audio" onClick={onUpload}>Add Audio</button></div>
    </div>
   </div>
