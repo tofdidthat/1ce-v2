@@ -24,7 +24,11 @@ function fixture({
     const [id,owner,kind,viewer]=params;
     const linked=[
      ...beats.filter(x=>x.owner===owner&&(kind==='audio'&&x.audio===id||kind==='cover'&&x.cover===id)).map(x=>({kind:'beat',id:x.id})),
-     ...packs.filter(x=>x.owner===owner&&kind==='cover'&&x.cover===id).map(x=>({kind:'pack',id:x.id}))
+     ...packs.filter(x=>x.owner===owner&&kind==='cover'&&x.cover===id).map(x=>({kind:'pack',id:x.id})),
+     ...packs.filter(p=>p.owner===owner&&beats.some(b=>
+      b.owner===owner&&(p.beatIds||[]).includes(b.id)&&
+      (kind==='audio'&&b.audio===id||kind==='cover'&&b.cover===id)
+     )).map(x=>({kind:'pack',id:x.id}))
     ];
     const canRead=linked.some(p=>
      published.some(x=>x.owner===owner&&x.kind===p.kind&&x.id===p.id)||
@@ -94,6 +98,27 @@ test('published pack cover is permitted, but an unrelated cover is not',async()=
  });
  assert.ok(await read(pool,'cover',20));
  assert.equal(await read(pool,'cover',21),null);
+});
+
+test('a published pack grants playback and cover of member beats without publishing those beats',async()=>{
+ const pool=fixture({
+  packs:[{id:'pack-a',owner:1,cover:20,beatIds:['beat-a']}],
+  published:[{owner:1,kind:'pack',id:'pack-a'}]
+ });
+ assert.ok(await read(pool,'audio',11));
+ assert.ok(await read(pool,'cover',12));
+ assert.equal(await read(pool,'stems',13),null);
+ assert.ok(pool.calls.some(c=>c.sql.includes('JOIN library_pack_beats pb')));
+});
+
+test('a private pack share grants only authorized recipients its member media',async()=>{
+ const pool=fixture({
+  packs:[{id:'pack-a',owner:1,beatIds:['beat-a']}],
+  grants:[{owner:1,viewer:2,kind:'pack',id:'pack-a'}]
+ });
+ assert.ok(await read(pool,'audio',11,2));
+ assert.ok(await read(pool,'cover',12,2));
+ assert.equal(await read(pool,'audio',11,3),null);
 });
 
 test('owner, file type, missing file and readiness are checked before access grants',async()=>{
