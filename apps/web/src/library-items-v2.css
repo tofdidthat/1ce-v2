@@ -194,3 +194,370 @@
 .v2-beat-widget h2{font-size:19px;margin:16px 0 5px;overflow-wrap:anywhere}
 .v2-beat-widget p{font-size:12px;color:#aaa3b8}
 .v2-beat-modal-play{display:inline-flex;align-items:center;gap:10px;margin-top:14px;padding:11px 25px;border:0;border-radius:22px;background:#a78bfa;color:#18131e;font-weight:650;cursor:pointer}
+
+/* Faithful v1 pack geometry and responsive layout. Source: v1 LibraryPage.css (read-only). */
+/* Open pack */
+
+.library-page .library-pack-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 400px) minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
+  align-items: start;
+  column-gap: 48px;
+  row-gap: 20px;
+  width: 100%;
+  max-width: 960px;
+  margin-inline: auto;
+}
+
+.library-page .library-pack-back {
+  grid-column: 1 / -1;
+  justify-self: start;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid #ffffff0d;
+  border-radius: 12px;
+  background: #ffffff0a;
+  color: #ffffffcc;
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.library-page .library-pack-back:hover {
+  background: #ffffff14;
+  color: #fff;
+}
+
+.library-page .library-pack-back svg {
+  display: block;
+  width: 20px;
+  height: 20px;
+}
+
+.library-page .library-pack-cover {
+  grid-column: 1;
+  grid-row: 2 / 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: 16px;
+}
+
+.library-page .library-pack-cover > span {
+  color: #ffffff40;
+  font-size: clamp(90px, 12vw, 160px);
+  font-weight: 300;
+  line-height: 1;
+}
+
+.library-page .library-pack-info {
+  grid-column: 2;
+  grid-row: 2;
+  min-width: 0;
+}
+
+.library-page .library-pack-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.library-page .library-pack-title-block {
+  min-width: 0;
+}
+
+.library-page .library-pack-title-block h2 {
+  margin: 0;
+  color: #fff;
+  font-size: clamp(24px, 3vw, 32px);
+  font-weight: 650;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.library-page .library-pack-title-block p {
+  margin: 8px 0 0;
+  color: #918b9d;
+  font-size: 13px;
+}
+
+.library-page .library-pack-play {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 14px;
+  background: #f5f3ff;
+  color: #15101e;
+  cursor: pointer;
+}
+
+.library-page .library-pack-play svg {
+  width: 22px;
+  height: 22px;
+}
+
+.library-page .library-pack-play:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.library-page .library-pack-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 20px;
+  padding: 10px 16px;
+  border: 1px solid #ffffff08;
+  border-radius: 12px;
+  background: #ffffff06;
+  color: #f5f3ff;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.library-page .library-pack-add:hover {
+  background: #ffffff0a;
+}
+
+.library-page .library-pack-add > span:first-child {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.library-page .library-pack-detail > .beat-track-list, .library-page .library-pack-detail > .beat-empty, .library-page .library-pack-detail > .beat-loading {
+  grid-column: 2;
+  grid-row: 3;
+  align-self: start;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding-top: 0;
+}
+
+.library-page .library-pack-detail > .beat-empty {
+  padding: 28px 16px;
+}
+
+
+/* Responsive */
+
+@media (max-width: 760px) {
+  .library-page .library-pack-detail {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto auto;
+    gap: 24px;
+  }
+
+  .library-page .library-pack-cover {
+    grid-column: 1;
+    grid-row: 2;
+    max-width: 360px;
+    justify-self: center;
+  }
+
+  .library-page .library-pack-info {
+    grid-column: 1;
+    grid-row: 3;
+  }
+
+  .library-page .library-pack-detail > .beat-track-list, .library-page .library-pack-detail > .beat-empty, .library-page .library-pack-detail > .beat-loading {
+    grid-column: 1;
+    grid-row: 4;
+  }
+
+}
+
+@media (max-width: 600px) {
+  .beat-profile.library-page {
+    padding: 24px 16px 120px;
+  }
+
+  .library-page .library-header {
+    margin-bottom: 32px;
+    padding-inline: 0;
+  }
+
+  .library-page .beat-pack-grid {
+    gap: 24px 20px;
+  }
+
+  .library-page .beat-pack-grid > article {
+    flex-basis: min(160px, calc((100% - 20px) / 2));
+    width: min(160px, calc((100% - 20px) / 2));
+  }
+
+}
+
+
+/* Faithful v1 standalone MusicPlayer widget layout. Source: v1 music-player-widget.css (read-only). */
+/* Basic fallback for widget classes.
+   Replace with the complete original widget CSS for the intended visual design. */
+
+.card {
+  width: 100%;
+  padding: 18px;
+  border-radius: 20px;
+  background: #111;
+  color: #fff;
+}
+
+.mask {
+  position: relative;
+  width: 180px;
+  height: 180px;
+  margin: 0 auto 18px;
+  border-radius: 50%;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.spin {
+  width: 100%;
+  height: 100%;
+}
+
+.cover {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.hole {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+
+.hole-inner {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #000;
+}
+
+.info {
+  text-align: center;
+}
+
+.track-info {
+  min-height: 64px;
+  margin-bottom: 12px;
+}
+
+.artist {
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.65;
+}
+
+.track {
+  margin: 4px 0 0;
+  font-size: 18px;
+}
+
+.bar {
+  height: 5px;
+  margin: 14px 0 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  cursor: pointer;
+}
+
+.bar-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: #fff;
+}
+
+.time {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.ctrl {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 50%;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+}
+
+.ctrl-play {
+  width: 46px;
+  height: 46px;
+  background: #fff;
+  color: #000;
+}
+.beat-player-widget .controls .ctrl:not(.ctrl-play) {
+  border: 0;
+}
+.scales {
+  display: none;
+}
+
+/* Scope v1 modal dimensions and cover-disc layout to v2, overriding the earlier prototype. */
+.v2-beat-overlay{z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(0,0,0,.72);backdrop-filter:blur(8px)}
+.v2-beat-widget{position:relative;width:min(420px,100%);max-height:calc(100vh - 48px);padding:28px 24px 24px;border:1px solid rgba(255,255,255,.12);border-radius:22px;background:#101014;box-shadow:0 24px 70px rgba(0,0,0,.55);overflow:auto;text-align:initial}
+.v2-beat-widget .beat-player-close{top:14px;right:14px;width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.06);font-size:18px;z-index:2}
+.v2-beat-widget .v2-music-card{width:100%;padding:18px;border-radius:20px;background:#111;color:#fff}
+.v2-beat-widget .v2-music-card .mask{width:180px;height:180px;margin:0 auto 18px;border-radius:50%;overflow:hidden;position:relative}
+.v2-beat-widget .v2-music-card .spin{width:100%;height:100%}
+.v2-beat-widget .v2-music-card .spin .v2-item-cover{width:100%;height:100%;border-radius:50%}
+.v2-beat-widget .v2-music-card .hole{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none}
+.v2-beat-widget .v2-music-card .hole-inner{width:28px;height:28px;border-radius:50%;background:#000;border:5px solid #1c1b1e;box-sizing:border-box}
+.v2-beat-widget .v2-music-card .info{text-align:center}
+.v2-beat-widget .v2-music-card .track-info{min-height:64px;margin-bottom:12px}
+.v2-beat-widget .v2-music-card .artist{margin:0;font-size:12px;opacity:.65}
+.v2-beat-widget .v2-music-card .track{margin:4px 0 0;font-size:18px}
+.v2-beat-widget .v2-music-card .bar{height:5px;margin:14px 0 6px;border-radius:999px;background:#ffffff2e;cursor:pointer}
+.v2-beat-widget .v2-music-card .bar-fill{height:100%;border-radius:inherit;background:#fff}
+.v2-beat-widget .v2-music-card .time{display:flex;justify-content:space-between;font-size:11px;opacity:.7}
+.v2-beat-widget .v2-music-card .controls{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:14px}
+.v2-beat-widget .v2-music-card .ctrl{display:grid;place-items:center;width:36px;height:36px;border:0;border-radius:50%;background:transparent;color:#fff;cursor:pointer}
+.v2-beat-widget .v2-music-card .ctrl-play{width:46px;height:46px;background:#fff;color:#000}
+.v2-beat-widget .v2-music-card .ctrl-toggle.is-active{color:#a78bfa}
+.v2-beat-widget .v2-music-card .mask.is-playing .spin{animation:v2-disc-spin 7s linear infinite}
+@keyframes v2-disc-spin{to{transform:rotate(360deg)}}
+.onece-v2-library .v2-pack-detail{width:100%;max-width:960px;display:grid;grid-template-columns:minmax(0,400px) minmax(0,1fr);grid-template-rows:auto auto minmax(0,1fr);align-items:start;column-gap:48px;row-gap:20px;margin-inline:auto}
+.onece-v2-library .v2-pack-detail .library-pack-back{grid-column:1/-1;justify-self:start;width:44px;height:44px;margin:0;padding:0;border:1px solid #ffffff0d;border-radius:12px;background:#ffffff0a;color:#ffffffcc;font-size:initial}
+.onece-v2-library .v2-pack-detail .library-pack-cover{grid-column:1;grid-row:2/4;width:100%;height:auto;aspect-ratio:1;margin:0;border-radius:16px}
+.onece-v2-library .v2-pack-detail .library-pack-info{grid-column:2;grid-row:2;margin:0}
+.onece-v2-library .v2-pack-detail .library-pack-title-block h2{font-size:clamp(24px,3vw,32px);line-height:1.15}
+.onece-v2-library .v2-pack-detail .library-pack-play-controls .library-pack-play{width:44px;height:44px;border-radius:14px;background:#f5f3ff;color:#15101e}
+.onece-v2-library .v2-pack-detail .library-pack-add{width:100%;min-height:44px;margin:20px 0 0;padding:10px 16px;justify-content:center;border:1px solid #ffffff08;border-radius:12px;background:#ffffff06;color:#f5f3ff}
+.onece-v2-library .v2-pack-detail>.beat-track-list{grid-column:2;grid-row:3;width:100%;margin:0}
+@media(max-width:760px){.onece-v2-library .v2-pack-detail{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto auto;gap:24px}.onece-v2-library .v2-pack-detail .library-pack-cover{grid-column:1;grid-row:2;max-width:360px;justify-self:center}.onece-v2-library .v2-pack-detail .library-pack-info{grid-column:1;grid-row:3}.onece-v2-library .v2-pack-detail>.beat-track-list{grid-column:1;grid-row:4}}
