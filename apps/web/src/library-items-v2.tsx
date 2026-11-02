@@ -205,10 +205,18 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility}:{onUpload:(
     </div>}
    </div>}
  </div></div>
- {contextPack&&<div className="v2-context-menu" role="menu" aria-label={'Pack actions for '+contextPack.pack.title} style={{left:Math.min(contextPack.x,Math.max(8,window.innerWidth-280))+'px',top:Math.min(contextPack.y,Math.max(8,window.innerHeight-220))+'px'}} onPointerDown={e=>e.stopPropagation()} onContextMenu={e=>e.preventDefault()}>
-  <button type="button" role="menuitem" className="v2-context-action" onClick={()=>{void openPack(contextPack.pack);setContextPack(null)}}><FolderPlus size={17}/><span>Open pack</span></button>
+ {contextPack&&<div className="v2-context-menu" role="menu" aria-label={'Pack actions for '+contextPack.pack.title} style={{left:Math.max(8,Math.min(contextPack.x,window.innerWidth-280))+'px',top:Math.max(8,Math.min(contextPack.y,window.innerHeight-460))+'px'}} onPointerDown={e=>e.stopPropagation()} onContextMenu={e=>e.preventDefault()}>
+  <button type="button" role="menuitem" className="v2-context-action" disabled title="Pack publishing requires v2 API integration"><Eye size={17}/><span>Publish</span></button>
   <div className="v2-context-separator"/>
-  <button type="button" role="menuitem" className="v2-context-action" onClick={()=>{void playPack(contextPack.pack);setContextPack(null)}}>{activePackId===contextPack.pack.id&&playing?<Pause size={17}/>:<Play size={17}/>}<span>{activePackId===contextPack.pack.id&&playing?'Pause':'Play'} pack</span></button>
+  <button type="button" role="menuitem" className="v2-context-action" onClick={()=>{void (async()=>{const pack=contextPack.pack;setContextPack(null);try{const response=await fetch(api+'/api/library/files/pack-tracks/'+pack.id,{credentials:'include'});if(!response.ok)throw Error('Unable to load pack tracks');const result=await response.json();const tracks=(result.beats as BeatItem[]).map(beat=>({...beat,cover_file_id:beat.cover_file_id??pack.cover_file_id}));if(!tracks.length)return;if(!current)choose(tracks[0],tracks,pack.id);else setQueue(previous=>[...previous,...tracks])}catch(error){setPlayerError(error instanceof Error?error.message:'Unable to add pack to queue')}})()}}><ListPlus size={17}/><span>Add to queue</span></button>
+  <button type="button" role="menuitem" className="v2-context-action" disabled title="Saving packs requires v2 API integration"><Bookmark size={17}/><span>Save</span></button>
+  <button type="button" role="menuitem" className="v2-context-action" disabled title="Adding packs to collections requires v2 API integration"><FolderPlus size={17}/><span>Add to...</span><ChevronRight className="v2-context-chevron" size={15}/></button>
+  <div className="v2-context-separator"/>
+  <button type="button" role="menuitem" className="v2-context-action" disabled title="Renaming packs requires v2 API integration"><Pencil size={17}/><span>Rename</span></button>
+  <button type="button" role="menuitem" className="v2-context-action" disabled title="Changing pack covers requires v2 API integration"><ImageIcon size={17}/><span>Change cover</span></button>
+  <button type="button" role="menuitem" className="v2-context-action" disabled title="Pack ZIP download will include all beats and available stems; server-side archive generation is not implemented yet"><Download size={17}/><span>Download ZIP</span></button>
+  <div className="v2-context-separator"/>
+  <button type="button" role="menuitem" className="v2-context-action v2-context-danger" disabled title="Deleting packs requires confirmation and v2 API integration"><Trash2 size={17}/><span>Delete pack</span></button>
  </div>}
  {contextBeat&&<div className="v2-context-menu" role="menu" aria-label={'Beat actions for '+contextBeat.beat.title} style={{left:Math.min(contextBeat.x,Math.max(8,window.innerWidth-280))+'px',top:Math.min(contextBeat.y,Math.max(8,window.innerHeight-440))+'px'}} onPointerDown={e=>e.stopPropagation()} onContextMenu={e=>e.preventDefault()}>
   <button type="button" role="menuitem" className="v2-context-action" disabled title="Publishing will be available after the v2 API integration"><Eye size={17}/><span>Publish</span></button>
