@@ -1,5 +1,5 @@
 import React,{useState} from 'react';
-import {Bookmark,Users,Share2} from 'lucide-react';
+import {Bookmark,Users,Share2,Eye,EyeOff,Link2,ListPlus,FolderPlus,Pencil,Image as ImageIcon,Download,Layers,Trash2,ChevronRight} from 'lucide-react';
 import './public-profile-v2.css';
 
 function CatalogLibraryIcon({size=17}:{size?:number}){
@@ -23,6 +23,8 @@ export default function PublicProfileV2({user,onSettings,profileId}:{user:any;on
  const [tab,setTab]=useState<ProfileTab>('catalog');
  const [projects,setProjects]=useState<{catalog:PublicProject[];saves:PublicProject[]}>({catalog:[],saves:[]});
  const [saved,setSaved]=useState<Set<string>>(new Set());
+ const [published,setPublished]=useState<Set<string>>(new Set());
+ const [menu,setMenu]=useState<{project:PublicProject;x:number;y:number}|null>(null);
  const [profileUser,setProfileUser]=useState<any>(null);
  const [loading,setLoading]=useState(true);
  const [error,setError]=useState('');
@@ -38,6 +40,7 @@ export default function PublicProfileV2({user,onSettings,profileId}:{user:any;on
   ]).then(([result,mine])=>{
    setProjects({catalog:result.catalog||[],saves:result.saves||[]});
    setProfileUser(result.profile||null);
+   setPublished(new Set((mine.published||[]).map((p:{kind:string;id:string})=>p.kind+':'+p.id)));
    setSaved(new Set((mine.saved||[]).map((p:{owner_id:number;kind:string;id:string})=>p.owner_id+':'+p.kind+':'+p.id)));
   }).catch(e=>{if(e.name!=='AbortError')setError(e.message||'Unable to load profile')}).finally(()=>{if(!controller.signal.aborted)setLoading(false)});
   return()=>controller.abort();
@@ -53,6 +56,34 @@ export default function PublicProfileV2({user,onSettings,profileId}:{user:any;on
   }catch(e){setError(e instanceof Error?e.message:'Unable to save')}
  };
 
+ const ownerOf=(project:PublicProject)=>!!user?.id&&String(user.id)===String(project.owner_id);
+ const publishProject=async(project:PublicProject)=>{
+  setMenu(null);setError('');
+  const key=project.kind+':'+project.id,already=published.has(key);
+  try{
+   const response=await fetch(api+'/api/public/publish/'+project.kind+'/'+project.id,{method:already?'DELETE':'POST',credentials:'include'});
+   if(!response.ok)throw Error((await response.json().catch(()=>({}))).error||'Unable to change publication');
+   setPublished(previous=>{const next=new Set(previous);if(already)next.delete(key);else next.add(key);return next});
+   setProjects(previous=>({...previous,catalog:already?previous.catalog.filter(p=>p.kind+':'+p.id!==key):previous.catalog}));
+  }catch(e){setError(e instanceof Error?e.message:'Unable to change publication')}
+ };
+ const copyProjectLink=async(project:PublicProject)=>{
+  setMenu(null);setError('');
+  try{
+   const response=await fetch(api+'/api/public/share/'+project.kind+'/'+project.id,{method:'POST',credentials:'include'});
+   if(!response.ok)throw Error((await response.json().catch(()=>({}))).error||'Unable to share project');
+   const result=await response.json();
+   await navigator.clipboard.writeText(window.location.origin+'/shared/'+result.token);
+  }catch(e){setError(e instanceof Error?e.message:'Unable to copy link')}
+ };
+ React.useEffect(()=>{
+  if(!menu)return;
+  const dismiss=()=>setMenu(null);
+  window.addEventListener('pointerdown',dismiss);
+  window.addEventListener('scroll',dismiss,true);
+  window.addEventListener('keydown',dismiss);
+  return()=>{window.removeEventListener('pointerdown',dismiss);window.removeEventListener('scroll',dismiss,true);window.removeEventListener('keydown',dismiss)};
+ },[menu]);
  const shownUser=profileId?profileUser:user;
  const name=String(shownUser?.displayName||shownUser?.name||shownUser?.username||'Profile');
  const handle=String(shownUser?.username||shownUser?.handle||'');
@@ -83,7 +114,7 @@ export default function PublicProfileV2({user,onSettings,profileId}:{user:any;on
     (tab==='catalog'?projects.catalog:projects.saves).length?
     <div className="onece-profile-projects">{(tab==='catalog'?projects.catalog:projects.saves).map(project=>{
      const key=project.owner_id+':'+project.kind+':'+project.id;
-     return <article className="onece-profile-project" key={key}>
+     return <article className="onece-profile-project" key={key} onContextMenu={event=>{event.preventDefault();setMenu({project,x:event.clientX,y:event.clientY})}}>
       <ProjectCover project={project}/>
       <div className="onece-profile-project-info"><strong>{project.title}</strong><span>{project.kind==='pack'?(project.track_count||0)+' beats':'Beat'}</span></div>
       {user?.id&&<button type="button" className="onece-profile-project-save" aria-label={saved.has(key)?'Unsave '+project.title:'Save '+project.title} aria-pressed={saved.has(key)} title={saved.has(key)?'Unsave':'Save'} onClick={()=>void toggleSave(project)}><Bookmark size={17} fill={saved.has(key)?'currentColor':'none'}/></button>}
@@ -92,5 +123,19 @@ export default function PublicProfileV2({user,onSettings,profileId}:{user:any;on
     tab==='catalog'?<div className="onece-profile-empty"><CatalogLibraryIcon size={27}/><h2>No public releases yet</h2><p>Beats and packs will appear here when published. Private Library files are never displayed automatically.</p></div>:
     <div className="onece-profile-empty"><Bookmark size={27}/><h2>No saves yet</h2><p>Saved projects will appear here.</p></div>}
   </div>
+  {menu&&<div className="onece-profile-context-menu" role="menu" aria-label={'Actions for '+menu.project.title} style={{position:'fixed',left:Math.max(8,Math.min(menu.x,window.innerWidth-248)),top:Math.max(8,Math.min(menu.y,window.innerHeight-430)),zIndex:1000}} onPointerDown={e=>e.stopPropagation()} onContextMenu={e=>e.preventDefault()}>
+   {ownerOf(menu.project)&&<><button type="button" role="menuitem" onClick={()=>void publishProject(menu.project)}>{published.has(menu.project.kind+':'+menu.project.id)?<EyeOff size={17}/>:<Eye size={17}/>}<span>{published.has(menu.project.kind+':'+menu.project.id)?'Unpublish':'Publish'}</span></button><div className="onece-profile-context-separator"/></>}
+   <button type="button" role="menuitem" onClick={()=>{const project=menu.project;setMenu(null);void toggleSave(project)}}><Bookmark size={17}/><span>{saved.has(menu.project.owner_id+':'+menu.project.kind+':'+menu.project.id)?'Unsave':'Save to library'}</span></button>
+   {ownerOf(menu.project)&&<button type="button" role="menuitem" onClick={()=>void copyProjectLink(menu.project)}><Link2 size={17}/><span>Copy link</span></button>}
+   <button type="button" role="menuitem" disabled title="Public profile playback queue is not yet connected"><ListPlus size={17}/><span>Add to queue</span></button>
+   {ownerOf(menu.project)&&<><button type="button" role="menuitem" disabled title="Collections are not yet connected"><FolderPlus size={17}/><span>Add to...</span><ChevronRight size={15}/></button>
+   <div className="onece-profile-context-separator"/>
+   <button type="button" role="menuitem" disabled title="Rename is not yet connected"><Pencil size={17}/><span>Rename</span></button>
+   <button type="button" role="menuitem" disabled title="Changing covers is not yet connected"><ImageIcon size={17}/><span>Change cover</span></button>
+   <button type="button" role="menuitem" disabled title="Download is not yet connected"><Download size={17}/><span>{menu.project.kind==='pack'?'Download ZIP':'Download MP3'}</span></button>
+   {menu.project.kind==='beat'&&<button type="button" role="menuitem" disabled title="Stems management is not yet connected"><Layers size={17}/><span>Stems</span></button>}
+   <div className="onece-profile-context-separator"/>
+   <button type="button" role="menuitem" disabled title="Deletion is not yet connected"><Trash2 size={17}/><span>Delete {menu.project.kind}</span></button></>}
+  </div>}
  </section>
 }
