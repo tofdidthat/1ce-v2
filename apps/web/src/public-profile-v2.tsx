@@ -1,6 +1,7 @@
 import React,{useState} from 'react';
 import {Bookmark,Users,Share2,Eye,EyeOff,Link2,ListPlus,FolderPlus,Pencil,Image as ImageIcon,Download,Layers,Trash2,ChevronRight,Play,Pause} from 'lucide-react';
 import './public-profile-v2.css';
+import {notifyV2DataChanged,subscribeV2DataChanges,subscribeV2Resume} from './data-refresh-v2';
 import {profilePictureV2} from './profile-picture-v2';
 
 function CatalogLibraryIcon({size=17}:{size?:number}){
@@ -48,8 +49,12 @@ export default function PublicProfileV2({user,onSettings,profileId,onPlayProject
  const [profileUser,setProfileUser]=useState<any>(null);
  const [loading,setLoading]=useState(true);
  const [error,setError]=useState('');
+ const [refreshRevision,setRefreshRevision]=useState(0);
  const targetId=profileId||String(user?.id||'');
  const isOwner=!profileId||String(user?.id)===String(profileUser?.id)||Boolean(user?.username&&user.username===profileId);
+ React.useEffect(()=>subscribeV2DataChanges(['library','saves','publications','shares','identity'],
+  ()=>setRefreshRevision(v=>v+1)),[targetId,user?.id]);
+ React.useEffect(()=>subscribeV2Resume(()=>setRefreshRevision(v=>v+1)),[targetId,user?.id]);
  React.useEffect(()=>{
   if(!api||!targetId){setLoading(false);return;}
   const controller=new AbortController();
@@ -58,13 +63,14 @@ export default function PublicProfileV2({user,onSettings,profileId,onPlayProject
    fetch(api+'/api/public/profile/'+targetId,{credentials:'include',signal:controller.signal}).then(async r=>{if(!r.ok)throw Error('Unable to load profile');return r.json()}),
    user?.id?fetch(api+'/api/public/mine',{credentials:'include',signal:controller.signal}).then(r=>r.ok?r.json():{saved:[]}):Promise.resolve({saved:[]})
   ]).then(([result,mine])=>{
+   if(controller.signal.aborted)return;
    setProjects({catalog:result.catalog||[],saves:result.saves||[]});
    setProfileUser(result.profile||null);
    setPublished(new Set((mine.published||[]).map((p:{kind:string;id:string})=>p.kind+':'+p.id)));
    setSaved(new Set((mine.saved||[]).map((p:{owner_id:number;kind:string;id:string})=>p.owner_id+':'+p.kind+':'+p.id)));
   }).catch(e=>{if(e.name!=='AbortError')setError(e.message||'Unable to load profile')}).finally(()=>{if(!controller.signal.aborted)setLoading(false)});
   return()=>controller.abort();
- },[targetId,user?.id,tab]);
+ },[targetId,user?.id,tab,refreshRevision]);
  const toggleSave=async(project:PublicProject)=>{
   const key=project.owner_id+':'+project.kind+':'+project.id;
   const already=saved.has(key);
@@ -73,6 +79,7 @@ export default function PublicProfileV2({user,onSettings,profileId,onPlayProject
    if(!response.ok)throw Error((await response.json().catch(()=>({}))).error||'Unable to save');
    setSaved(prev=>{const next=new Set(prev);if(already)next.delete(key);else next.add(key);return next});
    if(isOwner)setProjects(prev=>({...prev,saves:already?prev.saves.filter(p=>p.owner_id+':'+p.kind+':'+p.id!==key):[project,...prev.saves.filter(p=>p.owner_id+':'+p.kind+':'+p.id!==key)]}));
+   notifyV2DataChanged(['saves'],user?.id);
   }catch(e){setError(e instanceof Error?e.message:'Unable to save')}
  };
 
@@ -85,6 +92,7 @@ export default function PublicProfileV2({user,onSettings,profileId,onPlayProject
    if(!response.ok)throw Error((await response.json().catch(()=>({}))).error||'Unable to change publication');
    setPublished(previous=>{const next=new Set(previous);if(already)next.delete(key);else next.add(key);return next});
    setProjects(previous=>({...previous,catalog:already?previous.catalog.filter(p=>p.kind+':'+p.id!==key):previous.catalog}));
+   notifyV2DataChanged(['publications'],user?.id);
   }catch(e){setError(e instanceof Error?e.message:'Unable to change publication')}
  };
  const copyProjectLink=async(project:PublicProject)=>{

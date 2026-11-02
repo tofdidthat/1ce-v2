@@ -4,10 +4,11 @@
 import React,{useEffect,useMemo,useRef,useState} from 'react';
 import {useNavigate} from 'react-router-dom';
 import './library-upload-v1.css';
+import {notifyV2DataChanged} from './data-refresh-v2';
 const audioPattern=/\.(mp3|wav)$/i;
 const fileTitle=file=>file.name.replace(/\.[^.]+$/,'').replace(/[-_]+/g,' ').trim();
 const formatSize=file=>(file.size/1024/1024).toFixed(2)+' MB';
-export default function LibraryUploadV2(){
+export default function LibraryUploadV2({userId}:{userId?:number}={}){
  const navigate=useNavigate();
  const [audioFiles,setAudioFiles]=useState([]);
  const [cover,setCover]=useState(null);
@@ -82,6 +83,7 @@ export default function LibraryUploadV2(){
     if(!packResponse.ok)throw new Error(pack.error||'Unable to create pack');
    }
    setAudioFiles([]);setCover(null);setStemsByAudio({});setItemName('');
+   notifyV2DataChanged(['library'],userId);
    navigate('/app/library',{replace:true});
   }catch(e){setError(e instanceof Error?e.message:'Upload failed');}
   finally{setSaving(false);setStage('');}
