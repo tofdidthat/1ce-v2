@@ -21,6 +21,17 @@ const authorizedProjectSql=`SELECT 1 FROM (
  SELECT 'pack'::text AS kind,p.id AS project_id
  FROM library_packs p
  WHERE p.user_id=$2 AND $3='cover' AND p.cover_file_id=$1
+ UNION ALL
+ -- A published/shared pack grants access to the audio and cover of its
+ -- original member beats without publishing those beats individually.
+ SELECT 'pack'::text AS kind,p.id AS project_id
+ FROM library_packs p
+ JOIN library_pack_beats pb ON pb.pack_id=p.id
+ JOIN library_beats member ON member.id=pb.beat_id AND member.user_id=p.user_id
+ WHERE p.user_id=$2 AND (
+  ($3='audio' AND member.audio_file_id=$1) OR
+  ($3='cover' AND member.cover_file_id=$1)
+ )
 ) project
 WHERE EXISTS (
  SELECT 1 FROM v2_public_projects pub
