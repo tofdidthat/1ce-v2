@@ -2,6 +2,7 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {Play,Pause,SkipBack,SkipForward,Shuffle,Repeat,Repeat1,ListMusic,Volume2,VolumeX,X,Music2,ChevronLeft,Bookmark,Eye,EyeOff,ListPlus,FolderPlus,Pencil,Image as ImageIcon,Download,Layers,Trash2,ChevronRight,Link2} from 'lucide-react';
 import './library-items-v2.css';
+import {notifyV2DataChanged,subscribeV2DataChanges,subscribeV2Resume} from './data-refresh-v2';
 const api=import.meta.env.VITE_API_URL;
 type BeatItem = {published?:boolean;owner_id?:number;id:string;title:string;audio_file_id:number;cover_file_id:number|null;stems_file_id:number|null;pack_count:number;created_at:string;library_visible:boolean};
 type PackItem = {published?:boolean;id:string;title:string;cover_file_id:number|null;track_count:number;created_at:string};
@@ -71,6 +72,27 @@ function useWaveform(fileId:number|null,ownerId:number|null){
 }
 export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackChange,userId,active=true,playRequest}:{onUpload:()=>void;onPlayerVisibility?:(visible:boolean)=>void;onPlaybackChange?:(state:{ownerId:number;kind:'beat'|'pack';id:string;playing:boolean}|null)=>void;userId?:number;active?:boolean;playRequest?:{ownerId:number;kind:'beat'|'pack';id:string;nonce:number}|null}){
  const [data,setData]=useState<LibraryData>({beats:[],packs:[]});
+ const [libraryRevision,setLibraryRevision]=useState(0);
+ const [flagsRevision,setFlagsRevision]=useState(0);
+ const lastLibraryFetch=useRef(0);
+ const wasActive=useRef(active);
+ useEffect(()=>subscribeV2DataChanges(['library'],()=>setLibraryRevision(v=>v+1),userId),[userId]);
+ useEffect(()=>subscribeV2DataChanges(['saves','publications','shares'],
+  ()=>setFlagsRevision(v=>v+1),userId),[userId]);
+ useEffect(()=>subscribeV2Resume(()=>{
+  if(!active)return;
+  if(Date.now()-lastLibraryFetch.current>3000)setLibraryRevision(v=>v+1);
+  setFlagsRevision(v=>v+1);
+ }),[active,userId]);
+ // Opening Library after browsing other screens must revalidate, even when
+ // the tab never lost focus. Suppress an extra fetch right after Upload.
+ useEffect(()=>{
+  if(active&&!wasActive.current){
+   if(Date.now()-lastLibraryFetch.current>1500)setLibraryRevision(v=>v+1);
+   setFlagsRevision(v=>v+1);
+  }
+  wasActive.current=active;
+ },[active]);
  const [loading,setLoading]=useState(true);
  const [current,setCurrent]=useState<BeatItem|null>(null);
  const [openedPack,setOpenedPack]=useState<PackItem|null>(null);
@@ -111,9 +133,22 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
    const response=await fetch(api+'/api/public/publish/'+kind+'/'+id,{method:isPublished?'DELETE':'POST',credentials:'include'});
    if(!response.ok)throw Error((await response.json().catch(()=>({}))).error||'Unable to update publication');
    setPublished(prev=>{const next=new Set(prev);if(isPublished)next.delete(key);else next.add(key);return next});
+   notifyV2DataChanged(['publications'],userId);
   }catch(error){setActionError(error instanceof Error?error.message:'Unable to update publication')}
  };
- useEffect(()=>{if(!api||!userId)return;fetch(api+'/api/public/mine',{credentials:'include'}).then(r=>r.ok?r.json():Promise.reject()).then(data=>{setPublished(new Set((data.published||[]).map((item:{kind:string;id:string})=>item.kind+':'+item.id)));setSavedBeatIds(new Set((data.saved||[]).filter((item:{owner_id:number;kind:string})=>item.owner_id===userId&&item.kind==='beat').map((item:{id:string})=>item.id)));setSavedPackIds(new Set((data.saved||[]).filter((item:{owner_id:number;kind:string})=>item.owner_id===userId&&item.kind==='pack').map((item:{id:string})=>item.id)))}).catch(()=>{})},[]);
+ useEffect(()=>{
+  if(!api||!userId)return;
+  const controller=new AbortController();
+  fetch(api+'/api/public/mine',{credentials:'include',cache:'no-store',signal:controller.signal})
+   .then(response=>response.ok?response.json():Promise.reject(Error('Unable to refresh project flags')))
+   .then(result=>{
+    if(controller.signal.aborted)return;
+    setPublished(new Set((result.published||[]).map((item:{kind:string;id:string})=>item.kind+':'+item.id)));
+    setSavedBeatIds(new Set((result.saved||[]).filter((item:{owner_id:number;kind:string})=>Number(item.owner_id)===Number(userId)&&item.kind==='beat').map((item:{id:string})=>item.id)));
+    setSavedPackIds(new Set((result.saved||[]).filter((item:{owner_id:number;kind:string})=>Number(item.owner_id)===Number(userId)&&item.kind==='pack').map((item:{id:string})=>item.id)));
+   }).catch(()=>{});
+  return()=>controller.abort();
+ },[userId,flagsRevision]);
  const [savedBeatIds,setSavedBeatIds]=useState<Set<string>>(new Set());
  const [savedPackIds,setSavedPackIds]=useState<Set<string>>(new Set());
  const copyProjectLink=async(kind:'beat'|'pack',id:string)=>{
@@ -134,6 +169,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
    if(!response.ok)throw Error((await response.json().catch(()=>({}))).error||'Unable to save');
    const setter=kind==='beat'?setSavedBeatIds:setSavedPackIds;
    setter(previous=>{const next=new Set(previous);if(already)next.delete(id);else next.add(id);return next});
+   notifyV2DataChanged(['saves'],userId);
   }catch(e){setActionError(e instanceof Error?e.message:'Unable to save')}
  };
  const openPack=async(pack:PackItem)=>{
@@ -234,13 +270,14 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
   if(!userId){setData({beats:[],packs:[]});setLoading(false);return;}
   if(!api){setError('Library API is not configured');setLoading(false);return;}
   setError('');setLoading(true);
-  fetch(api+'/api/library/files/items',{credentials:'include',signal:controller.signal})
+  lastLibraryFetch.current=Date.now();
+  fetch(api+'/api/library/files/items',{credentials:'include',cache:'no-store',signal:controller.signal})
    .then(async r=>{const body=await r.json().catch(()=>({}));if(!r.ok)throw Error(body.error||'Unable to load Library');return body})
-   .then(body=>setData({beats:body.beats||[],packs:body.packs||[]}))
+   .then(body=>{if(!controller.signal.aborted)setData({beats:body.beats||[],packs:body.packs||[]})})
    .catch(e=>{if(e.name!=='AbortError')setError(e.message||'Unable to load Library')})
    .finally(()=>{if(!controller.signal.aborted)setLoading(false)});
   return ()=>controller.abort();
- },[userId]);
+ },[userId,libraryRevision]);
  const standaloneBeats=data.beats.filter(b=>b.library_visible!==false);
  // Warm the first standalone waveform while the user browses the Library.
  useEffect(()=>{const first=data.beats.find(b=>b.library_visible!==false);if(first&&userId)void loadWaveform(first.audio_file_id,userId).catch(()=>{})},[data.beats]);

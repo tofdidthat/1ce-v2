@@ -1,6 +1,7 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {profilePictureV2} from './profile-picture-v2';
 import './account-settings-v2.css';
+import {notifyV2DataChanged} from './data-refresh-v2';
 
 const api=import.meta.env.VITE_API_URL;
 type AccountUser={id:number;username?:string|null;picture?:string|null;has_avatar?:boolean;avatar_updated_at?:string|null;email?:string;[key:string]:unknown};
@@ -50,21 +51,22 @@ export default function AccountSettingsV2({user,onUserChange,onViewProfile,onLog
   if(!api){setError('API is not configured.');return;}
   busy.current=true;setSaving(true);setError('');
   let latest=user;
+  let changed=false;
   try{
    if(file){
     latest=await request('/auth/me/avatar',{method:'POST',headers:{'Content-Type':file.type},body:file});
-    onUserChange(latest);setFile(null);
+    onUserChange(latest);changed=true;setFile(null);
    }else if(removePhoto){
     latest=await request('/auth/me/avatar',{method:'DELETE'});
-    onUserChange(latest);setRemovePhoto(false);
+    onUserChange(latest);changed=true;setRemovePhoto(false);
    }
    if(normalized!==(latest.username||'')){
     latest=await request('/auth/me',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:normalized})});
-    onUserChange(latest);
+    onUserChange(latest);changed=true;
    }
    setEditing(false);setDraft(latest.username||'');
   }catch(caught){setError(caught instanceof Error?caught.message:'Unable to save changes.');}
-  finally{busy.current=false;setSaving(false);}
+  finally{if(changed)notifyV2DataChanged(['identity'],latest.id);busy.current=false;setSaving(false);}
  }
  async function logout(){
   if(loggingOut)return;

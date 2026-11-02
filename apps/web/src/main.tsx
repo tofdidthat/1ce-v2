@@ -5,6 +5,7 @@ import './styles.css';
 import { TermsPage, PrivacyPage } from './legal';
 import { LoginPage } from './login';
 import WorkspaceV2 from './workspace-v1';
+import {notifyV2DataChanged} from './data-refresh-v2';
 
 function Header() { return <header className="site-header"><Link to="/" className="brand"><img src="/1ce-logo.png" alt="1CE" className="brand-logo"/></Link><nav><Link to="/">Home</Link><Link to="/login" className="button">Log in</Link></nav></header> }
 function Footer() { return <footer className="site-footer"><span>© 2026 1CE</span><nav><Link to="/terms">Terms of Service</Link><Link to="/privacy">Privacy Policy</Link></nav></footer> }
@@ -23,6 +24,7 @@ function SharedProjectPage(){
    const data=await r.json().catch(()=>({}));
    if(!r.ok)throw Error(r.status===401?'Sign in to access this project':data.error||'Unable to access project');
    setProject(data);setStatus('Access granted. You can save this project to your Library.');
+   notifyV2DataChanged(['shares']);
   }).catch(e=>setStatus(e.message));
  },[token]);
  const save=async()=>{
@@ -30,6 +32,7 @@ function SharedProjectPage(){
   const api=import.meta.env.VITE_API_URL;
   const r=await fetch(api+'/api/public/save/'+project.owner_id+'/'+project.kind+'/'+project.id,{method:'POST',credentials:'include'});
   setStatus(r.ok?'Saved to your profile.':'Unable to save project.');
+  if(r.ok)notifyV2DataChanged(['saves']);
  };
  return <div style={{minHeight:'100vh',background:'#0b0911',color:'#f6f4fa',padding:'100px 24px',textAlign:'center'}}>
   <h1>Shared project</h1><p>{status}</p>

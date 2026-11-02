@@ -5,6 +5,7 @@ import React,{useEffect,useState,useRef} from 'react';
 import {useNavigate,useLocation} from 'react-router-dom';
 import './workspace-v1.css';
 import LibraryUploadV2 from './library-upload-v1';
+import {subscribeV2DataChanges,subscribeV2Resume} from './data-refresh-v2';
 import LibraryItemsV2 from './library-items-v2';
 import PublicProfileV2 from './public-profile-v2';
 import AccountSettingsV2 from './account-settings-v2';
@@ -254,6 +255,32 @@ export default function WorkspaceV2({user,profileId}:{user:any;profileId?:string
  const navigate=useNavigate();const location=useLocation();
  const [account,setAccount]=useState(user);
  useEffect(()=>setAccount(user),[user?.id]);
+ // Revalidate identity when another tab updates the avatar/username, or
+ // after returning from a different browser window. Never overwrite a
+ // different signed-in account during an in-flight request.
+ useEffect(()=>{
+  const id=account?.id;
+  if(!id)return;
+  const api=import.meta.env.VITE_API_URL;
+  if(!api)return;
+  let alive=true;
+  let generation=0;
+  const refresh=async()=>{
+   const request=++generation;
+   try{
+    const response=await fetch(api+'/auth/me',{credentials:'include',cache:'no-store'});
+    if(!response.ok)return;
+    const data=await response.json();
+    const updated=data.user||data;
+    if(alive&&request===generation&&String(updated?.id)===String(id)){
+     setAccount((current:any)=>String(current?.id)===String(id)?updated:current);
+    }
+   }catch{ /* leave previous identity visible until the next revalidation */ }
+  };
+  const unsubscribe=subscribeV2DataChanges(['identity'],()=>void refresh(),id);
+  const unsubscribeFocus=subscribeV2Resume(()=>void refresh());
+  return()=>{alive=false;generation++;unsubscribe();unsubscribeFocus();};
+ },[account?.id]);
  const logout=async()=>{const api=import.meta.env.VITE_API_URL;if(!api)throw Error('API is not configured');const response=await fetch(api+'/auth/logout',{method:'POST',credentials:'include'});if(!response.ok)throw Error('Could not log out');window.location.assign('/login');};
  const [playerVisible,setPlayerVisible]=useState(false);
  const [playRequest,setPlayRequest]=useState<{ownerId:number;kind:'beat'|'pack';id:string;nonce:number}|null>(null);
@@ -268,7 +295,7 @@ export default function WorkspaceV2({user,profileId}:{user:any;profileId?:string
  <main className="onece-v2-workspace-main">
  <LibraryItemsV2 active={view==='library'} playRequest={playRequest} userId={account?.id} onUpload={()=>onNavigate('upload')} onPlayerVisibility={setPlayerVisible} onPlaybackChange={setPlayback}/>
  {view==='library'?null:
- view==='upload'?<LibraryUploadV2/>:
+ view==='upload'?<LibraryUploadV2 userId={account?.id}/>:
  view==='account'?<AccountSettingsV2 user={account} onUserChange={setAccount} onViewProfile={()=>onNavigate('profile')} onLogout={logout}/>:
  view==='profile'?<PublicProfileV2 user={account} profileId={profileId} playback={playback} onPlayProject={requestPlayback} onSettings={()=>onNavigate('edit-profile')}/>: view==='edit-profile'?<section className="onece-workspace-placeholder"><h1>Edit Profile</h1><p>Profile editing is not yet available in v2.</p></section>:
  <section className="onece-workspace-placeholder"><h1>{view==='account'?'Settings':view==='profile'?'Public Profile':'Discover'}</h1><p>{view==='profile'?'Public profile publishing is not yet enabled in v2.':view==='account'?'Account settings are not yet available in v2.':'Discover is not yet available in v2.'}</p></section>}
