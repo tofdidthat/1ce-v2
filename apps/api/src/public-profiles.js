@@ -55,11 +55,13 @@ export async function handlePublicProfiles(req,res,pathname,pool,currentUser){
  const user=await currentUser(req);
  if(parts.length===4&&parts[2]==='profile'&&/^\\d+$/.test(parts[3])&&req.method==='GET'){
   const profileId=parts[3];
-  const [catalog,saves]=await Promise.all([
+  const [profile,catalog,saves]=await Promise.all([
+   pool.query('SELECT id,name,picture,custom_picture FROM account_users WHERE id=$1',[profileId]),
    pool.query(selectProjects+' AND pub.user_id=$1 ORDER BY pub.published_at DESC LIMIT 200',[profileId]),
    pool.query(`SELECT projects.* FROM v2_public_saves s JOIN LATERAL (${selectProjects} AND pub.user_id=s.owner_id AND pub.kind=s.kind AND pub.project_id=s.project_id) projects ON TRUE WHERE s.user_id=$1 ORDER BY s.saved_at DESC LIMIT 200`,[profileId])
   ]);
-  send(res,200,{catalog:catalog.rows,saves:saves.rows});return true;
+  if(!profile.rowCount){send(res,404,{error:'Profile not found'});return true;}
+  send(res,200,{profile:profile.rows[0],catalog:catalog.rows,saves:saves.rows});return true;
  }
  if(!user){send(res,401,{error:'Not authenticated'});return true;}
  if(parts.length===3&&parts[2]==='mine'&&req.method==='GET'){
