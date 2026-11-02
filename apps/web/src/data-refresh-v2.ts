@@ -20,7 +20,7 @@ function parseChange(value:unknown):V2DataChange|null{
  if(!Array.isArray(candidate.scopes)||!candidate.scopes.length||
   !candidate.scopes.every(scope=>knownScopes.has(scope)))return null;
  if(candidate.actorId!==null&&(!Number.isSafeInteger(candidate.actorId)||Number(candidate.actorId)<1))return null;
- return {scopes:candidate.scopes,actorId:candidate.actorId};
+ return {scopes:candidate.scopes,actorId:candidate.actorId??null};
 }
 
 export function matchesV2DataChange(change:V2DataChange,scopes:readonly V2DataScope[],userId?:number|null){
