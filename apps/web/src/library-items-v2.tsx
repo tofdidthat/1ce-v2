@@ -1,8 +1,9 @@
 // 1CE v2 private library. Never requests v1 data.
-import React,{useEffect,useRef,useState} from 'react';
+import React,{useEffect,useMemo,useRef,useState} from 'react';
 import {Play,Pause,SkipBack,SkipForward,Shuffle,Repeat,Repeat1,ListMusic,Volume2,VolumeX,X,Music2,ChevronLeft,Bookmark,Eye,EyeOff,ListPlus,FolderPlus,Pencil,Image as ImageIcon,Download,Layers,Trash2,ChevronRight,Link2} from 'lucide-react';
 import './library-items-v2.css';
-import {notifyV2DataChanged,subscribeV2DataChanges,subscribeV2Resume} from './data-refresh-v2';
+import {subscribeV2DataChanges,subscribeV2Resume} from './data-refresh-v2';
+import useProjectFlagsV2 from './project-flags-v2';
 import ProjectContextMenuV2 from './project-context-menu-v2';
 import ProjectCoverV2 from './project-cover-v2';
 import ProjectCardV2 from './project-card-v2';
@@ -65,23 +66,18 @@ function useWaveform(fileId:number|null,ownerId:number|null){
 export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackChange,userId,active=true,playRequest}:{onUpload:()=>void;onPlayerVisibility?:(visible:boolean)=>void;onPlaybackChange?:(state:{ownerId:number;kind:'beat'|'pack';id:string;playing:boolean}|null)=>void;userId?:number;active?:boolean;playRequest?:{ownerId:number;kind:'beat'|'pack';id:string;nonce:number}|null}){
  const [data,setData]=useState<LibraryData>({beats:[],packs:[]});
  const [libraryRevision,setLibraryRevision]=useState(0);
- const [flagsRevision,setFlagsRevision]=useState(0);
  const lastLibraryFetch=useRef(0);
  const wasActive=useRef(active);
  useEffect(()=>subscribeV2DataChanges(['library'],()=>setLibraryRevision(v=>v+1),userId),[userId]);
- useEffect(()=>subscribeV2DataChanges(['saves','publications','shares'],
-  ()=>setFlagsRevision(v=>v+1),userId),[userId]);
  useEffect(()=>subscribeV2Resume(()=>{
   if(!active)return;
   if(Date.now()-lastLibraryFetch.current>3000)setLibraryRevision(v=>v+1);
-  setFlagsRevision(v=>v+1);
  }),[active,userId]);
  // Opening Library after browsing other screens must revalidate, even when
  // the tab never lost focus. Suppress an extra fetch right after Upload.
  useEffect(()=>{
   if(active&&!wasActive.current){
    if(Date.now()-lastLibraryFetch.current>1500)setLibraryRevision(v=>v+1);
-   setFlagsRevision(v=>v+1);
   }
   wasActive.current=active;
  },[active]);
@@ -154,33 +150,16 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
   return()=>{document.removeEventListener('pointerdown',dismiss);document.removeEventListener('keydown',key);window.removeEventListener('scroll',dismiss,true);window.removeEventListener('resize',dismiss)};
  },[contextBeat,contextPack]);
 
- const [published,setPublished]=useState<Set<string>>(new Set());
+ const {published,saved,toggleSaved,togglePublished}=useProjectFlagsV2();
+ const savedBeatIds=useMemo(()=>new Set([...saved].filter(key=>key.startsWith(userId+':beat:')).map(key=>key.slice((userId+':beat:').length))),[saved,userId]);
+ const savedPackIds=useMemo(()=>new Set([...saved].filter(key=>key.startsWith(userId+':pack:')).map(key=>key.slice((userId+':pack:').length))),[saved,userId]);
  const [actionError,setActionError]=useState('');
  const publicationKey=(kind:'beat'|'pack',id:string)=>kind+':'+id;
  const togglePublish=async(kind:'beat'|'pack',id:string)=>{
-  const key=publicationKey(kind,id),isPublished=published.has(key);
   setContextBeat(null);setContextPack(null);setActionError('');
-  try{
-   await setProjectPublishedV2(kind,id,isPublished);
-   setPublished(prev=>{const next=new Set(prev);if(isPublished)next.delete(key);else next.add(key);return next});
-   notifyV2DataChanged(['publications'],userId);
-  }catch(error){setActionError(error instanceof Error?error.message:'Unable to update publication')}
+  try{await togglePublished(kind,id)}
+  catch(error){setActionError(error instanceof Error?error.message:'Unable to update publication')}
  };
- useEffect(()=>{
-  if(!api||!userId)return;
-  const controller=new AbortController();
-  fetch(api+'/api/public/mine',{credentials:'include',cache:'no-store',signal:controller.signal})
-   .then(response=>response.ok?response.json():Promise.reject(Error('Unable to refresh project flags')))
-   .then(result=>{
-    if(controller.signal.aborted)return;
-    setPublished(new Set((result.published||[]).map((item:{kind:string;id:string})=>item.kind+':'+item.id)));
-    setSavedBeatIds(new Set((result.saved||[]).filter((item:{owner_id:number;kind:string})=>Number(item.owner_id)===Number(userId)&&item.kind==='beat').map((item:{id:string})=>item.id)));
-    setSavedPackIds(new Set((result.saved||[]).filter((item:{owner_id:number;kind:string})=>Number(item.owner_id)===Number(userId)&&item.kind==='pack').map((item:{id:string})=>item.id)));
-   }).catch(()=>{});
-  return()=>controller.abort();
- },[userId,flagsRevision]);
- const [savedBeatIds,setSavedBeatIds]=useState<Set<string>>(new Set());
- const [savedPackIds,setSavedPackIds]=useState<Set<string>>(new Set());
  const copyProjectLink=async(kind:'beat'|'pack',id:string)=>{
   setContextBeat(null);setContextPack(null);setActionError('');
   try{
@@ -190,14 +169,9 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
  };
  const toggleSavedProject=async(kind:'beat'|'pack',id:string)=>{
   if(!userId){setActionError('Sign in to save public projects');return;}
-  const already=(kind==='beat'?savedBeatIds:savedPackIds).has(id);
   setActionError('');
-  try{
-   await setProjectSavedV2(userId,kind,id,already);
-   const setter=kind==='beat'?setSavedBeatIds:setSavedPackIds;
-   setter(previous=>{const next=new Set(previous);if(already)next.delete(id);else next.add(id);return next});
-   notifyV2DataChanged(['saves'],userId);
-  }catch(e){setActionError(e instanceof Error?e.message:'Unable to save')}
+  try{await toggleSaved(userId,kind,id)}
+  catch(error){setActionError(error instanceof Error?error.message:'Unable to save')}
  };
  const openPack=async(pack:PackItem)=>{
   setOpenedPack(pack);setOpenedTracks([]);setPackError('');setPackLoading(true);
