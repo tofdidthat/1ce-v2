@@ -681,3 +681,82 @@
  box-shadow:none;
  border:0;
 }
+
+/* Standalone beat modal: v1 compact card proportions and lightweight typography. */
+.v2-beat-overlay .v2-beat-widget{
+ box-sizing:border-box;
+ width:min(380px,calc(100vw - 28px));
+ max-width:380px;
+ padding:20px 20px 24px;
+ border-radius:20px;
+}
+.v2-beat-overlay .v2-beat-widget .v2-music-card{
+ box-sizing:border-box;
+ width:100%;
+ min-width:0;
+ padding:18px 12px 12px;
+ background:transparent;
+ border:0;
+ box-shadow:none;
+}
+.v2-beat-overlay .v2-beat-widget .v2-music-card .track{
+ font-size:16px;
+ font-weight:400;
+ line-height:1.5;
+ overflow-wrap:anywhere;
+}
+.v2-beat-overlay .v2-beat-widget .v2-music-card .artist{
+ font-size:11px;
+ font-weight:400;
+}
+.v2-beat-overlay .v2-beat-widget .v2-music-card .controls{
+ gap:10px;
+}
+.v2-beat-overlay .v2-beat-widget .v2-music-card .controls .ctrl{
+ box-sizing:border-box;
+ border:0;
+ background:transparent;
+ box-shadow:none;
+ color:#f5f5f6;
+ transition:color .18s ease,background-color .18s ease;
+}
+.v2-beat-overlay .v2-beat-widget .v2-music-card .controls .ctrl:not(.ctrl-play):hover{
+ background:transparent;
+ color:#c4b5fd;
+}
+.v2-beat-overlay .v2-beat-widget .v2-music-card .controls .ctrl-play{
+ flex:0 0 42px;
+ width:42px;height:42px;
+ border:0;border-radius:50%;
+ background:#fff;color:#111;
+}
+.v2-beat-overlay .v2-beat-widget .v2-music-card .controls .ctrl-play svg{
+ fill:currentColor;
+}
+.v2-beat-overlay .v2-beat-widget .v2-music-card .controls .ctrl-play:hover{
+ background:#eeeaf5;color:#111;
+}
+.v2-beat-overlay .v2-beat-widget .v2-beat-save{
+ position:absolute;top:15px;left:16px;z-index:3;
+ display:grid;place-items:center;
+ width:28px;height:28px;
+ padding:0;border:0;
+ border-radius:8px;
+ background:transparent;
+ color:#9692a1;
+ cursor:pointer;
+ transition:color .18s ease,background-color .18s ease;
+}
+.v2-beat-overlay .v2-beat-widget .v2-beat-save:hover,
+.v2-beat-overlay .v2-beat-widget .v2-beat-save.is-saved{
+ color:#a78bfa;
+ background:transparent;
+}
+.v2-beat-overlay .v2-beat-widget .beat-player-close{
+ width:30px;height:30px;
+ background:#232229;
+ border:0;
+}
+@media(max-width:520px){
+ .v2-beat-overlay .v2-beat-widget{padding:18px 14px 20px}
+}
