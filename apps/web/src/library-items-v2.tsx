@@ -130,13 +130,13 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility}:{onUpload:(
    <div className="v2-library-contents">
     <div className="beat-pack-grid">
      {data.packs.map((p,index)=><article key={'pack-'+p.id} className="v2-library-card">
-      <div className={'beat-pack-art beat-art-'+index%3} aria-label={'Pack '+p.title}><Cover id={p.cover_file_id} title={p.title}/></div>
-      <div className="beat-pack-caption"><span className="v2-card-name">{p.title}</span><button type="button" className="v2-card-play" aria-label={"Play "+p.title} onClick={()=>playPack(p)}><PlayIcon/></button></div>
+      <div className={'beat-pack-art beat-art-'+index%3} aria-label={'Pack '+p.title}><Cover id={p.cover_file_id} title={p.title}/><button type="button" className="v2-card-play" aria-label={"Play "+p.title} onClick={()=>playPack(p)}><PlayIcon/></button></div>
+      <div className="beat-pack-caption"><span className="v2-card-name">{p.title}</span></div>
       <p>{p.track_count} beats</p>
      </article>)}
      {standaloneBeats.map((b,index)=><article key={'beat-'+b.id} className="v2-library-card beat-single-card" onPointerEnter={()=>{void loadWaveform(b.audio_file_id).catch(()=>{})}} onFocusCapture={()=>{void loadWaveform(b.audio_file_id).catch(()=>{})}}>
-      <div className={'beat-pack-art beat-art-'+(data.packs.length+index)%3} aria-label={'Beat '+b.title}><Cover id={b.cover_file_id} title={b.title}/></div>
-      <div className="beat-pack-caption"><span className="v2-card-name">{b.title}</span><button type="button" className="v2-card-play" aria-label={(current?.id===b.id&&playing?"Pause ":"Play ")+b.title} onClick={()=>choose(b,[b])}>{current?.id===b.id&&playing?<PauseIcon/>:<PlayIcon/>}</button></div>
+      <div className={'beat-pack-art beat-art-'+(data.packs.length+index)%3} aria-label={'Beat '+b.title}><Cover id={b.cover_file_id} title={b.title}/><button type="button" className="v2-card-play" aria-label={(current?.id===b.id&&playing?"Pause ":"Play ")+b.title} onClick={()=>choose(b,[b])}>{current?.id===b.id&&playing?<PauseIcon/>:<PlayIcon/>}</button></div>
+      <div className="beat-pack-caption"><span className="v2-card-name">{b.title}</span></div>
       <p>{b.created_at?new Date(b.created_at).toLocaleDateString('en-US',{month:'short',day:'2-digit'}):'Beat'}</p>
      </article>)}
     </div>
