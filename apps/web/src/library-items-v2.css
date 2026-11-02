@@ -892,29 +892,27 @@
 
 /* 1CE v2: categorized context menu approved visual. */
 .v2-context-menu{
- position:fixed;z-index:10050;
- box-sizing:border-box;width:272px;max-width:calc(100vw - 16px);
- padding:10px 8px;border:1px solid rgba(168,136,200,.25);
- border-radius:16px;background:#211a2c;
- color:#f7f2ff;box-shadow:0 16px 48px rgba(0,0,0,.5);
+ position:fixed;z-index:10050;box-sizing:border-box;
+ width:230px;max-width:calc(100vw - 16px);
+ padding:7px;background:#18171b;border:1px solid #302d34;
+ border-radius:15px;box-shadow:0 16px 44px #0009;
+ display:flex;flex-direction:column;gap:1px;color:#f3f0f5;
 }
 .v2-context-action{
- display:flex;align-items:center;gap:13px;
- box-sizing:border-box;width:100%;min-height:36px;
- padding:8px 12px;border:0;border-radius:9px;
- background:transparent;color:#f5f1fc;
- font:400 12px/1.4 inherit;text-align:left;
- cursor:pointer;transition:background-color .17s ease,color .17s ease;
+ display:flex;align-items:center;gap:12px;
+ width:100%;min-height:37px;padding:8px 11px;
+ border:0;border-radius:8px;background:transparent;
+ color:#f3f0f5;font:inherit;font-size:13px;font-weight:500;
+ text-align:left;cursor:pointer;
 }
 .v2-context-action svg{flex:0 0 17px;stroke-width:1.8}
 .v2-context-action span{flex:1}
 .v2-context-action .v2-context-chevron{flex:0 0 15px}
 .v2-context-action:hover:not(:disabled),.v2-context-action:focus-visible:not(:disabled){
- background:rgba(167,139,250,.13);color:#d8c4ff;
- outline:none;
+ background:#302c35;outline:none;color:#f3f0f5;
 }
-.v2-context-action:disabled{cursor:not-allowed;opacity:.62}
-.v2-context-separator{height:1px;margin:10px 12px;background:rgba(167,139,250,.22)}
-.v2-context-action.v2-context-danger{color:#f4a3ae}
-.v2-context-action.v2-context-danger:hover:not(:disabled){background:rgba(244,163,174,.09);color:#ffb5c0}
+.v2-context-action:disabled{opacity:.38;cursor:not-allowed}
+.v2-context-separator{height:1px;background:#343038;margin:5px 8px}
+.v2-context-action.v2-context-danger{color:#b77885}
+.v2-context-action.v2-context-danger:hover:not(:disabled){color:#e9a1af}
 @media(prefers-reduced-motion:reduce){.v2-context-action{transition:none}}
