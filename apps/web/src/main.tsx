@@ -6,6 +6,7 @@ import { TermsPage, PrivacyPage } from './legal';
 import { LoginPage } from './login';
 import WorkspaceV2 from './workspace-v1';
 import {notifyV2DataChanged} from './data-refresh-v2';
+import {setProjectSavedV2} from './project-requests-v2';
 
 function Header() { return <header className="site-header"><Link to="/" className="brand"><img src="/1ce-logo.png" alt="1CE" className="brand-logo"/></Link><nav><Link to="/">Home</Link><Link to="/login" className="button">Log in</Link></nav></header> }
 function Footer() { return <footer className="site-footer"><span>© 2026 1CE</span><nav><Link to="/terms">Terms of Service</Link><Link to="/privacy">Privacy Policy</Link></nav></footer> }
@@ -16,7 +17,7 @@ function ProtectedLibrary(){const [status,setStatus]=useState<'checking'|'author
 function SharedProjectPage(){
  const {token}=useParams();
  const [status,setStatus]=useState('Checking shared project…');
- const [project,setProject]=useState<{owner_id:number;kind:string;id:string}|null>(null);
+ const [project,setProject]=useState<{owner_id:number;kind:'beat'|'pack';id:string}|null>(null);
  useEffect(()=>{
   const api=import.meta.env.VITE_API_URL;
   if(!api||!token)return;
@@ -29,10 +30,11 @@ function SharedProjectPage(){
  },[token]);
  const save=async()=>{
   if(!project)return;
-  const api=import.meta.env.VITE_API_URL;
-  const r=await fetch(api+'/api/public/save/'+project.owner_id+'/'+project.kind+'/'+project.id,{method:'POST',credentials:'include'});
-  setStatus(r.ok?'Saved to your profile.':'Unable to save project.');
-  if(r.ok)notifyV2DataChanged(['saves']);
+  try{
+   await setProjectSavedV2(project.owner_id,project.kind,project.id,false);
+   setStatus('Saved to your profile.');
+   notifyV2DataChanged(['saves']);
+  }catch{setStatus('Unable to save project.');}
  };
  return <div style={{minHeight:'100vh',background:'#0b0911',color:'#f6f4fa',padding:'100px 24px',textAlign:'center'}}>
   <h1>Shared project</h1><p>{status}</p>
