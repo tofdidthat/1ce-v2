@@ -1,6 +1,7 @@
 import {randomBytes,createHash} from 'node:crypto';
 import {S3Client,GetObjectCommand} from '@aws-sdk/client-s3';
-import {resolveAuthorizedMediaFile} from './project-media.js';
+import {resolveAuthorizedMediaFile,resolvePlayableProject} from './project-media.js';
+import {streamAuthorizedAudio} from './audio-stream.js';
 // 1CE v2 public profile catalog and public saves. Metadata only; R2 objects are never duplicated.
 const send=(res,status,data)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data));};
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -43,6 +44,23 @@ export async function handlePublicProfiles(req,res,pathname,pool,currentUser){
  await ready(pool);
  const parts=pathname.split('/').filter(Boolean);
  const user=await currentUser(req);
+
+ // The original media stays private in R2. These are the minimal missing
+ // cross-owner playback adapters; all access is checked in project-media.js.
+ if(parts.length===5&&parts[2]==='audio'&&/^\d+$/.test(parts[3])&&/^\d+$/.test(parts[4])&&req.method==='GET'){
+  const owner=parts[3],fileId=parts[4];
+  const file=await resolveAuthorizedMediaFile(pool,{ownerId:owner,viewerId:user?.id,fileId,kind:'audio'});
+  if(!file){send(res,404,{error:'Audio not found'});return true;}
+  const cfg={account:process.env.R2_ACCOUNT_ID,key:process.env.R2_ACCESS_KEY_ID,secret:process.env.R2_SECRET_ACCESS_KEY,bucket:process.env.R2_BUCKET_NAME};
+  if(!cfg.account||!cfg.key||!cfg.secret||!cfg.bucket){send(res,503,{error:'Storage unavailable'});return true;}
+  const s3=new S3Client({region:'auto',endpoint:'https://'+cfg.account+'.r2.cloudflarestorage.com',credentials:{accessKeyId:cfg.key,secretAccessKey:cfg.secret},forcePathStyle:true});
+  await streamAuthorizedAudio(req,res,{file,s3,bucket:cfg.bucket});return true;
+ }
+ if(parts.length===6&&parts[2]==='play'&&/^\d+$/.test(parts[3])&&['beat','pack'].includes(parts[4])&&uuid.test(parts[5])&&req.method==='GET'){
+  const project=await resolvePlayableProject(pool,{ownerId:parts[3],viewerId:user?.id,kind:parts[4],projectId:parts[5]});
+  if(!project){send(res,404,{error:'Project not available for playback'});return true;}
+  send(res,200,{project});return true;
+ }
  if(parts.length===5&&parts[2]==='cover'&&/^\d+$/.test(parts[3])&&/^\d+$/.test(parts[4])&&req.method==='GET'){
   const owner=parts[3],fileId=parts[4];
   const file=await resolveAuthorizedMediaFile(pool,{ownerId:owner,viewerId:user?.id,fileId,kind:'cover'});
