@@ -195,9 +195,9 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility}:{onUpload:(
    </div>
    <div className="onece-player-time">{formatTime(elapsed)} <span>/</span> {formatTime(duration)}</div>
    <div className="onece-player-controls">
-    <button type="button" className="onece-player-icon" title="Previous" aria-label="Previous" disabled={!current} onClick={previous}><SkipBack/></button>
+    <button type="button" className="onece-player-icon" title="Previous" aria-label="Previous" disabled={!current} onClick={previous}><V1SkipBack/></button>
     <button type="button" className="onece-player-icon onece-player-play" title={playing?'Pause':'Play'} aria-label={playing?'Pause':'Play'} onClick={toggle}>{playing?<Pause/>:<Play/>}</button>
-    <button type="button" className="onece-player-icon" title="Next" aria-label="Next" disabled={queue.length<2&&repeat!=='all'} onClick={next}><SkipForward/></button>
+    <button type="button" className="onece-player-icon" title="Next" aria-label="Next" disabled={queue.length<2&&repeat!=='all'} onClick={next}><V1SkipForward/></button>
     <button type="button" className={'onece-player-icon'+(shuffle?' is-active':'')} title="Shuffle" aria-label="Shuffle" aria-pressed={shuffle} onClick={()=>setShuffle(v=>!v)}><Shuffle/></button>
     <button type="button" className={'onece-player-icon'+(repeat!=='off'?' is-active':'')} title={'Repeat: '+repeat} aria-label="Repeat" aria-pressed={repeat!=='off'} onClick={()=>setRepeat(v=>v==='off'?'all':v==='all'?'one':'off')}>{repeat==='one'?<Repeat1/>:<Repeat/>}</button>
     <button type="button" className={'onece-player-icon onece-player-queue'+(popup==='queue'?' is-active':'')} title="Playback queue" aria-label="Playback queue" aria-expanded={popup==='queue'} onClick={()=>setPopup(v=>v==='queue'?null:'queue')}><ListMusic/>{queue.length>1&&<span className="onece-queue-count">{queue.length}</span>}</button>
@@ -219,3 +219,8 @@ function PlayIcon(){return <svg width="16" height="16" viewBox="0 0 24 24" fill=
 function PauseIcon(){return <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>}
 function formatTime(n:number){if(!Number.isFinite(n))return '00:00';const t=Math.floor(n);return String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0')}
 
+
+/* Lucide 1.x skip icon paths used by v1, kept local so v2's older Lucide
+   dependency does not change unrelated icons. */
+function V1SkipBack(){return <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M17.971 4.285A2 2 0 0 1 21 6v12a2 2 0 0 1-3.029 1.715l-9.997-5.998a2 2 0 0 1-.003-3.432z"/><path d="M3 20V4"/></svg>}
+function V1SkipForward(){return <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 4v16"/><path d="M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z"/></svg>}
