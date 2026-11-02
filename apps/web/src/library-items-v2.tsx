@@ -2,7 +2,7 @@
 import React,{useEffect,useState} from 'react';
 import './library-items-v2.css';
 const api=import.meta.env.VITE_API_URL;
-type BeatItem = {id:string;title:string;cover_file_id:number|null;stems_file_id:number|null;pack_count:number;created_at:string};
+type BeatItem = {id:string;title:string;cover_file_id:number|null;stems_file_id:number|null;pack_count:number;created_at:string;library_visible:boolean};
 type PackItem = {id:string;title:string;cover_file_id:number|null;track_count:number;created_at:string};
 type LibraryData = {beats:BeatItem[];packs:PackItem[]};
 function Cover({id,title}:{id:number|null;title:string}){
@@ -32,7 +32,8 @@ export default function LibraryItemsV2({onUpload}:{onUpload:()=>void}){
    .finally(()=>{if(!controller.signal.aborted)setLoading(false)});
   return ()=>controller.abort();
  },[]);
- const empty=!data.beats.length&&!data.packs.length;
+ const standaloneBeats=data.beats.filter(b=>b.library_visible!==false);
+ const empty=!standaloneBeats.length&&!data.packs.length;
  return <section className="beat-profile library-page onece-v2-library"><div className="beat-profile-content"><div className="library-items">
   {loading?<p className="v2-library-status">Loading your Library…</p>:
    error?<div className="v2-library-status" role="alert">{error}<button onClick={()=>window.location.reload()}>Retry</button></div>:
@@ -44,7 +45,7 @@ export default function LibraryItemsV2({onUpload}:{onUpload:()=>void}){
       <div className="beat-pack-caption"><span className="v2-card-name">{p.title}</span></div>
       <p>{p.track_count} beats</p>
      </article>)}
-     {data.beats.map((b,index)=><article key={'beat-'+b.id} className="v2-library-card beat-single-card">
+     {standaloneBeats.map((b,index)=><article key={'beat-'+b.id} className="v2-library-card beat-single-card">
       <div className={'beat-pack-art beat-art-'+(data.packs.length+index)%3} aria-label={'Beat '+b.title}><Cover id={b.cover_file_id} title={b.title}/></div>
       <div className="beat-pack-caption"><span className="v2-card-name">{b.title}</span></div>
       <p>{b.created_at?new Date(b.created_at).toLocaleDateString('en-US',{month:'short',day:'2-digit'}):'Beat'}</p>
