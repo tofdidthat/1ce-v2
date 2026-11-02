@@ -1,5 +1,6 @@
 import {randomBytes,createHash} from 'node:crypto';
 import {S3Client,GetObjectCommand} from '@aws-sdk/client-s3';
+import {resolveAuthorizedMediaFile} from './project-media.js';
 // 1CE v2 public profile catalog and public saves. Metadata only; R2 objects are never duplicated.
 const send=(res,status,data)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data));};
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -44,26 +45,13 @@ export async function handlePublicProfiles(req,res,pathname,pool,currentUser){
  const user=await currentUser(req);
  if(parts.length===5&&parts[2]==='cover'&&/^\d+$/.test(parts[3])&&/^\d+$/.test(parts[4])&&req.method==='GET'){
   const owner=parts[3],fileId=parts[4];
-  const q=await pool.query(`SELECT f.object_key,f.content_type FROM library_files f
-   WHERE f.id=$1 AND f.user_id=$2 AND f.kind='cover' AND f.status='ready'
-   AND (
-    EXISTS (
-     SELECT 1 FROM library_beats b WHERE b.user_id=$2 AND b.cover_file_id=f.id
-     AND (b.user_id=$3 OR EXISTS(SELECT 1 FROM v2_public_projects pub WHERE pub.user_id=b.user_id AND pub.kind='beat' AND pub.project_id=b.id)
-      OR ($3::integer IS NOT NULL AND EXISTS(SELECT 1 FROM v2_project_access a WHERE a.owner_id=b.user_id AND a.viewer_id=$3 AND a.kind='beat' AND a.project_id=b.id)))
-    )
-    OR EXISTS (
-     SELECT 1 FROM library_packs p WHERE p.user_id=$2 AND p.cover_file_id=f.id
-     AND (p.user_id=$3 OR EXISTS(SELECT 1 FROM v2_public_projects pub WHERE pub.user_id=p.user_id AND pub.kind='pack' AND pub.project_id=p.id)
-      OR ($3::integer IS NOT NULL AND EXISTS(SELECT 1 FROM v2_project_access a WHERE a.owner_id=p.user_id AND a.viewer_id=$3 AND a.kind='pack' AND a.project_id=p.id)))
-    )
-   ) LIMIT 1`,[fileId,owner,user?.id||null]);
-  if(!q.rowCount){send(res,404,{error:'Cover not found'});return true;}
+  const file=await resolveAuthorizedMediaFile(pool,{ownerId:owner,viewerId:user?.id,fileId,kind:'cover'});
+  if(!file){send(res,404,{error:'Cover not found'});return true;}
   const cfg={account:process.env.R2_ACCOUNT_ID,key:process.env.R2_ACCESS_KEY_ID,secret:process.env.R2_SECRET_ACCESS_KEY,bucket:process.env.R2_BUCKET_NAME};
   if(!cfg.account||!cfg.key||!cfg.secret||!cfg.bucket){send(res,503,{error:'Storage unavailable'});return true;}
   const s3=new S3Client({region:'auto',endpoint:'https://'+cfg.account+'.r2.cloudflarestorage.com',credentials:{accessKeyId:cfg.key,secretAccessKey:cfg.secret},forcePathStyle:true});
-  const obj=await s3.send(new GetObjectCommand({Bucket:cfg.bucket,Key:q.rows[0].object_key}));
-  res.writeHead(200,{'Content-Type':q.rows[0].content_type,'Cache-Control':'public,max-age=120','X-Content-Type-Options':'nosniff'});
+  const obj=await s3.send(new GetObjectCommand({Bucket:cfg.bucket,Key:file.object_key}));
+  res.writeHead(200,{'Content-Type':file.content_type,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'});
   for await(const chunk of obj.Body)res.write(chunk);
   res.end();return true;
  }
