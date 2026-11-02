@@ -860,3 +860,32 @@
 .v2-beat-overlay .v2-beat-widget .v2-music-card .controls .ctrl-play:hover{
  color:#c4b5fd;
 }
+
+/* Pack detail Play/Pause matches the Library artwork overlay button exactly. */
+.onece-v2-library .v2-pack-detail .library-pack-play-controls .library-pack-play{
+ width:44px;height:44px;
+ padding:0;
+ display:grid;place-items:center;
+ border:0;border-radius:15px;
+ background:#292929;color:#fff;
+ box-shadow:0 5px 14px #0005;
+ transform:none;
+ transition:background .15s ease,transform .15s ease;
+}
+.onece-v2-library .v2-pack-detail .library-pack-play-controls .library-pack-play svg{
+ width:19px;height:19px;
+ fill:currentColor;
+ stroke:currentColor;
+ stroke-width:1.3;
+}
+.onece-v2-library .v2-pack-detail .library-pack-play-controls .library-pack-play:hover{
+ background:#3a3a3a;
+ border:0;
+ transform:scale(1.04);
+}
+.onece-v2-library .v2-pack-detail .library-pack-play-controls .library-pack-play:active{
+ transform:scale(1);
+}
+.onece-v2-library .v2-pack-detail .library-pack-play-controls .library-pack-play:focus-visible{
+ outline:2px solid #c4b5fd;outline-offset:3px;
+}
