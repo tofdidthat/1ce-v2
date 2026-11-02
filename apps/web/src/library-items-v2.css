@@ -162,3 +162,35 @@
  gap:0;
  border-radius:23px 23px 12px 12px;
 }
+
+/* v1 distinct opening patterns: inline pack detail and centered beat modal. */
+.onece-v2-library .v2-art-openable{cursor:pointer}
+.onece-v2-library .v2-art-openable:focus-visible{outline:2px solid #a78bfa;outline-offset:4px}
+.onece-v2-library .v2-pack-detail{width:min(800px,100%);margin:0 auto;color:#f5f3ff}
+.onece-v2-library .library-pack-back{display:grid;place-items:center;width:38px;height:38px;margin:0 0 22px;background:transparent;border:0;color:#f5f3ff;font-size:36px;cursor:pointer}
+.onece-v2-library .library-pack-cover{width:180px;height:180px;overflow:hidden;border-radius:15px;background:#241c32;margin:0 0 20px}
+.onece-v2-library .library-pack-cover .v2-item-cover{width:100%;height:100%}
+.onece-v2-library .library-pack-info{margin-bottom:20px}
+.onece-v2-library .library-pack-title-row{display:flex;justify-content:space-between;align-items:center;gap:16px}
+.onece-v2-library .library-pack-title-block h2{margin:0;font-size:26px;font-weight:650}
+.onece-v2-library .library-pack-title-block p{margin:8px 0;color:#a9a3b1;font-size:13px}
+.onece-v2-library .library-pack-play-controls{display:flex;gap:12px;align-items:center}
+.onece-v2-library .library-pack-play-controls button{display:grid;place-items:center;width:42px;height:42px;border:0;background:transparent;color:#f5f3ff;cursor:pointer}
+.onece-v2-library .library-pack-play-controls .library-pack-play{background:#a78bfa;color:#18131e;border-radius:50%}
+.onece-v2-library .library-pack-add{display:flex;gap:10px;align-items:center;margin:0 0 20px;padding:8px 0;background:transparent;border:0;color:#bcb6c5;font-size:13px}
+.onece-v2-library .library-pack-add:disabled{opacity:.55}
+.onece-v2-library .beat-track-list{list-style:none;padding:0;margin:0}
+.onece-v2-library .beat-track-list li{display:flex;align-items:center;border-bottom:1px solid #ffffff12;min-height:60px}
+.onece-v2-library .beat-track-play{display:flex;align-items:center;gap:22px;flex:1;min-width:0;border:0;background:transparent;color:#eee9f5;text-align:left;cursor:pointer;padding:14px 8px}
+.onece-v2-library .beat-track-play strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}
+.onece-v2-library .beat-track-number{color:#9b93a5;width:18px;text-align:center}
+.onece-v2-library .beat-track-active .beat-track-number{color:#a78bfa}
+.onece-v2-library .beat-track-menu button{background:transparent;border:0;color:#bcb6c5;padding:12px;cursor:pointer}
+.v2-beat-overlay{position:fixed;inset:0;z-index:100;display:grid;place-items:center;background:#000b;padding:20px}
+.v2-beat-widget{position:relative;width:min(410px,100%);padding:28px;border-radius:24px;background:#25222d;border:1px solid #ffffff18;box-shadow:0 25px 70px #000a;text-align:center;color:#f5f3ff}
+.v2-beat-widget .beat-player-close{position:absolute;top:12px;right:14px;background:transparent;border:0;color:#ddd;font-size:28px;cursor:pointer}
+.v2-beat-modal-art{width:min(290px,100%);aspect-ratio:1;margin:18px auto;border-radius:16px;overflow:hidden}
+.v2-beat-modal-art .v2-item-cover{width:100%;height:100%}
+.v2-beat-widget h2{font-size:19px;margin:16px 0 5px;overflow-wrap:anywhere}
+.v2-beat-widget p{font-size:12px;color:#aaa3b8}
+.v2-beat-modal-play{display:inline-flex;align-items:center;gap:10px;margin-top:14px;padding:11px 25px;border:0;border-radius:22px;background:#a78bfa;color:#18131e;font-weight:650;cursor:pointer}
