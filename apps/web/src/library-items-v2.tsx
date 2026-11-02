@@ -113,7 +113,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
    setPublished(prev=>{const next=new Set(prev);if(isPublished)next.delete(key);else next.add(key);return next});
   }catch(error){setActionError(error instanceof Error?error.message:'Unable to update publication')}
  };
- useEffect(()=>{if(!api)return;fetch(api+'/api/public/mine',{credentials:'include'}).then(r=>r.ok?r.json():Promise.reject()).then(data=>{setPublished(new Set((data.published||[]).map((item:{kind:string;id:string})=>item.kind+':'+item.id)));setSavedBeatIds(new Set((data.saved||[]).filter((item:{owner_id:number;kind:string})=>item.owner_id===userId&&item.kind==='beat').map((item:{id:string})=>item.id)));setSavedPackIds(new Set((data.saved||[]).filter((item:{owner_id:number;kind:string})=>item.owner_id===userId&&item.kind==='pack').map((item:{id:string})=>item.id)))}).catch(()=>{})},[]);
+ useEffect(()=>{if(!api||!userId)return;fetch(api+'/api/public/mine',{credentials:'include'}).then(r=>r.ok?r.json():Promise.reject()).then(data=>{setPublished(new Set((data.published||[]).map((item:{kind:string;id:string})=>item.kind+':'+item.id)));setSavedBeatIds(new Set((data.saved||[]).filter((item:{owner_id:number;kind:string})=>item.owner_id===userId&&item.kind==='beat').map((item:{id:string})=>item.id)));setSavedPackIds(new Set((data.saved||[]).filter((item:{owner_id:number;kind:string})=>item.owner_id===userId&&item.kind==='pack').map((item:{id:string})=>item.id)))}).catch(()=>{})},[]);
  const [savedBeatIds,setSavedBeatIds]=useState<Set<string>>(new Set());
  const [savedPackIds,setSavedPackIds]=useState<Set<string>>(new Set());
  const copyProjectLink=async(kind:'beat'|'pack',id:string)=>{
@@ -231,14 +231,16 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
  const [error,setError]=useState('');
  useEffect(()=>{
   const controller=new AbortController();
+  if(!userId){setData({beats:[],packs:[]});setLoading(false);return;}
   if(!api){setError('Library API is not configured');setLoading(false);return;}
+  setError('');setLoading(true);
   fetch(api+'/api/library/files/items',{credentials:'include',signal:controller.signal})
    .then(async r=>{const body=await r.json().catch(()=>({}));if(!r.ok)throw Error(body.error||'Unable to load Library');return body})
    .then(body=>setData({beats:body.beats||[],packs:body.packs||[]}))
    .catch(e=>{if(e.name!=='AbortError')setError(e.message||'Unable to load Library')})
    .finally(()=>{if(!controller.signal.aborted)setLoading(false)});
   return ()=>controller.abort();
- },[]);
+ },[userId]);
  const standaloneBeats=data.beats.filter(b=>b.library_visible!==false);
  // Warm the first standalone waveform while the user browses the Library.
  useEffect(()=>{const first=data.beats.find(b=>b.library_visible!==false);if(first&&userId)void loadWaveform(first.audio_file_id,userId).catch(()=>{})},[data.beats]);
