@@ -11,6 +11,8 @@
 5. **Economize Vercel:** automatic previews for v2 are disabled to conserve Hobby deployment quota; **do not re-enable without permission**. Prefer CI-only validation on feature branches, no manual deployments for each commit and no duplicate retry loops. One deployment for a complete reviewed batch; handle build quota limits transparently.
 6. **Documentation before code, then ledger:** maintain an accurate implemented vs validated vs pending phase ledger below, and update acceptance scenarios, docs/tests, or explicit decisions within the same PR. Before every future complete request, check this protocol **and behavioral contracts** again.
 
+**Shared project actions — mandatory single-component contract:** The right-click/ellipsis project context menu is ONE shared React component used by Library and Profile (owner Catalog and Saves), with identical owner actions, labels, disabled states, confirmation dialogs and API semantics. Neither screen may maintain a separate copied menu implementation or placeholder action buttons. Only view-specific callbacks (publish/save/share/queue) may be supplied as props; all permanent project mutations use the same `ProjectActionDialogV2` and server routes. Any future menu change MUST be tested in Library and Profile, including cross-account read-only permissions, without introducing a duplicate menu. A fix that works only in Library is incomplete.
+
 **Binding boundaries:** do not change/download stems or unrelated features without request; never change v1 or its database/bucket. Published and explicitly shared permissions remain server-authoritative; saving is not an authorization grant. Preserve a single active player and original project identities. No destructive action without explicit user confirmation in the interface and safe server checks.
 
 ---
@@ -18,6 +20,8 @@
 # 1CE v2 — Architecture and Refactoring Plan
 
 > Status: living architecture document. Read section 0 for the latest implementation and verification ledger. Sections 5–7 are target behavior and remaining migration gates; implemented milestones are separately recorded in section 0.
+
+> **2026-11-02 correction:** PR #4 implemented permanent project actions only in Library, leaving Profile with duplicated disabled placeholders. This is a confirmed Phase C integration defect; the single shared menu contract above is the acceptance criterion for the follow-up branch. Do not mark resolved until both views build and pass checks.
 
 ## 0. Progress ledger — current phase and completed work (2026-11-02)
 
