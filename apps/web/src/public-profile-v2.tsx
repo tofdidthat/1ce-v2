@@ -1,12 +1,12 @@
 import React,{useState} from 'react';
-import {Bookmark,Users,Grid2X2,Share2,Settings2,Link2} from 'lucide-react';
+import {Bookmark,Users,Share2,Settings2} from 'lucide-react';
 import './public-profile-v2.css';
 
 function CatalogDiscIcon({size=17}:{size?:number}){
  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-  <path d="M16.7 6.7a7.1 7.1 0 0 1 0 10.6"/>
-  <path d="M16.7 10.2a2.5 2.5 0 0 1 0 3.6"/>
-  <rect x="3.5" y="4" width="13.2" height="16" rx="1.7"/>
+  <path d="M16.5 6.2a6.2 6.2 0 0 1 0 12.4"/>
+  <path d="M16.5 10.2a2.15 2.15 0 0 1 0 4.3"/>
+  <rect x="2.8" y="3.3" width="13.7" height="17.4" rx="1.45"/>
  </svg>;
 }
 type ProfileTab='catalog'|'saves'|'following';
@@ -36,7 +36,7 @@ export default function PublicProfileV2({user,onSettings}:{user:any;onSettings:(
    {tabs.map(t=><button key={t.id} id={'onece-tab-'+t.id} type="button" role="tab" aria-selected={tab===t.id} aria-controls="onece-profile-tab-panel" className={tab===t.id?'is-active':''} onClick={()=>setTab(t.id)} aria-label={t.label} title={t.label}>{t.icon}</button>)}
   </nav>
   <div className="onece-profile-panel" id="onece-profile-tab-panel" role="tabpanel" aria-labelledby={'onece-tab-'+tab}>
-   {tab==='catalog'?<div className="onece-profile-empty"><Grid2X2 size={27}/><h2>No public releases yet</h2><p>Beats and packs will appear here when published. Private Library files are never displayed automatically.</p></div>:
+   {tab==='catalog'?<div className="onece-profile-empty"><CatalogDiscIcon size={27}/><h2>No public releases yet</h2><p>Beats and packs will appear here when published. Private Library files are never displayed automatically.</p></div>:
    tab==='saves'?<div className="onece-profile-empty"><Bookmark size={27}/><h2>No public saves yet</h2><p>Your saved public music will appear here once profile saves are connected.</p></div>:
    <div className="onece-profile-empty"><Users size={27}/><h2>Not following anyone yet</h2><p>Artists you follow will appear here once following is available.</p></div>}
   </div>
