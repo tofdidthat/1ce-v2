@@ -2,6 +2,7 @@ import React,{useState} from 'react';
 import {Bookmark,Users,Share2,Eye,EyeOff,Link2,ListPlus,FolderPlus,Pencil,Image as ImageIcon,Download,Layers,Trash2,ChevronRight,Play,Pause} from 'lucide-react';
 import './public-profile-v2.css';
 import ProjectContextMenuV2 from './project-context-menu-v2';
+import ProjectCardV2 from './project-card-v2';
 import ProjectActionDialogV2,{type ContextProject,type ProjectAction,type ChangedProject} from './project-action-dialog-v2';
 import {notifyV2DataChanged,subscribeV2DataChanges,subscribeV2Resume} from './data-refresh-v2';
 import {profilePictureV2} from './profile-picture-v2';
@@ -10,37 +11,8 @@ function CatalogLibraryIcon({size=17}:{size?:number}){
  // Same SVG paths and styling as the Library navigation HomeMark.
  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 4v16M9 4v16M14 4l4 16"/></svg>;
 }
-function PlayIcon(){return <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m8 5 12 7-12 7Z"/></svg>}
-function PauseIcon(){return <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>}
 const api=import.meta.env.VITE_API_URL;
 type PublicProject={id:string;kind:'beat'|'pack';owner_id:number;title:string;cover_file_id:number|null;track_count:number|null;published_at:string};
-function ProjectCover({project,currentUserId}:{project:PublicProject;currentUserId?:number}){
- const [src,setSrc]=useState('');
- React.useEffect(()=>{
-  setSrc('');
-  if(!project.cover_file_id||!api)return;
-  let alive=true,url='';
-  const owner=String(currentUserId||'')===String(project.owner_id);
-  const routes=owner
-   ? ['/api/library/files/cover/'+project.cover_file_id,'/api/public/cover/'+project.owner_id+'/'+project.cover_file_id]
-   : ['/api/public/cover/'+project.owner_id+'/'+project.cover_file_id];
-  (async()=>{
-   for(const route of routes){
-    try{
-     const response=await fetch(api+route,{credentials:'include'});
-     if(!response.ok)continue;
-     const blob=await response.blob();
-     if(!blob.type.startsWith('image/'))continue;
-     url=URL.createObjectURL(blob);
-     if(alive)setSrc(url);else URL.revokeObjectURL(url);
-     return;
-    }catch{ /* try alternate authorized route */ }
-   }
-  })();
-  return()=>{alive=false;if(url)URL.revokeObjectURL(url)};
- },[project.cover_file_id,project.owner_id,currentUserId]);
- return <div className="onece-profile-project-cover">{src?<img src={src} alt=""/>:<span>{project.title.charAt(0).toUpperCase()}</span>}</div>;
-}
 type ProfileTab='catalog'|'saves'|'following';
 export default function PublicProfileV2({user,onSettings,profileId,onPlayProject,playback}:{user:any;onSettings:()=>void;profileId?:string;onPlayProject?:(ownerId:number,kind:'beat'|'pack',id:string)=>void;playback?:{ownerId:number;kind:'beat'|'pack';id:string;playing:boolean}|null}){
  const [tab,setTab]=useState<ProfileTab>('catalog');
@@ -164,10 +136,10 @@ export default function PublicProfileV2({user,onSettings,profileId,onPlayProject
     <div className="onece-profile-projects">{(tab==='catalog'?projects.catalog:projects.saves).map(project=>{
      const key=project.owner_id+':'+project.kind+':'+project.id;
      const isPlaying=!!playback&&playback.ownerId===project.owner_id&&playback.kind===project.kind&&playback.id===project.id&&playback.playing;
-     return <article className="onece-profile-project" key={key} onContextMenu={event=>{event.preventDefault();setMenu({project,x:event.clientX,y:event.clientY})}}>
-      <div className="onece-profile-project-art"><ProjectCover project={project} currentUserId={user?.id}/>{onPlayProject&&<button type="button" className="v2-card-play onece-profile-project-play" aria-label={(isPlaying?'Pause ':'Play ')+project.title} title={isPlaying?'Pause':'Play'} onClick={()=>onPlayProject(project.owner_id,project.kind,project.id)}>{isPlaying?<PauseIcon/>:<PlayIcon/>}</button>}</div>
-      <div className="onece-profile-project-info"><strong>{project.title}</strong><span>{project.kind==='pack'?(project.track_count||0)+' beats':'Beat'}</span></div>
-     </article>;
+     return <ProjectCardV2 key={key} variant="profile" project={project} ownerId={project.owner_id}
+       secondary={project.kind==='pack'?(project.track_count||0)+' beats':'Beat'} playing={isPlaying}
+       onContextMenu={event=>{event.preventDefault();setMenu({project,x:event.clientX,y:event.clientY})}}
+       onPlay={onPlayProject?()=>onPlayProject(project.owner_id,project.kind,project.id):undefined}/>;
     })}</div>:
     tab==='catalog'?<div className="onece-profile-empty"><CatalogLibraryIcon size={27}/><h2>No public releases yet</h2><p>Beats and packs will appear here when published. Private Library files are never displayed automatically.</p></div>:
     <div className="onece-profile-empty"><Bookmark size={27}/><h2>No saves yet</h2><p>Saved projects will appear here.</p></div>}
