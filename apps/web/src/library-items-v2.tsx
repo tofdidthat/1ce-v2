@@ -1,5 +1,6 @@
 // 1CE v2 private library. Never requests v1 data.
 import React,{useEffect,useRef,useState} from 'react';
+import {Play,Pause,SkipBack,SkipForward,Shuffle,Repeat,Repeat1,ListMusic,Volume2,VolumeX,X,Music2} from 'lucide-react';
 import './library-items-v2.css';
 const api=import.meta.env.VITE_API_URL;
 type BeatItem = {id:string;title:string;audio_file_id:number;cover_file_id:number|null;stems_file_id:number|null;pack_count:number;created_at:string;library_visible:boolean};
@@ -27,12 +28,21 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility}:{onUpload:(
  const [elapsed,setElapsed]=useState(0);
  const [duration,setDuration]=useState(0);
  const [playerError,setPlayerError]=useState('');
+ const [popup,setPopup]=useState<'queue'|'volume'|null>(null);
+ const [volume,setVolume]=useState(1);
+ const [muted,setMuted]=useState(false);
+ const [shuffle,setShuffle]=useState(false);
+ const [repeat,setRepeat]=useState<'off'|'all'|'one'>('off');
+ const [coverUrl,setCoverUrl]=useState('');
+ useEffect(()=>{if(!current?.cover_file_id){setCoverUrl('');return;}let alive=true;let objectUrl='';fetch(api+'/api/library/files/cover/'+current.cover_file_id,{credentials:'include'}).then(r=>{if(!r.ok)throw Error('Cover');return r.blob()}).then(b=>{objectUrl=URL.createObjectURL(b);if(alive)setCoverUrl(objectUrl);else URL.revokeObjectURL(objectUrl)}).catch(()=>setCoverUrl(''));return()=>{alive=false;if(objectUrl)URL.revokeObjectURL(objectUrl)}},[current?.cover_file_id]);
+ useEffect(()=>{if(audioRef.current){audioRef.current.volume=volume;audioRef.current.muted=muted}},[volume,muted,current?.id]);
+ useEffect(()=>{if(!popup)return;const key=(e:KeyboardEvent)=>{if(e.key==='Escape')setPopup(null)};document.addEventListener('keydown',key);return()=>document.removeEventListener('keydown',key)},[popup]);
  const audioRef=useRef<HTMLAudioElement|null>(null);
  useEffect(()=>{onPlayerVisibility?.(Boolean(current));return ()=>onPlayerVisibility?.(false)},[Boolean(current),onPlayerVisibility]);
  useEffect(()=>{const audio=audioRef.current;if(!audio||!current)return;audio.load();audio.play().then(()=>setPlaying(true)).catch(()=>{setPlaying(false);setPlayerError('Unable to play audio')})},[current?.id]);
  const toggle=()=>{const a=audioRef.current;if(!a)return;if(a.paused)a.play().then(()=>setPlaying(true)).catch(()=>setPlayerError('Unable to play audio'));else{a.pause();setPlaying(false)}};
  const choose=(beat:BeatItem,list:BeatItem[])=>{setPlayerError('');setQueue(list);if(current?.id===beat.id){toggle();return;}setElapsed(0);setDuration(0);setCurrent(beat)};
- const next=()=>{if(!current)return;const index=queue.findIndex(b=>b.id===current.id);if(index>=0&&index<queue.length-1){setCurrent(queue[index+1]);setElapsed(0)}else{setPlaying(false)}};
+ const next=()=>{if(!current)return;if(repeat==='one'){if(audioRef.current){audioRef.current.currentTime=0;audioRef.current.play().catch(()=>{})}return;}const index=queue.findIndex(b=>b.id===current.id);const target=shuffle&&queue.length>1?queue.filter(b=>b.id!==current.id)[Math.floor(Math.random()*(queue.length-1))]:queue[index+1]||(repeat==='all'?queue[0]:null);if(target){setCurrent(target);setElapsed(0)}else{setPlaying(false)}};
  const previous=()=>{if(!current)return;const index=queue.findIndex(b=>b.id===current.id);if(index>0){setCurrent(queue[index-1]);setElapsed(0)}else if(audioRef.current)audioRef.current.currentTime=0};
  const playPack=async(p:PackItem)=>{try{setPlayerError('');const response=await fetch(api+'/api/library/files/pack-tracks/'+p.id,{credentials:'include'});if(!response.ok)throw Error('Unable to load pack');const result=await response.json();const beats=result.beats as BeatItem[];if(!beats.length)throw Error('Pack has no playable beats');choose(beats[0],beats)}catch(e){setPlayerError(e instanceof Error?e.message:'Unable to load pack')}};
 
@@ -69,15 +79,29 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility}:{onUpload:(
    </div>}
  </div></div>
  {current&&<div className="onece-player-dock v2-active-player" aria-label="Audio player">
-  <div className="onece-global-player v2-player-inner">
-   <div className="v2-player-info"><strong>{current.title}</strong><small>{queue.length>1?(queue.findIndex(b=>b.id===current.id)+1)+' / '+queue.length+' beats':'Library'}</small></div>
-   <div className="v2-player-controls"><button type="button" onClick={previous} aria-label="Previous track">‹</button><button type="button" onClick={toggle} aria-label={playing?'Pause':'Play'}>{playing?<PauseIcon/>:<PlayIcon/>}</button><button type="button" onClick={next} aria-label="Next track">›</button></div>
-   <span className="v2-player-time">{formatTime(elapsed)}</span>
-   <input className="v2-player-progress" type="range" min="0" max={duration||1} step="0.1" value={Math.min(elapsed,duration||1)} aria-label="Seek" onChange={e=>{if(audioRef.current)audioRef.current.currentTime=Number(e.target.value)}}/>
-   <span className="v2-player-time">{formatTime(duration)}</span>
-   <button type="button" className="v2-player-close" aria-label="Close player" onClick={()=>{audioRef.current?.pause();setCurrent(null);setPlaying(false)}}>×</button>
+  <div className="onece-global-player">
+   <div className="onece-player-cover" aria-hidden="true">{coverUrl?<img src={coverUrl} alt=""/>:<Music2 size={20}/>}</div>
+   <div className="onece-player-meta"><span className="onece-player-title" title={current.title}>{current.title}</span><span className="onece-player-author">1CE</span></div>
+   <div className="onece-player-wave" style={{'--played':(duration?elapsed/duration*100:0)+'%'} as React.CSSProperties}>
+    <div className="onece-wave-bars is-loading" aria-hidden="true"/><span className="onece-wave-cursor" aria-hidden="true"/>
+    <input type="range" min="0" max={duration||1} step="0.1" value={Math.min(elapsed,duration||1)} disabled={!duration} aria-label="Playback position" onChange={e=>{if(audioRef.current)audioRef.current.currentTime=Number(e.target.value)}}/>
+   </div>
+   <div className="onece-player-time">{formatTime(elapsed)} <span>/</span> {formatTime(duration)}</div>
+   <div className="onece-player-controls">
+    <button type="button" className="onece-player-icon" title="Previous" aria-label="Previous" onClick={previous}><SkipBack/></button>
+    <button type="button" className="onece-player-icon onece-player-play" title={playing?'Pause':'Play'} aria-label={playing?'Pause':'Play'} onClick={toggle}>{playing?<Pause/>:<Play/>}</button>
+    <button type="button" className="onece-player-icon" title="Next" aria-label="Next" disabled={queue.length<2} onClick={next}><SkipForward/></button>
+    <button type="button" className={'onece-player-icon'+(shuffle?' is-active':'')} title="Shuffle" aria-label="Shuffle" aria-pressed={shuffle} onClick={()=>setShuffle(v=>!v)}><Shuffle/></button>
+    <button type="button" className={'onece-player-icon'+(repeat!=='off'?' is-active':'')} title={'Repeat: '+repeat} aria-label="Repeat" aria-pressed={repeat!=='off'} onClick={()=>setRepeat(v=>v==='off'?'all':v==='all'?'one':'off')}>{repeat==='one'?<Repeat1/>:<Repeat/>}</button>
+    <button type="button" className={'onece-player-icon onece-player-queue'+(popup==='queue'?' is-active':'')} title="Playback queue" aria-label="Playback queue" aria-expanded={popup==='queue'} onClick={()=>setPopup(v=>v==='queue'?null:'queue')}><ListMusic/>{queue.length>1&&<span className="onece-queue-count">{queue.length}</span>}</button>
+    <div className="onece-player-volume">
+     <button type="button" className={'onece-player-icon'+(popup==='volume'?' is-active':'')} title="Volume" aria-label="Volume" aria-expanded={popup==='volume'} onClick={()=>setPopup(v=>v==='volume'?null:'volume')}>{muted||volume===0?<VolumeX/>:<Volume2/>}</button>
+     {popup==='volume'&&<div className="onece-volume-popup" role="group" aria-label="Volume control"><span>{Math.round((muted?0:volume)*100)}%</span><input type="range" min="0" max="1" step="0.01" value={muted?0:volume} onChange={e=>{setMuted(false);setVolume(Number(e.target.value))}} aria-label="Volume level"/><button type="button" className="onece-player-icon" aria-label={muted?'Unmute':'Mute'} onClick={()=>setMuted(v=>!v)}>{muted?<VolumeX/>:<Volume2/>}</button></div>}
+    </div>
+   </div>
   </div>
-  {playerError&&<p className="v2-player-error" role="alert">{playerError}</p>}
+  {playerError&&<p className="onece-player-error" role="alert">{playerError}</p>}
+  {popup==='queue'&&<section className="onece-queue-popup" role="region" aria-label="Playback queue"><header><h2>Playback queue</h2><button type="button" className="onece-player-icon" aria-label="Close queue" onClick={()=>setPopup(null)}><X/></button></header><div className="onece-queue-current"><small>Now playing</small><p>{current.title}</p></div><ol>{queue.map((beat,index)=><li key={beat.id}><button type="button" className="onece-queue-track" onClick={()=>{setCurrent(beat);setPopup(null)}}><span>{String(index+1).padStart(2,'0')}</span><span>{beat.title}</span></button></li>)}</ol></section>}
  </div>}
  {playerError&&!current&&<p className="v2-player-error v2-player-notice" role="alert">{playerError}</p>}
  {current&&<audio ref={audioRef} crossOrigin="use-credentials" preload="metadata" src={api+'/api/library/files/audio/'+current.audio_file_id} onTimeUpdate={e=>setElapsed(e.currentTarget.currentTime)} onLoadedMetadata={e=>setDuration(Number.isFinite(e.currentTarget.duration)?e.currentTarget.duration:0)} onEnded={next} onPause={()=>setPlaying(false)} onPlay={()=>setPlaying(true)} onError={()=>{setPlaying(false);setPlayerError('Audio could not be loaded')}}/>}
@@ -86,4 +110,4 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility}:{onUpload:(
 
 function PlayIcon(){return <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m8 5 12 7-12 7Z"/></svg>}
 function PauseIcon(){return <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>}
-function formatTime(n:number){if(!Number.isFinite(n))return '0:00';const t=Math.floor(n);return Math.floor(t/60)+':'+String(t%60).padStart(2,'0')}
+function formatTime(n:number){if(!Number.isFinite(n))return '00:00';const t=Math.floor(n);return String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0')}
