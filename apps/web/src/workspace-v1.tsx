@@ -110,11 +110,18 @@ function CompactWorkspaceNav({ view, disabled, onNavigate }) {
         aria-controls={listId}
         disabled={disabled}
         tabIndex={open ? -1 : 0}
-        onClick={() => {
+        onClick={event => {
           if (open) {
             setOpen(false)
             suppressHover.current = true
-          } else focusOption(items.indexOf(current))
+          } else if (event.detail === 0) {
+            // Keyboard/assistive activation: move focus into the expanded menu.
+            focusOption(items.indexOf(current))
+          } else {
+            // Touch/click: open without moving focus during the reveal.
+            // A focus transfer here can blur the nav and close it on mobile.
+            setOpen(true)
+          }
         }}
         onKeyDown={event => {
           if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
@@ -220,9 +227,9 @@ function HeaderV2({view,user,onNavigate,externalProfile}){
 .onece-workspace-header .library-settings svg { display: block; width: 22px; height: 22px; flex-shrink: 0; }
 .onece-workspace-header .library-profile-trigger > img { display: block; flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; object-fit: cover; }
 .onece-compact-nav { position: relative; flex: 0 0 44px; width: 44px; height: 44px; }
-.onece-compact-nav.is-open > .onece-nav-trigger { visibility: hidden; pointer-events: none; }
-.onece-nav-reveal { position: absolute; inset: 0 auto auto 0; width: 44px; display: grid; grid-template-rows: 0fr; opacity: 0; visibility: hidden; border-radius: 14px; background: #09080e; transition: grid-template-rows 220ms ease, opacity 160ms ease, visibility 220ms; }
-.onece-compact-nav.is-open .onece-nav-reveal { grid-template-rows: 1fr; opacity: 1; visibility: visible; }
+.onece-compact-nav.is-open > .onece-nav-trigger { opacity: 0; pointer-events: none; }
+.onece-nav-reveal { position: absolute; z-index: 1; inset: 0 auto auto 0; width: 44px; display: grid; grid-template-rows: 0fr; opacity: 0; visibility: hidden; pointer-events: none; border-radius: 14px; background: #09080e; transition: grid-template-rows 220ms ease, opacity 160ms ease, visibility 220ms; }
+.onece-compact-nav.is-open .onece-nav-reveal { grid-template-rows: 1fr; opacity: 1; visibility: visible; pointer-events: auto; }
 .onece-nav-list { min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 12px; }
 .onece-workspace-shell .library-page > .library-header { visibility: hidden; pointer-events: none; }
 .onece-workspace-shell:not(.onece-library-view) > main { padding-top: calc(80px + env(safe-area-inset-top)); }
