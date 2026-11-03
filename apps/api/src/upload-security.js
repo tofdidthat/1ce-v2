@@ -169,7 +169,7 @@ export async function verifyUploadedObject({s3,bucket,key,file}){
   maxBytes:size,timeoutMs:maxTime[file.kind],onChunk:chunk=>{
    hash.update(chunk);
    if(prefix.length<SIGNATURE_BYTES)prefix=Buffer.concat([prefix,chunk.subarray(0,SIGNATURE_BYTES-prefix.length)]);
-   tail=Buffer.concat([tail,chunk]).subarray(Math.max(0,tail.length+chunk.length-16));
+   tail=chunk.length>=16?chunk.subarray(chunk.length-16):Buffer.concat([tail,chunk]).subarray(Math.max(0,tail.length+chunk.length-16));
   }
  });
  if(total!==size)throw new InvalidMedia('Uploaded file size mismatch');
