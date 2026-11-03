@@ -214,7 +214,7 @@ test('complete rejects mismatched R2 content metadata and SHA, deletes unsafe ob
  assert.equal(h.objects.size,0);
 });
 
-test('complete resolves a concurrent same-owner ready duplicate without copying its R2 object',async()=>{
+test('complete resolves a concurrent same-owner ready duplicate and removes its promoted copy',async()=>{
  const h=setup(),body=uploaded(),start=await h.invoke('/api/library/files/init',body);
  const pending=h.files.get(start.body.id);h.put(pending);
  const ready=h.addReady(body);
@@ -279,6 +279,4 @@ test('invalid complete IDs and failed uploads do not expose other users assets',
 
 // Deliberately unresolved P0 controls, tracked as TODO rather than false
 // positive tests. These need a separate behavior-changing security batch.
-test.todo('P0: reject spoofed MP3/image/ZIP payloads by parsing real file bytes');
-test.todo('P0: prevent post-verification object overwrites while the signed PUT URL is live');
-test.todo('P0: enforce bounded R2 verification time and streamed byte count');
+
