@@ -24,7 +24,7 @@ function SharedProjectPage(){
   fetch(api+'/api/public/redeem/'+token,{method:'POST',credentials:'include'}).then(async r=>{
    const data=await r.json().catch(()=>({}));
    if(!r.ok)throw Error(r.status===401?'Sign in to access this project':data.error||'Unable to access project');
-   setProject(data);setStatus('Access granted. You can save this project to your Library.');
+   setProject(data);setStatus('Access granted. You can save this project to your Home.');
    notifyV2DataChanged(['shares']);
   }).catch(e=>setStatus(e.message));
  },[token]);
@@ -38,7 +38,7 @@ function SharedProjectPage(){
  };
  return <div style={{minHeight:'100vh',background:'#0b0911',color:'#f6f4fa',padding:'100px 24px',textAlign:'center'}}>
   <h1>Shared project</h1><p>{status}</p>
-  {project&&<button type="button" onClick={()=>void save()} style={{padding:'12px 20px',borderRadius:10,cursor:'pointer'}}>Save to library</button>}
+  {project&&<button type="button" onClick={()=>void save()} style={{padding:'12px 20px',borderRadius:10,cursor:'pointer'}}>Save to Home</button>}
   <p><Link to="/app/profile">My profile</Link></p>
  </div>;
 }

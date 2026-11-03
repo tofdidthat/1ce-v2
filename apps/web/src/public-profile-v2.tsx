@@ -17,7 +17,7 @@ import EditProfilePanelV2 from './edit-profile-panel-v2';
 import {ProfileSocialLinksV2} from './profile-social-links-v2';
 
 function CatalogLibraryIcon({size=17}:{size?:number}){
- // Same SVG paths and styling as the Library navigation HomeMark.
+ // Dedicated Catalog icon; do not swap with the house used for Home navigation.
  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 4v16M9 4v16M14 4l4 16"/></svg>;
 }
 const api=import.meta.env.VITE_API_URL;
@@ -274,7 +274,7 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
        onContextMenu={event=>{event.preventDefault();setMenu({project,x:event.clientX,y:event.clientY})}}
        onPlay={onPlayProject?()=>onPlayProject(project.owner_id,project.kind,project.id):undefined}/>;
     })}</div>:
-    tab==='catalog'?<div className="onece-profile-empty"><CatalogLibraryIcon size={27}/><h2>No public releases yet</h2><p>Beats and packs will appear here when published. Private Library files are never displayed automatically.</p></div>:
+    tab==='catalog'?<div className="onece-profile-empty"><CatalogLibraryIcon size={27}/><h2>No public releases yet</h2><p>Beats and packs will appear here when published. Private projects in Home are never displayed automatically.</p></div>:
     <div className="onece-profile-empty"><Bookmark size={27}/><h2>No saves yet</h2><p>Saved projects will appear here.</p></div>}
   </div>
   {menu&&<ProjectContextMenuV2 project={menu.project} x={menu.x} y={menu.y} owner={ownerOf(menu.project)} published={published.has(menu.project.kind+':'+menu.project.id)} saved={saved.has(menu.project.owner_id+':'+menu.project.kind+':'+menu.project.id)}

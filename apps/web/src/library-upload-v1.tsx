@@ -224,7 +224,7 @@ export default function LibraryUploadV2({userId}:{userId?:number}={}){
                 disabled={!audioFiles.length || saving}
                 onClick={save}
               >
-                {saving ? "Saving…" : "Save to Library"}
+                {saving ? "Saving…" : "Save to Home"}
               </button>
               {!isPack && audioFiles.length === 1 && (
                 <button

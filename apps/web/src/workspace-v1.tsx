@@ -2,19 +2,21 @@
 // Ported from v1 src/workspace/WorkspaceShell.jsx and src/playback.jsx.
 // Deliberately isolated from all v1 services, storage keys and databases.
 import React,{useEffect,useState,useRef} from 'react';
+import {House} from 'lucide-react';
 import {useNavigate,useLocation} from 'react-router-dom';
 import './workspace-v1.css';
 import LibraryUploadV2 from './library-upload-v1';
 import {subscribeV2DataChanges,subscribeV2Resume} from './data-refresh-v2';
 import LibraryItemsV2 from './library-items-v2';
 import PublicProfileV2 from './public-profile-v2';
+import WorldV2 from './world-v2';
 import {ProjectFlagsProviderV2} from './project-flags-v2';
 import {ProjectCoverCacheProviderV2} from './project-cover-v2';
 import AccountSettingsV2 from './account-settings-v2';
 import {profilePictureV2} from './profile-picture-v2';
 function HomeMark() {
-  // Same three-stroke mark shown in the empty Library state.
-  return <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 4v16M9 4v16M14 4l4 16"/></svg>
+  // Home navigation uses a house. The Catalog tab retains its own 3-stroke glyph.
+  return <House className="w-5 h-5" size={22} strokeWidth={1.7} aria-hidden="true"/>;
 }
 function GlobeMark({ className = 'w-5 h-5' }) {
   return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><ellipse cx="12" cy="12" rx="4" ry="9" /><path d="M3 12h18" /></svg>
@@ -36,7 +38,7 @@ function CompactWorkspaceNav({ view, disabled, onNavigate }) {
   const options = React.useRef([])
   const items = [
     { id: 'library', label: 'Home', icon: <HomeMark /> },
-    { id: 'discover', label: 'Discover', icon: <GlobeMark /> },
+    { id: 'discover', label: 'World', icon: <GlobeMark /> },
     { id: 'upload', label: 'Upload', icon: <UploadMark /> },
     { id: 'account', label: 'Settings', icon: <SettingsMark /> }
   ]
@@ -255,7 +257,7 @@ function EmptyLibrary({onUpload}){
  return <section className="beat-profile library-page onece-v2-library">
   <div className="beat-profile-content">
    <div className="library-items">
-    <div className="library-empty"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M4 4v16M9 4v16M14 4l4 16"/></svg><h2>Your Library is Empty</h2><button type="button" className="library-add-audio" onClick={onUpload}>Add Audio</button></div>
+    <div className="library-empty"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M4 4v16M9 4v16M14 4l4 16"/></svg><h2>Your Home is empty</h2><button type="button" className="library-add-audio" onClick={onUpload}>Add Audio</button></div>
    </div>
   </div>
  </section>;
@@ -299,13 +301,14 @@ export default function WorkspaceV2({user,profileId}:{user:any;profileId?:string
  const requestQueue=(ownerId:number,kind:'beat'|'pack',id:string)=>setQueueRequest(previous=>({ownerId,kind,id,nonce:(previous?.nonce||0)+1}));
  const view=profileId?'profile':location.pathname==='/app/library'?'library':location.pathname.endsWith('/discover')?'discover':location.pathname.endsWith('/upload')?'upload':location.pathname.endsWith('/settings')?'account':location.pathname.endsWith('/profile/edit')?'edit-profile':'profile';
  const onNavigate=(next)=>navigate(next==='library'?'/app/library':next==='account'?'/app/settings':next==='edit-profile'?'/app/profile/edit':'/app/'+next);
- useEffect(()=>{document.title=({library:'Library',discover:'Discover',upload:'Upload',account:'Settings',profile:'Profile','edit-profile':'Edit Profile'}[view]||'Library')+' — 1CE'},[view]);
+ useEffect(()=>{document.title=({library:'Home',discover:'World',upload:'Upload',account:'Settings',profile:'Profile','edit-profile':'Edit Profile'}[view]||'Home')+' — 1CE'},[view]);
  return <ProjectCoverCacheProviderV2 viewerId={Number(account?.id)||null}><ProjectFlagsProviderV2 viewerId={Number(account?.id)||null}><div className={'onece-workspace-shell'+(view==='library'?' onece-library-view':'')}>
  <style>{`.onece-library-inactive{position:static!important;padding:0!important;margin:0!important;min-height:0!important;height:0!important;overflow:visible!important}.onece-library-inactive>.beat-profile-content{display:none!important}`}</style>
  <HeaderV2 view={view} user={account} externalProfile={Boolean(profileId)} onNavigate={onNavigate}/>
  <main className="onece-v2-workspace-main">
  <LibraryItemsV2 active={view==='library'} playRequest={playRequest} queueRequest={queueRequest} userId={account?.id} onUpload={()=>onNavigate('upload')} onPlayerVisibility={setPlayerVisible} onPlaybackChange={setPlayback}/>
  {view==='library'?null:
+ view==='discover'?<WorldV2 userId={account?.id} onOpenProfile={identifier=>navigate('/u/'+encodeURIComponent(identifier))}/>:
  view==='upload'?<LibraryUploadV2 userId={account?.id}/>:
  view==='account'?<AccountSettingsV2 user={account} onUserChange={setAccount} onViewProfile={()=>onNavigate('profile')} onLogout={logout}/>:
  view==='profile'?<PublicProfileV2 user={account} profileId={profileId} playback={playback} onPlayProject={requestPlayback} onQueueProject={requestQueue}
@@ -322,7 +325,7 @@ export default function WorkspaceV2({user,profileId}:{user:any;profileId?:string
   onBack={()=>{const index=window.history.state?.idx;if(typeof index==='number'&&index>0)navigate(-1);else navigate(account?.id?'/app/library':'/');}}
   onLogin={()=>navigate('/login')}
   onOpenProfile={identifier=>navigate('/u/'+encodeURIComponent(identifier))}/>: view==='edit-profile'?<section className="onece-workspace-placeholder"><h1>Edit Profile</h1><p>Profile editing is not yet available in v2.</p></section>:
- <section className="onece-workspace-placeholder"><h1>{view==='account'?'Settings':view==='profile'?'Public Profile':'Discover'}</h1><p>{view==='profile'?'Public profile publishing is not yet enabled in v2.':view==='account'?'Account settings are not yet available in v2.':'Discover is not yet available in v2.'}</p></section>}
+ <section className="onece-workspace-placeholder"><h1>{view==='account'?'Settings':view==='profile'?'Public Profile':'World'}</h1><p>{view==='profile'?'Public profile publishing is not yet enabled in v2.':view==='account'?'Account settings are not yet available in v2.':'World feed is not yet available in v2.'}</p></section>}
  </main>
  {view==='library'&&!playerVisible&&<div className="onece-player-dock" aria-label="Add audio"><button type="button" className="onece-global-player" style={{display:'flex',justifyContent:'center',gap:10,width:'fit-content',maxWidth:'100%',marginInline:'auto',padding:'7px 26px',color:'inherit',font:'inherit',fontSize:13,cursor:'pointer'}} onClick={()=>onNavigate('upload')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>Add file</span></button></div>}
  </div></ProjectFlagsProviderV2></ProjectCoverCacheProviderV2>;

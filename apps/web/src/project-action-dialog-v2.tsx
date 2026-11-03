@@ -113,8 +113,8 @@ export default function ProjectActionDialogV2({
     </>}
     {action==='delete'&&<p className="v2-project-dialog-warning">
      {project.kind==='beat'
-      ?'Delete this beat permanently from the Library, Catalog, Saves and any packs that contain it? Other beats in those packs are preserved.'
-      :'Delete this pack permanently? The beats inside it remain in your Library and any other packs.'}
+      ?'Delete this beat permanently from Home, Catalog, Saves and any packs that contain it? Other beats in those packs are preserved.'
+      :'Delete this pack permanently? The beats inside it remain in your Home and any other packs.'}
      {' '}Existing media files are retained in private storage. This action cannot be undone.
     </p>}
     {error&&<p className="v2-project-dialog-error" role="alert">{error}</p>}
