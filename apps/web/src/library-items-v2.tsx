@@ -86,6 +86,8 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
  },[active]);
  const [loading,setLoading]=useState(true);
  const [current,setCurrent]=useState<BeatItem|null>(null);
+ const currentRef=useRef<BeatItem|null>(null);
+ currentRef.current=current;
  const [openedPack,setOpenedPack]=useState<PackItem|null>(null);
  const [openedTracks,setOpenedTracks]=useState<BeatItem[]>([]);
  const [packLoading,setPackLoading]=useState(false);
@@ -274,7 +276,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
     }));
     if(!tracks.length)throw Error('No playable tracks to queue');
     if(controller.signal.aborted)return;
-    if(!current){choose(tracks[0],tracks,kind==='pack'?id:null);}
+    if(!currentRef.current){choose(tracks[0],tracks,kind==='pack'?id:null);}
     else setQueue(previous=>[...previous,...tracks]);
    }catch(error){
     if(!controller.signal.aborted)setPlayerError(error instanceof Error?error.message:'Unable to add to queue');
