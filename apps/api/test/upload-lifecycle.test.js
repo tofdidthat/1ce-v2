@@ -83,7 +83,10 @@ function setup(){
   const file={id:nextId++,user_id:userId,kind:data.kind,sha256:data.sha256,object_key:'users/'+userId+'/assets/'+data.kind+'/ready',content_type:data.contentType,byte_size:data.size,status:'ready'};
   files.set(file.id,file);return file;
  };
- return {files,objects,queries,commands,signed,invoke,put,addReady,setUniqueCollision(value){forceUniqueCollision=value}};
+ return {files,objects,queries,commands,signed,invoke,put,addReady,
+  setUniqueCollision(value){forceUniqueCollision=value},
+  setSigningFailure(){options.signUrl=async()=>{throw Error('signer unavailable');}}
+ };
 }
 
 test('upload init/complete require authentication and never allocate files or storage for anonymous users',async()=>{
@@ -134,6 +137,13 @@ test('valid init scopes object key to owner, signs 300-second URL and only dedup
  const sameOwner=await h.invoke('/api/library/files/init',body);
  assert.equal(sameOwner.status,200);
  assert.deepEqual(sameOwner.body,{id:ready.id,reused:true});
+});
+
+test('a failed R2 presign removes the pending metadata row instead of leaving a dangling upload',async()=>{
+ const h=setup();h.setSigningFailure();
+ await assert.rejects(()=>h.invoke('/api/library/files/init',uploaded()),/signer unavailable/);
+ assert.equal(h.files.size,0);
+ assert.equal(h.queries.some(call=>call.sql.startsWith("DELETE FROM library_files WHERE id=$1 AND user_id=$2 AND status='pending'")),true);
 });
 
 test('complete never reads another owner file, accepts retries of ready, and reports missing upload',async()=>{
