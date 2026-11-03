@@ -19,9 +19,22 @@ export async function rateLimitExceeded(pool,scope,subject,limit,windowMinutes){
  return Number(result.rows[0]?.hits)>limit;
 }
 
+// Capacity is a release decision. Keep the conservative S2 default until
+// approved; allow changing it without modifying source code. Never interpret
+// missing/invalid config as unlimited storage.
+export function storageQuotaBytes(env=process.env){
+ const raw=env.V2_MAX_STORED_GIB;
+ if(raw===undefined||raw==='')return 10*1024*1024*1024;
+ if(typeof raw!=='string'||!/^[1-9][0-9]{0,3}$/.test(raw))
+  throw new Error('V2_MAX_STORED_GIB must be a positive whole number');
+ const gib=Number(raw);
+ if(!Number.isSafeInteger(gib)||gib>1024)
+  throw new Error('V2_MAX_STORED_GIB exceeds the supported capacity range');
+ return gib*1024*1024*1024;
+}
+
 export const uploadLimits=Object.freeze({
  maxPending:10,
- maxStoredBytes:10*1024*1024*1024, // 10 GiB per account; includes recent pending reservations
  initPerHour:240,
  completePerHour:360,
  pendingMinutes:30
