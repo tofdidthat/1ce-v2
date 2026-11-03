@@ -25,3 +25,18 @@ export const uploadLimits=Object.freeze({
  completePerHour:360,
  pendingMinutes:30
 });
+
+export async function pruneExpiredRateLimits(pool,{batchSize=500}={}){
+ if(!Number.isSafeInteger(batchSize)||batchSize<1||batchSize>2000)
+  throw new Error('Invalid rate-limit maintenance batch');
+ const result=await pool.query(`WITH old AS (
+   SELECT scope,subject_hash FROM v2_api_rate_limits
+   WHERE window_started_at<now()-interval '7 days'
+   ORDER BY window_started_at
+   LIMIT $1
+   FOR UPDATE SKIP LOCKED
+  )
+  DELETE FROM v2_api_rate_limits t USING old
+   WHERE t.scope=old.scope AND t.subject_hash=old.subject_hash`,[batchSize]);
+ return Number(result.rowCount||0);
+}
