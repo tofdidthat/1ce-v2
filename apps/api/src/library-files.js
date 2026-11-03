@@ -197,11 +197,14 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser,{
     await deleteObject(stagingKey);
     send(res,422,{error:'Uploaded file metadata did not match'});return true;
    }
+   // Source-conditional copy must fail closed when HEAD lacks a usable ETag.
+   if(typeof head.ETag!=='string'||!head.ETag.trim())
+    throw new VerificationUnavailable('Storage ETag unavailable for conditional copy');
    // Source can change while a signed PUT remains live. Copy with server
    // credentials to a never-signed final key and verify FINAL bytes.
    await s3.send(new CopyObjectCommand({
     Bucket:cfg.bucket,Key:finalKey,CopySource:cfg.bucket+'/'+stagingKey,
-    ...(head.ETag?{CopySourceIfMatch:head.ETag}:{})
+    CopySourceIfMatch:head.ETag
    }),{abortSignal:AbortSignal.timeout(180000)});
    await verifyUploadedObject({s3,bucket:cfg.bucket,key:finalKey,file});
   }catch(err){
