@@ -1,6 +1,7 @@
 import React,{useState} from 'react';
-import {Bookmark,Users,ArrowLeft,Eye,EyeOff,Link2,ListPlus,FolderPlus,Pencil,Image as ImageIcon,Download,Layers,Trash2,ChevronRight,Play,Pause} from 'lucide-react';
+import {Bookmark,Users,ChevronLeft,Eye,EyeOff,Link2,ListPlus,FolderPlus,Pencil,Image as ImageIcon,Download,Layers,Trash2,ChevronRight,Play,Pause} from 'lucide-react';
 import './public-profile-v2.css';
+import CopyLinkIconV2 from './copy-link-icon-v2';
 import ProjectContextMenuV2 from './project-context-menu-v2';
 import ProjectCardV2 from './project-card-v2';
 import {createProjectShareLinkV2} from './project-requests-v2';
@@ -176,7 +177,7 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
  return <section className="onece-public-profile" aria-label="Public profile">
   <header className="onece-workspace-header onece-profile-navbar" aria-label="Profile navigation">
    <div className="onece-workspace-brand">
-    <button type="button" className="library-settings onece-profile-nav-back" aria-label="Go back" title="Back" onClick={onBack}><ArrowLeft size={22}/></button>
+    <button type="button" className="library-settings onece-profile-nav-back" aria-label="Go back" title="Back" onClick={onBack}><ChevronLeft size={20}/></button>
    </div>
    <div className="onece-workspace-actions onece-profile-nav-actions">
     {(profileStatus==='ready'||!profileId)&&(isOwner?
@@ -185,7 +186,7 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
       disabled={!resolvedTargetId||followBusy||Boolean(user?.id&&followStatus!=='ready')}
       aria-label={followData?.viewerFollows?'Unfollow profile':'Follow profile'} aria-pressed={Boolean(followData?.viewerFollows)}>
       {followBusy?'…':followData?.viewerFollows?'Following':'Follow'}</button>)}
-    <button type="button" className="library-settings onece-profile-nav-copy" aria-label="Copy profile link" title="Copy profile link" onClick={()=>void copyProfileLink()}><Link2 size={22}/></button>
+    <button type="button" className="library-settings onece-profile-nav-copy" aria-label="Copy profile link" title="Copy profile link" onClick={()=>void copyProfileLink()}><CopyLinkIconV2 size={22}/></button>
     {copyStatus&&<span className="onece-profile-copy-status" role="status">{copyStatus}</span>}
    </div>
   </header>

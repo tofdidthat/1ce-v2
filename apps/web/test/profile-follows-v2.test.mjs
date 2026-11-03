@@ -17,7 +17,7 @@ test('profile navbar replaces normal header, preserves back and own pencil to re
  assert.match(workspace,/setAccount\(updated\)/);
  assert.match(profile,/onClick=\{\(\)=>setEditorOpen\(true\)\}/);
  assert.match(profile,/<header className="onece-workspace-header onece-profile-navbar"/);
- assert.match(profile,/<ArrowLeft size=\{22\}\/>/);
+ assert.match(profile,/<ChevronLeft size=\{20\}\/>/);
  assert.match(profile,/<Pencil size=\{22\}\/>/);
  assert.match(profile,/isOwner\?/);
  assert.match(profile,/String\(visibleProfileUser\?\.id\)/); // verified target identity, not URL guess

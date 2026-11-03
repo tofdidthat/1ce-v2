@@ -29,6 +29,9 @@ export default function EditProfilePanelV2({user,profile,catalog,onClose,onIdent
 }){
  const viewer=Number(user?.id);
  const [username,setUsername]=useState(String(profile?.username||user?.username||''));
+ const [savedUsername,setSavedUsername]=useState(String(profile?.username||user?.username||''));
+ const [editingUsername,setEditingUsername]=useState(false);
+ const [usernameSaving,setUsernameSaving]=useState(false);
  const [links,setLinks]=useState<string[]>(Array.isArray(profile?.links)?profile.links:[]);
  const [linkEditor,setLinkEditor]=useState<{index:number;value:string}|null>(null);
  const [avatarFile,setAvatarFile]=useState<File|null>(null);
@@ -51,14 +54,15 @@ export default function EditProfilePanelV2({user,profile,catalog,onClose,onIdent
  },[avatarFile]);
  useEffect(()=>{
   const onKey=(event:KeyboardEvent)=>{
-   if(event.key!=='Escape'||saving||busyKey)return;
+   if(event.key!=='Escape'||saving||busyKey||usernameSaving)return;
    if(picker)setPicker(false);
    else if(linkEditor)setLinkEditor(null);
+   else if(editingUsername)cancelUsernameEdit();
    else onClose();
   };
   window.addEventListener('keydown',onKey);
   return()=>window.removeEventListener('keydown',onKey);
- },[picker,linkEditor,saving,busyKey,onClose]);
+ },[picker,linkEditor,editingUsername,savedUsername,saving,usernameSaving,busyKey,onClose]);
  useEffect(()=>{
   if(!picker||!api||!Number.isSafeInteger(viewer)||viewer<1)return;
   const controller=new AbortController();
@@ -84,6 +88,32 @@ export default function EditProfilePanelV2({user,profile,catalog,onClose,onIdent
   return catalog.filter(item=>published.has(projectKey(item)));
  },[library,catalog,published,flagsStatus]);
 
+ function cancelUsernameEdit(){
+  setUsername(savedUsername);
+  setEditingUsername(false);
+  setError('');
+ }
+ async function saveUsernameEdit(){
+  if(usernameSaving||saving||busyKey)return;
+  const normalized=username.trim().replace(/^@/,'').toLowerCase();
+  if(!validateUsername(normalized)){
+   setError('Username must be 3–24 characters without spaces or repeated dots.');
+   return;
+  }
+  if(normalized===savedUsername){
+   setUsername(normalized);setEditingUsername(false);setError('');return;
+  }
+  setUsernameSaving(true);setError('');
+  try{
+   const result=await jsonRequest('/auth/me',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:normalized})});
+   setSavedUsername(normalized);setUsername(normalized);setEditingUsername(false);
+   if(result.user)onIdentityUpdated(result.user);
+   notifyV2DataChanged(['identity'],viewer);
+   onProfileUpdated();
+  }catch(caught){
+   setError(caught instanceof Error?caught.message:'Unable to update username');
+  }finally{setUsernameSaving(false);}
+ }
  function editLink(index:number){
   setLinkEditor({index,value:index<0?'':links[index]||''});
   setError('');
@@ -112,22 +142,13 @@ export default function EditProfilePanelV2({user,profile,catalog,onClose,onIdent
   setAvatarFile(file);setRemoveAvatar(false);setError('');
  }
  async function saveProfile(){
-  if(saving||busyKey||linkEditor)return;
-  const normalized=username.trim().replace(/^@/,'').toLowerCase();
-  const before=String(profile?.username||user?.username||'');
-  const changedUsername=normalized!==before;
-  if(changedUsername&&!validateUsername(normalized)){
-   setError('Username must be 3–24 characters without spaces or repeated dots.');return;
-  }
+  if(saving||usernameSaving||editingUsername||busyKey||linkEditor)return;
   setSaving(true);setError('');
   let changed=false;
   try{
    const newLinks=JSON.stringify(links)!==JSON.stringify(Array.isArray(profile?.links)?profile.links:[]);
-   if(changedUsername||newLinks){
-    const updates:any={};
-    if(changedUsername)updates.username=normalized;
-    if(newLinks)updates.links=links;
-    const result=await jsonRequest('/auth/me',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(updates)});
+   if(newLinks){
+    const result=await jsonRequest('/auth/me',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({links})});
     if(result.user)onIdentityUpdated(result.user);
     changed=true;
    }
@@ -158,7 +179,7 @@ export default function EditProfilePanelV2({user,profile,catalog,onClose,onIdent
   finally{setBusyKey('');}
  }
  const avatar=preview||(removeAvatar?(user?.picture||''):profilePictureV2(user));
- const name=String(profile?.username||profile?.name||user?.name||'Profile');
+ const name=String(savedUsername||profile?.name||user?.name||'Profile');
  const slots=Array.from({length:4},(_,i)=>previewProjects[i]||null);
 
  return <div className="onece-edit-overlay" onPointerDown={event=>{if(event.target===event.currentTarget&&!saving&&!busyKey)onClose();}}>
@@ -166,7 +187,7 @@ export default function EditProfilePanelV2({user,profile,catalog,onClose,onIdent
    <header className="onece-edit-toolbar">
     <button type="button" aria-label="Close editor" title="Close" onClick={onClose} disabled={saving}><X size={20}/></button>
     <strong>Edit profile</strong>
-    <button type="button" className="onece-edit-save" aria-label="Save profile" title="Save profile" onClick={()=>void saveProfile()} disabled={saving||!!linkEditor}><Check size={19}/></button>
+    <button type="button" className="onece-edit-save" aria-label="Save profile" title="Save profile" onClick={()=>void saveProfile()} disabled={saving||usernameSaving||editingUsername||!!linkEditor}><Check size={19}/></button>
    </header>
    <div className="onece-edit-sections">
     <div className="onece-edit-profile-identity">
@@ -175,8 +196,21 @@ export default function EditProfilePanelV2({user,profile,catalog,onClose,onIdent
      </button>
      <input ref={fileInput} hidden type="file" accept="image/jpeg,image/png,image/webp" onChange={chooseFile}/>
      {user?.has_avatar&&!removeAvatar&&<button className="onece-edit-remove-photo" type="button" onClick={()=>{setRemoveAvatar(true);setAvatarFile(null);}}>Remove photo</button>}
-     <label htmlFor="onece-edit-username">Username</label>
-     <input id="onece-edit-username" value={username} onChange={e=>setUsername(e.target.value)} maxLength={25} autoComplete="off" spellCheck={false} placeholder="Choose username"/>
+     <div className="onece-edit-username-row">
+      {editingUsername?<>
+       <input id="onece-edit-username" autoFocus aria-label="Username" value={username}
+        onChange={e=>setUsername(e.target.value)} maxLength={25} autoComplete="off" spellCheck={false}
+        placeholder="Username" disabled={usernameSaving}
+        onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();void saveUsernameEdit();}}}/>
+       <span className="onece-edit-username-actions">
+        <button type="button" aria-label="Cancel username edit" title="Cancel" onClick={cancelUsernameEdit} disabled={usernameSaving}><X size={17}/></button>
+        <button type="button" aria-label="Save username" title="Save username" onClick={()=>void saveUsernameEdit()} disabled={usernameSaving}><Check size={17}/></button>
+       </span>
+      </>:<button type="button" className="onece-edit-username-display" aria-label="Edit username"
+       title="Edit username" onClick={()=>{setUsername(savedUsername);setEditingUsername(true);setError('');}}>
+       {savedUsername||'Set username'}
+      </button>}
+     </div>
     </div>
     <section className="onece-edit-links" aria-label="Edit profile links">
      <div className="onece-edit-section-heading"><h2>Links</h2><span>{links.length}/6</span></div>
