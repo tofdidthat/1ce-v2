@@ -87,7 +87,15 @@ jobs:
           trap 'kill "$api_pid" 2>/dev/null || true' EXIT
           for attempt in $(seq 1 30); do
             if curl -fsS "http://127.0.0.1:$PORT/health" 2>/dev/null | grep -q '"ok":true'; then
-              echo "Railway candidate start command: HEALTHY"
+              # Validate response/cache behavior without a live DB or credentials.
+              curl -fsS -D "$RUNNER_TEMP/onece-health-headers" -o "$RUNNER_TEMP/onece-health-body" "http://127.0.0.1:$PORT/health"
+              grep -Eiq '^cache-control:[[:space:]]*no-store' "$RUNNER_TEMP/onece-health-headers"
+              node -e "const x=JSON.parse(require('node:fs').readFileSync(process.argv[1]));if(x.ok!==true||x.service!=='1ce-v2-api')process.exit(1)" "$RUNNER_TEMP/onece-health-body"
+              unauth_status=$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/auth/me")
+              test "$unauth_status" = "401"
+              origin_status=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Origin: https://untrusted.invalid' "http://127.0.0.1:$PORT/auth/me")
+              test "$origin_status" = "403"
+              echo "Railway candidate start command: HEALTHY, no-store, unauthorized/private access denied"
               exit 0
             fi
             if ! kill -0 "$api_pid" 2>/dev/null; then
