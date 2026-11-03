@@ -1,13 +1,13 @@
 /* Public profile: centered untitled-inspired hierarchy, isolated to v2. */
 .onece-public-profile{width:min(920px,calc(100% - 48px));margin:0 auto 90px;color:#f6f4fa;font-family:inherit}
-.onece-profile-top{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;padding:30px 0 24px;text-align:center}
+.onece-profile-top{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:0;box-sizing:border-box;min-height:274px;padding:10px 0 45px;text-align:center}
 .onece-profile-avatar{display:grid;place-items:center;width:112px;height:112px;flex:0 0 112px;overflow:hidden;border-radius:50%;background:#292331;color:#c4b5fd;font-size:40px;font-weight:500}
 .onece-profile-avatar img{width:100%;height:100%;object-fit:cover}
-.onece-profile-name{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:18px;max-width:100%;min-width:0}
+.onece-profile-name{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:20px;max-width:100%;min-width:0}
 .onece-profile-name h1{margin:0;font-size:20px;line-height:1.35;font-weight:650;letter-spacing:-.025em;overflow-wrap:anywhere}
 .onece-profile-display-name{margin:7px 0 0;color:#a8a0b2;font-size:12px}
 /* Public profile reuses the exact social glyphs shown in the editor. */
-.onece-profile-top .onece-social-links.is-compact{justify-content:center;margin-top:14px;max-width:100%;gap:9px}
+.onece-profile-top .onece-social-links.is-compact{justify-content:center;margin-top:20px;max-width:100%;gap:9px}
 .onece-profile-top .onece-social-links.is-compact .onece-social-link{width:34px;height:34px;flex-basis:34px;background:#242226;border-color:#ffffff11;color:#bcb3c6}
 .onece-profile-top .onece-social-links.is-compact .onece-social-link:hover{background:#353038;color:#f8f5fa}
 
@@ -15,22 +15,22 @@
 .onece-profile-actions button{display:grid;place-items:center;width:27px;height:27px;padding:0;border:1px solid transparent;border-radius:8px;background:transparent;color:#aaa2b4;cursor:pointer;transition:background .18s ease,color .18s ease}
 .onece-profile-actions button:hover{background:#ffffff12;color:#fff}
 .onece-profile-actions button:focus-visible,.onece-profile-tabs button:focus-visible{outline:2px solid #a78bfa;outline-offset:3px}
-.onece-profile-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:center;width:min(540px,100%);margin:0 auto;border-bottom:1px solid #ffffff13}
+.onece-profile-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:center;width:min(520px,100%);margin:0 auto;border-bottom:1px solid #ffffff13}
 .onece-profile-tabs button{position:relative;display:flex;align-items:center;justify-content:center;gap:8px;min-height:49px;padding:10px 5px;border:0;background:transparent;color:#8f8998;font:inherit;font-size:12px;font-weight:500;cursor:pointer;transition:color .18s ease}
 .onece-profile-tabs button svg{width:17px;height:17px;stroke-width:1.8}
 .onece-profile-tabs button:hover{color:#d6c5fa}
 .onece-profile-tabs button.is-active{color:#f8f6fc}
 .onece-profile-tabs button.is-active:after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:2px;background:#f6f4fa;border-radius:2px}
-.onece-profile-panel{width:min(540px,100%);min-height:340px;margin:0 auto;padding:24px 0}
+.onece-profile-panel{width:min(520px,100%);min-height:340px;margin:0 auto;padding:46px 0}
 .onece-profile-empty{display:flex;align-items:center;justify-content:center;flex-direction:column;min-height:260px;text-align:center;color:#8f8998}
 .onece-profile-empty>svg{color:#8e7aab;stroke-width:1.4;margin-bottom:17px}
 .onece-profile-empty h2{margin:0 0 8px;color:#e4dfea;font-size:16px;font-weight:550}
 .onece-profile-empty p{max-width:420px;margin:0;font-size:13px;line-height:1.7}
-@media(max-width:680px){.onece-public-profile{width:calc(100% - 32px)}.onece-profile-top{padding:25px 0 20px}.onece-profile-avatar{width:102px;height:102px;flex-basis:102px}.onece-profile-tabs button{font-size:11px}.onece-profile-name h1{font-size:19px}}
+@media(max-width:680px){.onece-public-profile{width:calc(100% - 32px)}.onece-profile-top{min-height:248px;padding:12px 0 40px}.onece-profile-avatar{width:102px;height:102px;flex-basis:102px}.onece-profile-tabs button{font-size:11px}.onece-profile-name h1{font-size:19px}.onece-profile-panel{padding-top:34px}}
 
 .onece-profile-status{text-align:center;color:#aaa2b4;font-size:13px;padding:28px 0}
 .onece-profile-projects{display:flex;flex-wrap:wrap;justify-content:flex-start;align-items:flex-start;gap:32px;padding-top:8px}
-.onece-profile-project{box-sizing:border-box;flex:0 0 160px;width:160px;min-width:0;max-width:100%;position:relative}
+.onece-profile-project{box-sizing:border-box;flex:0 0 172px;width:172px;min-width:0;max-width:100%;position:relative}
 .onece-profile-project-cover{width:100%;aspect-ratio:1;overflow:hidden;border-radius:14px;background:#26212f;display:grid;place-items:center;color:#bfb0d3;font-size:44px}
 .onece-profile-project-cover img{width:100%;height:100%;object-fit:cover}
 .onece-profile-project-info{display:flex;flex-direction:column;gap:5px;padding:10px 0 0 2px}
@@ -55,7 +55,7 @@
 .onece-profile-project-art .v2-card-play.onece-profile-project-play:hover{background:#3a3a3a;transform:scale(1.04)}
 .onece-profile-project-art .v2-card-play.onece-profile-project-play:focus-visible{outline:2px solid #c4b5fd;outline-offset:3px}
 
-@media(max-width:420px){.onece-profile-projects{gap:20px 14px}.onece-profile-project{flex:0 0 min(160px,calc((100% - 14px)/2));width:min(160px,calc((100% - 14px)/2))}}
+@media(max-width:420px){.onece-profile-projects{gap:20px 14px}.onece-profile-project{flex:0 0 min(172px,calc((100% - 14px)/2));width:min(172px,calc((100% - 14px)/2))}}
 
 /* Profile controls intentionally reuse HeaderV2's original fixed header, positioning,
    low-contrast library-settings palette and 44px icon buttons. Only Follow
