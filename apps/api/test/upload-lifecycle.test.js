@@ -36,6 +36,13 @@ function setup(){
   if(sql.startsWith("UPDATE library_files SET status='ready'")){
    if(forceUniqueCollision){const err=new Error('duplicate ready sha');err.code='23505';throw err;}
    const file=files.get(Number(args[0]));
+   // Simulate the real DB unique constraint on READY owner/kind/SHA,
+   // including when two completions overlap in independent handlers.
+   if(file&&[...files.values()].some(other=>other.id!==file.id&&
+    other.user_id===file.user_id&&other.kind===file.kind&&
+    other.sha256===file.sha256&&other.status==='ready')){
+    const err=new Error('duplicate ready sha');err.code='23505';throw err;
+   }
    if(file&&file.user_id===args[1]&&file.status==='pending')file.status='ready';
    return {rowCount:file?1:0,rows:[]};
   }
@@ -69,7 +76,7 @@ function setup(){
   }
  };
  async function invoke(path,body,user={id:42}){
-  const req=Readable.from(body===undefined?[]:[Buffer.from(JSON.stringify(body))]);
+  const req=Readable.from(body===undefined?[]:[Buffer.from(typeof body==='string'?body:JSON.stringify(body))]);
   req.method='POST';req.headers={};
   const res={status:0,headers:{},body:null,
    writeHead(status,headers){this.status=status;this.headers=headers;},
@@ -196,6 +203,56 @@ test('complete resolves a concurrent same-owner ready duplicate without copying 
  assert.equal(complete.body.reused,true);
  assert.equal(h.files.has(pending.id),false);
  assert.equal(h.objects.has(pending.object_key),false);
+});
+
+test('init malformed and excessive JSON is rejected without a DB write or signed URL',async()=>{
+ const h=setup();
+ for(const raw of ['{"kind":', 'x'.repeat(8200)]){
+  const response=await h.invoke('/api/library/files/init',raw);
+  assert.equal(response.status,400);
+ }
+ assert.equal(h.files.size,0);
+ assert.equal(h.signed.length,0);
+ assert.equal(h.queries.length,0);
+});
+
+test('parallel same-owner uploads with the same SHA converge to one ready asset',async()=>{
+ const h=setup(),body=uploaded();
+ // Independent inits are allowed to create distinct pending objects. The
+ // completion constraint and dedup must retain only one approved reference.
+ const [a,b]=await Promise.all([
+  h.invoke('/api/library/files/init',body),
+  h.invoke('/api/library/files/init',body)
+ ]);
+ assert.equal(a.status,200);assert.equal(b.status,200);
+ assert.notEqual(a.body.id,b.body.id);
+ const pendingA=h.files.get(a.body.id),pendingB=h.files.get(b.body.id);
+ h.put(pendingA);h.put(pendingB);
+ const [resultA,resultB]=await Promise.all([
+  h.invoke('/api/library/files/'+a.body.id+'/complete'),
+  h.invoke('/api/library/files/'+b.body.id+'/complete')
+ ]);
+ assert.deepEqual([resultA.status,resultB.status],[200,200]);
+ const resultIds=[resultA.body.id,resultB.body.id];
+ assert.equal(resultIds[0],resultIds[1]);
+ assert.equal([resultA.body.reused===true,resultB.body.reused===true].filter(Boolean).length,1);
+ const ready=[...h.files.values()].filter(file=>file.status==='ready');
+ assert.equal(ready.length,1);
+ assert.equal(h.objects.size,1);
+ assert.equal(h.objects.has(ready[0].object_key),true);
+ assert.equal(h.files.has(ready[0].id),true);
+});
+
+test('invalid complete IDs and failed uploads do not expose other users assets',async()=>{
+ const h=setup();
+ assert.equal((await h.invoke('/api/library/files/abc/complete')).status,404);
+ assert.equal((await h.invoke('/api/library/files/77777/complete')).status,404);
+ const start=await h.invoke('/api/library/files/init',uploaded());
+ assert.equal(start.status,200);
+ const before=h.commands.length;
+ assert.equal((await h.invoke('/api/library/files/'+start.body.id+'/complete',undefined,{id:99})).status,404);
+ assert.equal(h.commands.length,before);
+ assert.equal(h.files.get(start.body.id).status,'pending');
 });
 
 // Deliberately unresolved P0 controls, tracked as TODO rather than false
