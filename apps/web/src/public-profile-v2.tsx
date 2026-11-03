@@ -64,9 +64,15 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
  currentFollowRequest.current=followKey;
  const followStatus=followState.key===followKey?followState.status:'loading';
  const followData=followState.key===followKey?followState.data:null;
- React.useEffect(()=>subscribeV2DataChanges(['library','saves','publications','shares','identity'],
-  ()=>setRefreshRevision(v=>v+1)),[targetId,user?.id]);
- React.useEffect(()=>subscribeV2Resume(()=>setRefreshRevision(v=>v+1)),[targetId,user?.id]);
+ React.useEffect(()=>{
+  if(!active)return;
+  return subscribeV2DataChanges(['library','saves','publications','shares','identity'],
+   ()=>setRefreshRevision(v=>v+1));
+ },[active,targetId,user?.id]);
+ React.useEffect(()=>{
+  if(!active)return;
+  return subscribeV2Resume(()=>setRefreshRevision(v=>v+1));
+ },[active,targetId,user?.id]);
  React.useEffect(()=>setEditorOpen(false),[targetId,user?.id]);
  React.useEffect(()=>{downloadRequest.current?.abort();setDownloadPicker(null);setDownloadBusy(false);},[targetId,user?.id]);
  // Stable public profile project links do not mint grants. Query only navigates
@@ -80,8 +86,14 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
   const frame=window.requestAnimationFrame(()=>document.getElementById('onece-project-'+element.kind+'-'+element.id)?.scrollIntoView({block:'center'}));
   return()=>window.cancelAnimationFrame(frame);
  },[profileStatus,visibleProjects.catalog]);
- React.useEffect(()=>subscribeV2DataChanges(['follows'],()=>setFollowRevision(v=>v+1),user?.id),[targetId,user?.id]);
- React.useEffect(()=>subscribeV2Resume(()=>setFollowRevision(v=>v+1)),[targetId,user?.id]);
+ React.useEffect(()=>{
+  if(!active)return;
+  return subscribeV2DataChanges(['follows'],()=>setFollowRevision(v=>v+1),user?.id);
+ },[active,targetId,user?.id]);
+ React.useEffect(()=>{
+  if(!active)return;
+  return subscribeV2Resume(()=>setFollowRevision(v=>v+1));
+ },[active,targetId,user?.id]);
  React.useEffect(()=>{setFollowBusy(false);setCopyStatus('');},[followKey]);
  React.useEffect(()=>{
   if(!api||!targetId){
