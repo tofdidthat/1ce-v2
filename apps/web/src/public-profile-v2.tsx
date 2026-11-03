@@ -75,17 +75,22 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
  },[active,targetId,user?.id]);
  React.useEffect(()=>setEditorOpen(false),[targetId,user?.id]);
  React.useEffect(()=>{downloadRequest.current?.abort();setDownloadPicker(null);setDownloadBusy(false);},[targetId,user?.id]);
+ React.useEffect(()=>{
+  if(active)return;
+  setMenu(null);setEditorOpen(false);setDownloadPicker(null);
+  downloadRequest.current?.abort();
+ },[active]);
  // Stable public profile project links do not mint grants. Query only navigates
  // to a card already returned by the existing authorized Catalog request.
  React.useEffect(()=>{
   const project=new URLSearchParams(window.location.search).get('project');
-  if(!project||!visibleProjects.catalog.some(p=>p.kind+':'+p.id===project)||profileStatus!=='ready')return;
+  if(!active||!project||!visibleProjects.catalog.some(p=>p.kind+':'+p.id===project)||profileStatus!=='ready')return;
   setTab('catalog');
   const element=visibleProjects.catalog.find(p=>p.kind+':'+p.id===project);
   if(!element)return;
   const frame=window.requestAnimationFrame(()=>document.getElementById('onece-project-'+element.kind+'-'+element.id)?.scrollIntoView({block:'center'}));
   return()=>window.cancelAnimationFrame(frame);
- },[profileStatus,visibleProjects.catalog]);
+ },[active,profileStatus,visibleProjects.catalog]);
  React.useEffect(()=>{
   if(!active)return;
   return subscribeV2DataChanges(['follows'],()=>setFollowRevision(v=>v+1),user?.id);
@@ -250,7 +255,9 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
   {id:'saves',label:'Saves',icon:<Bookmark size={16}/>},
   {id:'following',label:'Following',icon:<Users size={16}/>}
  ];
- return <section className="onece-public-profile" aria-label="Public profile" style={active?undefined:{display:'none'}}>
+ // Hide inactive cards without holding image cache leases; component state survives.
+ if(!active)return null;
+ return <section className="onece-public-profile" aria-label="Public profile">
   <header className="onece-workspace-header onece-profile-navbar" aria-label="Profile navigation">
    <div className="onece-workspace-brand">
     <button type="button" className="library-settings onece-profile-nav-back" aria-label="Go back" title="Back" onClick={onBack}><ChevronLeft size={20}/></button>
