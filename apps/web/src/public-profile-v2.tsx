@@ -299,7 +299,7 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
       </button>)}</div>:
      <div className="onece-profile-empty"><Users size={27}/><h2>Not following anyone yet</h2><p>Artists followed by this profile will appear here.</p></div>:
     (tab==='catalog'?visibleProjects.catalog:visibleProjects.saves).length?
-    <div className="onece-profile-projects">{(tab==='catalog'?visibleProjects.catalog:visibleProjects.saves).map(project=>{
+    <div className={"onece-profile-projects"+((tab==='catalog'?visibleProjects.catalog:visibleProjects.saves).length<=5?" is-compact":"")}>{(tab==='catalog'?visibleProjects.catalog:visibleProjects.saves).map(project=>{
      const key=savedProjectKeyV2(project.owner_id,project.kind,project.id);
      const isPlaying=!!playback&&playback.ownerId===project.owner_id&&playback.kind===project.kind&&playback.id===project.id&&playback.playing;
      return <ProjectCardV2 key={key} id={'onece-project-'+project.kind+'-'+project.id} variant="profile" project={project} ownerId={project.owner_id}
