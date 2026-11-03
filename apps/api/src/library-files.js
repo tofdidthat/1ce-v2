@@ -190,7 +190,6 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser,{
    try{await s3.send(new DeleteObjectCommand({Bucket:cfg.bucket,Key:key}),{abortSignal:AbortSignal.timeout(15000)});}
    catch(err){console.error('R2 cleanup deferred',err?.message);}
   };
-  let promoted=false;
   try{
    const head=await s3.send(new HeadObjectCommand({Bucket:cfg.bucket,Key:stagingKey}),{abortSignal:AbortSignal.timeout(15000)});
    if(Number(head.ContentLength)!==Number(file.byte_size)||head.ContentType!==file.content_type){
@@ -204,7 +203,6 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser,{
     Bucket:cfg.bucket,Key:finalKey,CopySource:cfg.bucket+'/'+stagingKey,
     ...(head.ETag?{CopySourceIfMatch:head.ETag}:{})
    }),{abortSignal:AbortSignal.timeout(180000)});
-   promoted=true;
    await verifyUploadedObject({s3,bucket:cfg.bucket,key:finalKey,file});
   }catch(err){
    await deleteObject(finalKey);
