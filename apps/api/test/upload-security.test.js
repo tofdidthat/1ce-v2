@@ -84,3 +84,31 @@ test('ZIP central filename cannot conceal a different local-header path',async()
  Buffer.from('evil.wav').copy(bytes,30);
  await assert.rejects(()=>verify(bytes),/local filename disagrees/);
 });
+
+
+function mpeg1AudioWithId3(metadataBytes){
+ const header=Buffer.from([
+  0x49,0x44,0x33,0x04,0,0,
+  (metadataBytes>>>21)&127,(metadataBytes>>>14)&127,
+  (metadataBytes>>>7)&127,metadataBytes&127
+ ]);
+ const frame=Buffer.alloc(417);
+ Buffer.from([0xff,0xfb,0x90,0x64]).copy(frame);
+ return Buffer.concat([header,Buffer.alloc(metadataBytes),frame,frame]);
+}
+test('ID3 metadata larger than the sniffing prefix still reaches valid MPEG frames via bounded R2 ranges',async()=>{
+ const bytes=mpeg1AudioWithId3(9000);
+ await assert.doesNotReject(()=>verifyUploadedObject({
+  s3:storage(bytes),bucket:'mock',key:'audio.mp3',
+  file:file(bytes,'audio','audio/mpeg')
+ }));
+});
+test('a spoofed ID3 tag and one valid frame is not accepted as audio',async()=>{
+ const bytes=mpeg1AudioWithId3(0);
+ const secondOffset=10+417;
+ bytes.fill(0x61,secondOffset,secondOffset+4);
+ const forged={...file(bytes,'audio','audio/mpeg')};
+ await assert.rejects(()=>verifyUploadedObject({
+  s3:storage(bytes),bucket:'mock',key:'audio.mp3',file:forged
+ }),/consecutive compatible Layer III frames/);
+});
