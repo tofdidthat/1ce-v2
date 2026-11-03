@@ -12,11 +12,15 @@ const passwordHash='scrypt$'+salt.toString('hex')+'$'+scryptSync('correct-secret
 function fixture(){
  const user={id:42,email:'producer@example.test',name:'Producer',picture:null,username:'producer',
   password_hash:passwordHash,email_verified:true,google_id:'google-sub-42'};
- const sessions=new Map(),attempts=new Map(),queries=[],googleFetches=[];
+ const sessions=new Map(),attempts=new Map(),queries=[],googleFetches=[],rates=new Map();
  let nextAttempt=1;
- const db={user,sessions,attempts,queries,googleFetches,async query(sql,args=[]){
+ const db={user,sessions,attempts,queries,googleFetches,rates,async query(sql,args=[]){
   queries.push({sql,args});
   if(sql==='BEGIN'||sql==='COMMIT'||sql==='ROLLBACK')return {rowCount:0,rows:[]};
+  if(sql.startsWith('INSERT INTO v2_api_rate_limits')){
+   const key=args[0]+':'+args[1],hits=(rates.get(key)||0)+1;
+   rates.set(key,hits);return {rowCount:1,rows:[{hits}]};
+  }
   if(sql==='SELECT 1')return {rowCount:1,rows:[{'?column?':1}]};
   if(sql.includes('FROM account_sessions s JOIN account_users u')){
    const s=sessions.get(args[0]);
@@ -144,9 +148,9 @@ test('wrong password, malformed JSON, invalid identity and unverified email neve
  assert.equal(h.sessions.size,0);
 });
 
-test('login rate limiting returns 429 after 20 requests from the same socket address (existing behavior)',async()=>{
+test('login rate limiting returns 429 after 20 attempts for the same account across sockets',async()=>{
  for(let i=0;i<20;i++){
-  const res=await send('POST','/auth/login',{email:'bad',password:'x'}, {},'192.0.2.251');
+  const res=await send('POST','/auth/login',{email:'bad',password:'x'}, {},i%2?'192.0.2.251':'192.0.2.252');
   assert.equal(res.status,400);
  }
  const blocked=await send('POST','/auth/login',{email:'bad',password:'x'}, {},'192.0.2.251');
