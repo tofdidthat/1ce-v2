@@ -188,9 +188,8 @@ test('complete resolves a concurrent same-owner ready duplicate without copying 
  assert.equal(h.objects.has(pending.object_key),false);
 });
 
-test('pending upload approval is intentionally NOT evidence of safe media parsing or immutable R2 delivery',()=>{
- // P0 follow-up: this batch does not add magic-byte/ZIP parsing, bounded
- // GetObject verification, immutable final objects or single-use presigns.
- // Record this explicit limitation rather than asserting it is fixed.
- assert.equal(true,true);
-});
+// Deliberately unresolved P0 controls, tracked as TODO rather than false
+// positive tests. These need a separate behavior-changing security batch.
+test.todo('P0: reject spoofed MP3/image/ZIP payloads by parsing real file bytes');
+test.todo('P0: prevent post-verification object overwrites while the signed PUT URL is live');
+test.todo('P0: enforce bounded R2 verification time and streamed byte count');
