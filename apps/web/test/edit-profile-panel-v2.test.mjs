@@ -81,7 +81,7 @@ test('error and readiness states prevent unauthorized or duplicate publish',()=>
  assert.match(panel,/disabled=\{flagsStatus!=='ready'\|\|!!busyKey\}/);
  assert.match(panel,/setBusyKey\(key\)/);
  assert.match(panel,/onProfileUpdated\(\)/);
- assert.match(panel,/library\.status==='error'/);
+ assert.match(panel,/library\.error&&/);
  assert.match(panel,/setRevision\(v=>v\+1\)/);
  assert.match(panel,/notifyV2DataChanged\(\['identity'\],viewer\)/);
 });
