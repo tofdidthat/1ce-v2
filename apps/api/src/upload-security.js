@@ -12,7 +12,7 @@ export class VerificationUnavailable extends Error {
 
 const MB=1024*1024;
 const SIGNATURE_BYTES=4096;
-const MAX_ZIP_ENTRIES=1000;
+const MAX_ZIP_ENTRIES=200;
 const MAX_ZIP_DIRECTORY=2*MB;
 const MAX_ZIP_EXPANDED=2*1024*MB;
 const ZIP_TAIL=65557; // EOCD, maximum 65535-byte comment
@@ -110,8 +110,14 @@ function validateSignature(file,prefix,tail){
 }
 
 async function validateZip(s3,bucket,key,size){
+ const deadline=Date.now()+60000;
+ const remaining=()=>{
+  const ms=deadline-Date.now();
+  if(ms<=0)throw new VerificationUnavailable('ZIP validation deadline exceeded');
+  return Math.min(15000,ms);
+ };
  const start=Math.max(0,size-ZIP_TAIL);
- const tail=await rangedBytes(s3,bucket,key,start,size-1);
+ const tail=await rangedBytes(s3,bucket,key,start,size-1,remaining());
  let eocd=-1;
  for(let i=tail.length-22;i>=0;i--){
   if(tail.readUInt32LE(i)===0x06054b50&&i+22+tail.readUInt16LE(i+20)===tail.length){eocd=i;break;}
@@ -125,7 +131,7 @@ async function validateZip(s3,bucket,key,size){
   count>MAX_ZIP_ENTRIES||dirSize>MAX_ZIP_DIRECTORY||!dirSize||
   dirOffset+dirSize!==start+eocd)
   throw new InvalidMedia('ZIP directory limits or offsets are invalid');
- const dir=await rangedBytes(s3,bucket,key,dirOffset,dirOffset+dirSize-1);
+ const dir=await rangedBytes(s3,bucket,key,dirOffset,dirOffset+dirSize-1,remaining());
  let offset=0,expanded=0,files=0;
  for(let i=0;i<count;i++){
   if(offset+46>dir.length||dir.readUInt32LE(offset)!==0x02014b50)
@@ -136,7 +142,7 @@ async function validateZip(s3,bucket,key,size){
   const commentLength=dir.readUInt16LE(offset+32),disk=dir.readUInt16LE(offset+34);
   const attrs=dir.readUInt32LE(offset+38),localOffset=dir.readUInt32LE(offset+42);
   const end=offset+46+nameLength+extraLength+commentLength;
-  if(end>dir.length||!nameLength||disk||localOffset>=dirOffset||
+  if(end>dir.length||!nameLength||nameLength>512||disk||localOffset>=dirOffset||
    packed===0xffffffff||unpacked===0xffffffff||localOffset===0xffffffff||
    (flags&1)!==0||![0,8].includes(method))
    throw new InvalidMedia('Unsupported or encrypted ZIP entry');
@@ -147,6 +153,16 @@ async function validateZip(s3,bucket,key,size){
    /[\x00-\x1f\x7f]/.test(name)||parts.some(p=>p==='.'||p==='..')||
    (attrs>>>16&0xf000)===0xa000)
    throw new InvalidMedia('Unsafe ZIP entry path or symlink');
+  // Compare local and central names/flags. Some unzip tools prefer local
+  // names, so central-only path validation would permit traversal aliases.
+  const local=await rangedBytes(s3,bucket,key,localOffset,localOffset+29,remaining());
+  const localNameLen=local.readUInt16LE(26),localExtraLen=local.readUInt16LE(28);
+  if(local.readUInt32LE(0)!==0x04034b50||localNameLen!==nameLength||localExtraLen>4096||
+   local.readUInt16LE(6)!==flags||local.readUInt16LE(8)!==method||
+   localOffset+30+localNameLen+localExtraLen+packed>dirOffset)
+   throw new InvalidMedia('ZIP local header disagrees with central directory');
+  const localName=await rangedBytes(s3,bucket,key,localOffset+30,localOffset+29+nameLength,remaining());
+  if(!localName.equals(rawName))throw new InvalidMedia('ZIP local filename disagrees with central directory');
   if(!name.endsWith('/')){
    files++;
    expanded+=unpacked;
