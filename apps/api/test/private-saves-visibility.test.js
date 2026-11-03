@@ -21,12 +21,13 @@ function fixture({published=false}={}){
    return {rowCount:visible?1:0,rows:visible?[saved]:[]};
   }
   if(sql.includes('FROM v2_public_projects pub'))return {rowCount:0,rows:[]};
+  if(sql.startsWith('SELECT owner_id FROM v2_project_share_links'))return {rowCount:1,rows:[{owner_id:1}]};
   if(sql.startsWith('SELECT owner_id,kind,project_id FROM v2_project_share_links'))return {rowCount:1,rows:[{owner_id:1,kind:'beat',project_id:beat}]};
   if(sql.startsWith('SELECT 1 FROM library_beats'))return {rowCount:1,rows:[{id:beat}]};
   if(sql.startsWith('SELECT id FROM library_beats'))return {rowCount:1,rows:[{id:beat}]};
   if(sql.startsWith('SELECT 1 WHERE'))return {rowCount:1,rows:[{allowed:1}]};
   return {rowCount:1,rows:[]};
- }};
+ },async connect(){return {query:(...args)=>db.query(...args),release(){}};}};
  return db;
 }
 async function request(db,method,path,viewerId){
@@ -79,4 +80,19 @@ test('Unpublish removes publication, not saved relationships or share grants',as
  assert.ok(db.calls.some(c=>c.sql.startsWith('DELETE FROM v2_public_projects')));
  assert.equal(db.calls.some(c=>c.sql.startsWith('DELETE FROM v2_public_saves')),false);
  assert.equal(db.calls.some(c=>c.sql.startsWith('DELETE FROM v2_project_access')),false);
+});
+
+test('share, save and publication writes acquire the owner lock before inserting access',async()=>{
+ const db=fixture();
+ await request(db,'POST','redeem/'+sharedToken,2);
+ await request(db,'POST','save/1/beat/'+beat,2);
+ await request(db,'POST','publish/beat/'+beat,1);
+ const calls=db.calls.map(x=>x.sql);
+ const locks=calls.flatMap((x,i)=>x.startsWith('SELECT pg_advisory_xact_lock')?[i]:[]);
+ assert.equal(locks.length,3);
+ for(const edge of ['v2_project_access','v2_public_saves','v2_public_projects']){
+  const at=calls.findIndex(x=>x.startsWith('INSERT INTO '+edge));
+  assert.ok(at>0);
+  assert.ok(locks.some(i=>i<at),'write before owner Trash lock: '+edge);
+ }
 });
