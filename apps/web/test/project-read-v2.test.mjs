@@ -71,7 +71,8 @@ test('views share adapters, scoped invalidations and no F5 to retry',()=>{
  assert.match(library,/normalizePackTracksV2\(result,pack\)/);
  assert.match(profile,/normalizeProfileProjectsV2\(result\)/);
  assert.match(profile,/requestKey=String\(user\?\.id\|\|'anonymous'\)\+':'\+targetId/);
- assert.match(profile,/profileStatus==='ready'\?projects:/);
+ assert.match(profile,/const sameVerifiedProfile=lastVerifiedProfileKey\.current===requestKey/);
+ assert.match(profile,/const visibleProjects=\(profileStatus==='ready'\|\|sameVerifiedProfile\)\?projects:/);
  assert.match(library,/setLibraryRevision\(v=>v\+1\)/);
  assert.match(profile,/setRefreshRevision\(v=>v\+1\)/);
  assert.doesNotMatch(library,/window\.location\.reload\(\)/);
