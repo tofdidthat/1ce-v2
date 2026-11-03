@@ -280,3 +280,67 @@ test('invalid complete IDs and failed uploads do not expose other users assets',
 // Deliberately unresolved P0 controls, tracked as TODO rather than false
 // positive tests. These need a separate behavior-changing security batch.
 
+
+
+test('spoofed MP3 bytes with a matching declared SHA never become READY',async()=>{
+ const h=setup(),bytes=Buffer.alloc(sample.length,0x61);
+ const start=await h.invoke('/api/library/files/init',uploaded(bytes));
+ assert.equal(start.status,200);
+ const file=h.files.get(start.body.id);h.put(file,bytes);
+ const response=await h.invoke('/api/library/files/'+file.id+'/complete');
+ assert.equal(response.status,422);
+ assert.match(response.body.error,/MP3 signature/);
+ assert.equal(file.status,'failed');
+ assert.equal(h.objects.size,0);
+});
+
+test('signed PUT can overwrite staging after copy but cannot modify immutable READY media',async()=>{
+ const h=setup(),start=await h.invoke('/api/library/files/init',uploaded());
+ const file=h.files.get(start.body.id),staging=file.object_key;
+ h.put(file);
+ h.onCopy((source,key,objects)=>{
+  assert.equal(source,staging);
+  objects.set(source,{bytes:Buffer.alloc(sample.length,0x42),type:'audio/mpeg'});
+ });
+ const done=await h.invoke('/api/library/files/'+file.id+'/complete');
+ assert.equal(done.status,200);
+ assert.notEqual(file.object_key,staging);
+ assert.match(file.object_key,/\/verified\//);
+ assert.equal(h.objects.get(file.object_key).bytes.equals(sample),true);
+ // A leaked still-valid PUT only recreates disposable staging.
+ h.objects.set(staging,{bytes:Buffer.alloc(sample.length,0x43),type:'audio/mpeg'});
+ assert.equal(h.objects.get(file.object_key).bytes.equals(sample),true);
+});
+
+test('R2 stream exceeding declared byte size is rejected without buffering it into READY',async()=>{
+ const h=setup(),start=await h.invoke('/api/library/files/init',uploaded());
+ const file=h.files.get(start.body.id);h.put(file);
+ h.onCopy((source,key,objects)=>{
+  objects.get(key).streamBytes=Buffer.concat([sample,Buffer.from([0])]);
+ });
+ const response=await h.invoke('/api/library/files/'+file.id+'/complete');
+ assert.equal(response.status,422);
+ assert.match(response.body.error,/more bytes/);
+ assert.equal(file.status,'failed');
+ assert.equal(h.objects.size,0);
+});
+
+test('quota is owner-scoped and prevents the eleventh concurrent pending upload',async()=>{
+ const h=setup();
+ for(let i=0;i<10;i++){
+  const bytes=Buffer.from(sample);bytes[bytes.length-1]=i;
+  assert.equal((await h.invoke('/api/library/files/init',uploaded(bytes))).status,200);
+ }
+ assert.equal((await h.invoke('/api/library/files/init',uploaded())).status,429);
+ assert.equal((await h.invoke('/api/library/files/init',uploaded(),{id:99})).status,200);
+ assert.equal(h.files.size,11);
+});
+
+test('expired pending reservations cannot become READY',async()=>{
+ const h=setup(),start=await h.invoke('/api/library/files/init',uploaded());
+ const file=h.files.get(start.body.id);file.pendingValid=false;h.put(file);
+ const response=await h.invoke('/api/library/files/'+file.id+'/complete');
+ assert.equal(response.status,410);
+ assert.equal(file.status,'pending');
+ assert.equal(h.commands.some(c=>c.constructor.name==='CopyObjectCommand'),false);
+});
