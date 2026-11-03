@@ -95,6 +95,8 @@ jobs:
         run: pnpm --filter @1ce/api test
       - name: Syntax-check opt-in real R2 preflight (do not execute or use secrets)
         run: node --check apps/api/scripts/s2-r2-smoke.mjs
+      - name: Syntax-check bounded v2 rate-limit cleanup (do not execute)
+        run: node --check apps/api/scripts/s2-rate-limit-cleanup.mjs
 
   railway-api-smoke:
     runs-on: ubuntu-latest
