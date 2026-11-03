@@ -157,7 +157,7 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser,{
     await db.query('ROLLBACK');
     send(res,429,{error:'Upload quota exceeded; finish pending uploads or free storage'});return true;
    }
-   objectKey='users/'+user.id+'/assets/'+kind+'/pending/'+randomUUID()+'.'+ext;
+   objectKey='staging/users/'+user.id+'/assets/'+kind+'/'+randomUUID()+'.'+ext;
    inserted=await db.query("INSERT INTO library_files(user_id,kind,object_key,original_name,content_type,byte_size,status,sha256) VALUES($1,$2,$3,$4,$5,$6,'pending',$7) RETURNING id",[user.id,kind,objectKey,name,contentType,size,sha256]);
    await db.query('COMMIT');
   }catch(err){try{await db.query('ROLLBACK');}catch{}throw err;}
