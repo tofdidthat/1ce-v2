@@ -16,7 +16,7 @@ const sample=Buffer.concat([
 const uploaded=(bytes=sample)=>({kind:'audio',name:'original.mp3',contentType:'audio/mpeg',size:bytes.length,sha256:checksum(bytes)});
 
 function setup(){
- const files=new Map(),objects=new Map(),queries=[],commands=[],signed=[],rates=new Map();
+ const files=new Map(),objects=new Map(),queries=[],commands=[],signed=[],rates=new Map(),planBytes=new Map();
  let onCopy=()=>{},onHead=()=>{};
  let nextId=100,forceUniqueCollision=false;
  const pool={async query(sql,args=[]){
@@ -25,6 +25,9 @@ function setup(){
   if(sql.startsWith('INSERT INTO v2_api_rate_limits')){
    const key=args[0]+':'+args[1],hits=(rates.get(key)||0)+1;
    rates.set(key,hits);return {rows:[{hits}],rowCount:1};
+  }
+  if(sql.startsWith('SELECT storage_limit_bytes')){
+   return {rows:[{storage_limit_bytes:String(planBytes.get(args[0])??10*1024*1024*1024)}],rowCount:1};
   }
   if(sql.startsWith('SELECT\n    count(*) FILTER')){
    const owned=[...files.values()].filter(f=>f.user_id===args[0]);
@@ -137,7 +140,7 @@ function setup(){
   files.set(file.id,file);return file;
  };
  return {files,objects,queries,commands,signed,invoke,put,addReady,
-  onCopy(fn){onCopy=fn;},onHead(fn){onHead=fn;},rates,
+  onCopy(fn){onCopy=fn;},onHead(fn){onHead=fn;},rates,planBytes,
   setUniqueCollision(value){forceUniqueCollision=value},
   setSigningFailure(){options.signUrl=async()=>{throw Error('signer unavailable');}}
  };
@@ -453,4 +456,16 @@ test('two simultaneous completions of the same file leave one READY R2 key',asyn
  const finals=[...h.objects.keys()].filter(key=>key.includes('/verified/'));
  assert.deepEqual(finals,[file.object_key]);
  assert.equal(h.objects.get(file.object_key).bytes.equals(sample),true);
+});
+
+
+test('per-account storage plan quota changes without modifying other account entitlements',async()=>{
+ const h=setup(),body=uploaded();
+ h.planBytes.set(42,body.size-1);
+ assert.equal((await h.invoke('/api/library/files/init',body)).status,429);
+ h.planBytes.set(42,body.size*2);
+ assert.equal((await h.invoke('/api/library/files/init',body)).status,200);
+ h.planBytes.set(99,body.size-1);
+ assert.equal((await h.invoke('/api/library/files/init',body,{id:99})).status,429);
+ assert.equal(h.files.size,1);
 });
