@@ -68,7 +68,7 @@ export default function EditProfilePanelV2({user,profile,catalog,onClose,onIdent
    .then(data=>{
     if(controller.signal.aborted)return;
     const normalized=normalizeLibraryProjectsV2(data,viewer);
-    setLibrary({status:'ready',items:[...normalized.packs,...normalized.beats],error:''});
+    setLibrary({status:'ready',items:[...normalized.packs,...normalized.beats.filter(beat=>beat.library_visible!==false)],error:''});
    }).catch(caught=>{
     if(!controller.signal.aborted)setLibrary({status:'error',items:[],error:caught instanceof Error?caught.message:'Unable to load Library'});
    });
@@ -79,8 +79,8 @@ export default function EditProfilePanelV2({user,profile,catalog,onClose,onIdent
   return library.items.filter(item=>!term||item.title.toLowerCase().includes(term));
  },[library.items,query]);
  const previewProjects=useMemo(()=>{
-  if(library.status==='ready')return library.items.filter(item=>published.has(projectKey(item)));
   if(flagsStatus!=='ready')return catalog;
+  if(library.status==='ready')return library.items.filter(item=>published.has(projectKey(item)));
   return catalog.filter(item=>published.has(projectKey(item)));
  },[library,catalog,published,flagsStatus]);
 
