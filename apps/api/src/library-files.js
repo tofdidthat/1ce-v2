@@ -51,17 +51,28 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser,{
   if(!title||title.length>180||!Number.isSafeInteger(data.audioFileId)||data.audioFileId<1){send(res,400,{error:'Invalid beat'});return true;}
   const ids=[data.audioFileId,data.coverFileId,data.stemsFileId].filter(x=>x!=null);
   if(ids.some(x=>!Number.isSafeInteger(x)||x<1)){send(res,400,{error:'Invalid asset IDs'});return true;}
-  const q=await pool.query("SELECT id,kind FROM library_files WHERE user_id=$1 AND status='ready' AND id=ANY($2::bigint[])",[user.id,ids]);
-  const valid=new Map(q.rows.map(x=>[Number(x.id),x.kind]));
-  if(valid.get(data.audioFileId)!=='audio'||data.coverFileId!=null&&valid.get(data.coverFileId)!=='cover'||data.stemsFileId!=null&&valid.get(data.stemsFileId)!=='stems'){send(res,400,{error:'Assets must be owned by you and ready'});return true;}
-  const existing=await pool.query("SELECT id,deleted_at FROM library_beats WHERE user_id=$1 AND audio_file_id=$2",[user.id,data.audioFileId]);
-  if(existing.rows[0]){
-   if(existing.rows[0].deleted_at){send(res,409,{error:'Beat is in Trash. Restore it first.'});return true;}
-   send(res,200,{id:existing.rows[0].id,reused:true});return true;
-  }
-  const id=randomUUID();
-  await pool.query("INSERT INTO library_beats(id,user_id,title,audio_file_id,cover_file_id,stems_file_id) VALUES($1,$2,$3,$4,$5,$6)",[id,user.id,title,data.audioFileId,data.coverFileId||null,data.stemsFileId||null]);
-  send(res,201,{id});return true;
+  // Take the same owner lock as Trash: a concurrent purge cannot retire a
+  // verified media row between the READY check and linking a new beat.
+  const db=await pool.connect();
+  try{
+   await db.query('BEGIN');
+   await db.query('SELECT pg_advisory_xact_lock($1::bigint)',[user.id]);
+   const q=await db.query("SELECT id,kind FROM library_files WHERE user_id=$1 AND status='ready' AND id=ANY($2::bigint[])",[user.id,ids]);
+   const valid=new Map(q.rows.map(x=>[Number(x.id),x.kind]));
+   if(valid.get(data.audioFileId)!=='audio'||data.coverFileId!=null&&valid.get(data.coverFileId)!=='cover'||data.stemsFileId!=null&&valid.get(data.stemsFileId)!=='stems'){
+    await db.query('ROLLBACK');send(res,400,{error:'Assets must be owned by you and ready'});return true;
+   }
+   const existing=await db.query("SELECT id,deleted_at FROM library_beats WHERE user_id=$1 AND audio_file_id=$2",[user.id,data.audioFileId]);
+   if(existing.rows[0]){
+    await db.query('COMMIT');
+    if(existing.rows[0].deleted_at){send(res,409,{error:'Beat is in Trash. Restore it first.'});return true;}
+    send(res,200,{id:existing.rows[0].id,reused:true});return true;
+   }
+   const id=randomUUID();
+   await db.query("INSERT INTO library_beats(id,user_id,title,audio_file_id,cover_file_id,stems_file_id) VALUES($1,$2,$3,$4,$5,$6)",[id,user.id,title,data.audioFileId,data.coverFileId||null,data.stemsFileId||null]);
+   await db.query('COMMIT');send(res,201,{id});return true;
+  }catch(err){try{await db.query('ROLLBACK');}catch{}throw err;}
+  finally{db.release();}
  }
  if(req.method==='POST'&&segments.length===4&&segments[3]==='packs'){
   let data;try{data=await bodyJSON(req)}catch{send(res,400,{error:'Invalid request'});return true;}
@@ -74,6 +85,7 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser,{
   const client=await pool.connect();
   try{
    await client.query('BEGIN');
+   await client.query('SELECT pg_advisory_xact_lock($1::bigint)',[user.id]);
    const owned=await client.query('SELECT id FROM library_beats WHERE user_id=$1 AND deleted_at IS NULL AND id=ANY($2::uuid[])',[user.id,beatIds]);
    if(owned.rowCount!==beatIds.length){await client.query('ROLLBACK');send(res,403,{error:'Beat not owned by you'});return true;}
    if(data.coverFileId!=null){
