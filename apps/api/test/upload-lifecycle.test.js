@@ -65,8 +65,9 @@ function setup(){
     other.sha256===file.sha256&&other.status==='ready')){
     const err=new Error('duplicate ready sha');err.code='23505';throw err;
    }
-   if(file&&file.user_id===args[1]&&file.status==='pending')file.status='ready';
-   return {rowCount:file?1:0,rows:[]};
+   const updated=file&&file.user_id===args[1]&&file.status==='pending';
+   if(updated){file.status='ready';file.object_key=args[2];}
+   return {rowCount:updated?1:0,rows:[]};
   }
   if(sql.startsWith("DELETE FROM library_files WHERE id=$1 AND user_id=$2 AND status='pending'")){
    const file=files.get(Number(args[0]));
@@ -74,17 +75,23 @@ function setup(){
    return {rowCount:1,rows:[]};
   }
   throw new Error('Unexpected query: '+sql);
- }};
+ },async connect(){return {query:(...args)=>this.query(...args),release(){}};}};
  const s3={async send(command){
   commands.push(command);
   const key=command.input.Key, object=objects.get(key);
   if(command.constructor.name==='HeadObjectCommand'){
    if(!object){const err=new Error('Not found');err.name='NotFound';throw err;}
-   return {ContentLength:object.bytes.length,ContentType:object.type};
+   return {ContentLength:object.bytes.length,ContentType:object.type,ETag:'"'+checksum(object.bytes)+'"'};
   }
   if(command.constructor.name==='GetObjectCommand'){
    if(!object){const err=new Error('Not found');err.name='NotFound';throw err;}
-   return {Body:Readable.from([object.bytes])};
+   const range=command.input.Range;
+   if(range){
+    const m=/^bytes=(\d+)-(\d+)$/.exec(range);if(!m)throw Error('Invalid mock range');
+    const start=Number(m[1]),end=Number(m[2]),bytes=object.bytes.subarray(start,end+1);
+    return {Body:Readable.from([bytes]),ContentLength:bytes.length,ContentRange:'bytes '+start+'-'+end+'/'+object.bytes.length};
+   }
+   return {Body:Readable.from([object.streamBytes||object.bytes]),ContentLength:object.bytes.length};
   }
   if(command.constructor.name==='DeleteObjectCommand'){objects.delete(key);return {};}
   throw new Error('Unexpected storage command: '+command.constructor.name);
