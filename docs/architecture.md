@@ -1,3 +1,15 @@
+## S2 implementation ledger — draft PR #27 (2026-11-03)
+
+**STATE: branch-only, not merged or deployed.** [PR #27](https://github.com/tofdidthat/1ce-v2/pull/27), branch `security/v2-upload-immutable-verification-rate-limits` based on deployed S1 `020ed337`. User authorized executing the PR, **not** a production database migration or deploy. Do not infer production status from green branch tests. A separate AI is reviewing the commit history; commit messages and [S2 release runbook](release-s2-upload-security.md) are the handoff.
+
+**Implemented in this branch:** `upload-security.js` streams and bounds R2 bytes/time/SHA, inspects media signatures and ZIP central/local headers, rejects unsafe paths, symlinks, encrypted/multi-disk/ZIP64/oversized or high-expansion archives. `library-files.js` now signs only disposable `/pending/` objects, copies with server credentials to unique `/verified/` keys, verifies the **final** copy and atomically marks READY with the new object key; cleanup and dedup preserve existing ready files. Owner-scoped PostgreSQL advisory transactions enforce 10 recent pending and 10 GiB ready+reserved bytes. `api-rate-limits.js` uses atomic PostgreSQL windows: login 20 attempts/15 min per normalized account, upload init 240/hour, completion 360/hour. The additive migration is `history/database/010_api_rate_limits.sql`; **not applied to production**. No web/player changes, no v1 changes.
+
+**Tests:** existing auth/upload fixtures updated for DB throttling, advisory reservations and R2 copy/range, with new negative tests for spoofed MP3, overwrite after signed PUT, byte overflow, pending expiration, quota, rate ceilings, ZIP traversal, symlink, encryption, expansion, mismatched local names and stalled streams. GitHub CI on **final PR head** is required; review the latest run before release. All storage tests are mocks, not real R2 integration or a media decoder audit.
+
+**Open release decisions and risks:** review the default 10 GiB/10 pending/240 init/360 complete quotas for the product; R2 CopyObject conditional ETag and ranged GET must be exercised on disposable objects after user approval. Existing S1 ready keys remain untouched and are not retroactively promoted. Cleanup of abandoned `/pending/` keys and old rate-window rows needs a separately reviewed lifecycle/maintenance policy. A source-signature/ZIP structural check is not antivirus or full media decoding. Apply SQL 010 **before** deploying API; rollback via last healthy S1 deployment and retain additive table and R2 objects. No merge/deploy without explicit authorization.
+
+---
+
 ## S2 — PR #27 upload security hardening (2026-11-03; branch only)
 
 **DECISION / user authorization:** Implement the next security batch as a separate, reviewable PR after successful S1/PR #26 release. Do not merge, deploy, change production PostgreSQL/R2 configuration, or test live accounts without a separate release authorization. Use the remote-first GitHub/CI workflow and preserve web/player behavior, v1 and existing ready assets. Write descriptive commits and PR notes for a second AI reviewer.
