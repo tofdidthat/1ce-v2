@@ -39,12 +39,12 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
  const [loadState,setLoadState]=useState<{key:string;status:'loading'|'ready'|'error'}>({key:'',status:'loading'});
  const [error,setError]=useState('');
  const [refreshRevision,setRefreshRevision]=useState(0);
+ const [followRevision,setFollowRevision]=useState(0);
  const previouslyActive=React.useRef(active);
  React.useEffect(()=>{
   if(active&&!previouslyActive.current){setRefreshRevision(value=>value+1);setFollowRevision(value=>value+1);}
   previouslyActive.current=active;
  },[active]);
- const [followRevision,setFollowRevision]=useState(0);
  const [followState,setFollowState]=useState<{key:string;status:'loading'|'ready'|'error';data:ProfileFollowsV2|null}>({key:'',status:'loading',data:null});
  const [followError,setFollowError]=useState('');
  const [followBusy,setFollowBusy]=useState(false);
