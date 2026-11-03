@@ -13,6 +13,7 @@ type Entry={
 
 export class ProjectCoverCacheV2{
  private readonly entries=new Map<string,Entry>();
+ private readonly loader:CoverLoaderV2;
  private readonly maxEntries:number;
  private readonly maxBytes:number;
  private readonly ttlMs:number;
@@ -22,7 +23,8 @@ export class ProjectCoverCacheV2{
  private totalBytes=0;
  private tick=0;
 
- constructor(private readonly loader:CoverLoaderV2,options:CoverCacheOptionsV2={}){
+ constructor(loader:CoverLoaderV2,options:CoverCacheOptionsV2={}){
+  this.loader=loader;
   this.maxEntries=options.maxEntries??48;
   this.maxBytes=options.maxBytes??48*1024*1024;
   this.ttlMs=options.ttlMs??2*60*1000;
