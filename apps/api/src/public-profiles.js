@@ -2,6 +2,7 @@ import {randomBytes,createHash} from 'node:crypto';
 import {S3Client,GetObjectCommand} from '@aws-sdk/client-s3';
 import {resolveAuthorizedMediaFile,resolvePlayableProject} from './project-media.js';
 import {streamAuthorizedAudio} from './audio-stream.js';
+import {readProfileLinksV2} from './profile-links.js';
 // 1CE v2 public profile catalog and public saves. Metadata only; R2 objects are never duplicated.
 const send=(res,status,data)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data));};
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -85,7 +86,8 @@ export async function handlePublicProfiles(req,res,pathname,pool,currentUser){
   );
   if(!profile.rowCount){send(res,404,{error:'Profile not found'});return true;}
   const profileId=profile.rows[0].id;
-  const [catalog,saves]=await Promise.all([
+  const [catalog,saves,links]=await Promise.all([
+   
    pool.query(selectProjects+' AND pub.user_id=$1 ORDER BY pub.published_at DESC LIMIT 200',[profileId]),
    pool.query(`SELECT s.kind,s.project_id AS id,s.owner_id,COALESCE(b.title,p.title) AS title,COALESCE(b.cover_file_id,p.cover_file_id) AS cover_file_id,
     CASE WHEN s.kind='pack' THEN (SELECT count(*)::int FROM library_pack_beats pb WHERE pb.pack_id=p.id) ELSE NULL END AS track_count,s.saved_at AS published_at
@@ -98,9 +100,10 @@ export async function handlePublicProfiles(req,res,pathname,pool,currentUser){
     -- private saves on someone else's profile. Publication alone makes
     -- the saved entry eligible for public display.
     AND (s.user_id=$2 OR EXISTS(SELECT 1 FROM v2_public_projects pub WHERE pub.user_id=s.owner_id AND pub.kind=s.kind AND pub.project_id=s.project_id))
-    ORDER BY s.saved_at DESC LIMIT 200`,[profileId,user?.id||null])
+    ORDER BY s.saved_at DESC LIMIT 200`,[profileId,user?.id||null]),
+   readProfileLinksV2(pool,profileId)
   ]);
-  send(res,200,{profile:profile.rows[0],catalog:catalog.rows,saves:saves.rows});return true;
+  send(res,200,{profile:{...profile.rows[0],links},catalog:catalog.rows,saves:saves.rows});return true;
  }
  if(!user){send(res,401,{error:'Not authenticated'});return true;}
  if(parts.length===5&&parts[2]==='share'&&['beat','pack'].includes(parts[3])&&uuid.test(parts[4])&&req.method==='POST'){
