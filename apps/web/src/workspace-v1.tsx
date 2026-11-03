@@ -262,7 +262,6 @@ function EmptyLibrary({onUpload}){
   </div>
  </section>;
 }
-function viewIsProfileFromLocation(pathname:string,profileId?:string){return Boolean(profileId)||pathname==='/app/profile';}
 export default function WorkspaceV2({user,profileId}:{user:any;profileId?:string}){
  const navigate=useNavigate();const location=useLocation();
  const [account,setAccount]=useState(user);
@@ -295,16 +294,30 @@ export default function WorkspaceV2({user,profileId}:{user:any;profileId?:string
  },[account?.id]);
  const logout=async()=>{const api=import.meta.env.VITE_API_URL;if(!api)throw Error('API is not configured');const response=await fetch(api+'/auth/logout',{method:'POST',credentials:'include'});if(!response.ok)throw Error('Could not log out');window.location.assign('/login');};
  const [playerVisible,setPlayerVisible]=useState(false);
- // Keep a visited /app profile mounted so navigation does not recreate its cards.
- // This does not move the player or change the separate /u/:id route lifecycle.
- const [visitedProfile,setVisitedProfile]=useState(viewIsProfileFromLocation(location.pathname,profileId));
- useEffect(()=>{if(viewIsProfileFromLocation(location.pathname,profileId))setVisitedProfile(true)},[location.pathname,profileId]);
  const [playRequest,setPlayRequest]=useState<{ownerId:number;kind:'beat'|'pack';id:string;nonce:number}|null>(null);
  const [queueRequest,setQueueRequest]=useState<{ownerId:number;kind:'beat'|'pack';id:string;nonce:number}|null>(null);
  const [playback,setPlayback]=useState<{ownerId:number;kind:'beat'|'pack';id:string;playing:boolean}|null>(null);
  const requestPlayback=(ownerId:number,kind:'beat'|'pack',id:string)=>setPlayRequest(previous=>({ownerId,kind,id,nonce:(previous?.nonce||0)+1}));
  const requestQueue=(ownerId:number,kind:'beat'|'pack',id:string)=>setQueueRequest(previous=>({ownerId,kind,id,nonce:(previous?.nonce||0)+1}));
  const view=profileId?'profile':location.pathname==='/app/library'?'library':location.pathname.endsWith('/discover')?'discover':location.pathname.endsWith('/upload')?'upload':location.pathname.endsWith('/settings')?'account':location.pathname.endsWith('/profile/edit')?'edit-profile':'profile';
+ // Keep up to three recent profile read-models mounted, but without offscreen
+ // cards/image leases. The one Workspace cover cache supplies immediate URLs
+ // on Back; each returned profile still refetches authorized metadata.
+ const activeProfileKey=view==='profile'?(profileId?'public:'+profileId:'own'):null;
+ const [recentProfiles,setRecentProfiles]=useState<string[]>(()=>activeProfileKey?[activeProfileKey]:[]);
+ useEffect(()=>{
+  if(!activeProfileKey)return;
+  setRecentProfiles(previous=>{
+   if(previous[previous.length-1]===activeProfileKey)return previous;
+   return [...previous.filter(key=>key!==activeProfileKey),activeProfileKey].slice(-3);
+  });
+ },[activeProfileKey]);
+ useEffect(()=>{
+  // A different authenticated account must not retain earlier private metadata.
+  setRecentProfiles(activeProfileKey?[activeProfileKey]:[]);
+ },[account?.id]);
+ const visibleProfileKeys=activeProfileKey&&!recentProfiles.includes(activeProfileKey)?
+  [...recentProfiles.slice(-2),activeProfileKey]:recentProfiles;
  const onNavigate=(next)=>navigate(next==='library'?'/app/library':next==='account'?'/app/settings':next==='edit-profile'?'/app/profile/edit':'/app/'+next);
  useEffect(()=>{document.title=({library:'Home',discover:'World',upload:'Upload',account:'Settings',profile:'Profile','edit-profile':'Edit Profile'}[view]||'Home')+' — 1CE'},[view]);
  return <ProjectCoverCacheProviderV2 viewerId={Number(account?.id)||null}><ProjectFlagsProviderV2 viewerId={Number(account?.id)||null}><div className={'onece-workspace-shell'+(view==='library'?' onece-library-view':'')}>
@@ -312,7 +325,9 @@ export default function WorkspaceV2({user,profileId}:{user:any;profileId?:string
  <HeaderV2 view={view} user={account} externalProfile={Boolean(profileId)} onNavigate={onNavigate}/>
  <main className="onece-v2-workspace-main">
  <LibraryItemsV2 active={view==='library'} playRequest={playRequest} queueRequest={queueRequest} userId={account?.id} onUpload={()=>onNavigate('upload')} onPlayerVisibility={setPlayerVisible} onPlaybackChange={setPlayback}/>
- {(view==='profile'||visitedProfile)&&<PublicProfileV2 active={view==='profile'} user={account} profileId={profileId} playback={playback} onPlayProject={requestPlayback} onQueueProject={requestQueue}
+ {visibleProfileKeys.map(profileKey=><PublicProfileV2 key={String(account?.id||'anonymous')+':'+profileKey}
+  active={activeProfileKey===profileKey} user={account} profileId={profileKey==='own'?undefined:profileKey.slice('public:'.length)}
+  playback={playback} onPlayProject={requestPlayback} onQueueProject={requestQueue}
   onIdentityUpdated={updated=>{
     const oldHandle=String(account?.username||'').toLowerCase();
     setAccount(updated);
@@ -323,7 +338,7 @@ export default function WorkspaceV2({user,profileId}:{user:any;profileId?:string
    }}
   onBack={()=>{const index=window.history.state?.idx;if(typeof index==='number'&&index>0)navigate(-1);else navigate(account?.id?'/app/library':'/');}}
   onLogin={()=>navigate('/login')}
-  onOpenProfile={identifier=>navigate('/u/'+encodeURIComponent(identifier))}/>}
+  onOpenProfile={identifier=>navigate('/u/'+encodeURIComponent(identifier))}/>)}
  {view==='library'||view==='profile'?null:
  view==='discover'?<WorldV2 userId={account?.id} onOpenProfile={identifier=>navigate('/u/'+encodeURIComponent(identifier))}/>:
  view==='upload'?<LibraryUploadV2 userId={account?.id}/>:
