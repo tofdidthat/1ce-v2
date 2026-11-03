@@ -15,11 +15,13 @@
 **Confirmed product decisions for later batches:** The user prioritizes finishing C5/C6 before D/E. Add to Home of another creator's project must reference the original and never duplicate audio; implementation is **not included** here. Multi-account browser tests to be chosen case by case; user reports localhost and GitHub synchronized. No deployment, branch merge or live account interaction authorized by this message.
 
 **C5 acceptance ledger (NOT sign-off):**
-- Home returns from World/Upload/Settings/Profile and background refresh: regression test pending; real desktop/mobile browser confirmation pending.
-- Catalog/Saves tab switches and same-profile return: regression test pending; real browser confirmation pending.
+- Home returns from World/Upload/Settings/Profile and background refresh: branch code and source regression tests implemented; real desktop/mobile browser confirmation pending.
+- Catalog/Saves tab switches and same-profile return: branch code and source regression tests implemented; real browser confirmation pending.
 - Viewer/target changes, invalidation, stale responses, background errors, private Saves and removed publication: API authorization and source tests exist; authenticated/anonymous real browser matrix remains pending.
 - Player current track, waveform/queue, optional covers/stems and pack order: no implementation changes allowed; real playback tests pending.
 - Phase C6 remains **PENDING** until user accepts real-world C5 evidence; green CI is not equivalent to manual E2E.
+
+**Implementation/checks:** Draft PR [#22](https://github.com/tofdidthat/1ce-v2/pull/22) against `main` fixes Home loading and owned Profile remount, pauses hidden profile subscriptions, refreshes on return and clears verified snapshots on HTTP 401/403 (plus 404 on public profile). New `c5-card-navigation-v2.test.mjs` regression contracts are included. GitHub Actions run **#41583239624 succeeded** (API tests, web tests, TypeScript and Vite) on code SHA `e3f6fe8040693d870c9d516e1e39265970c4398d`; a documentation-only follow-up requires CI again at final PR head. This is **source/CI verification, not a real browser C5 acceptance or C6 sign-off**. No API, DB, R2, v1, merge or deployment changes.
 
 **Release process:** Update this guide before code; isolated branch `fix/v2-c5-card-navigation-refresh`, run API/web/TypeScript/Vite CI, request separate explicit approval for merge/deploy. No Vercel previews or deployment in this batch.
 
