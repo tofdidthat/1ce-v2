@@ -43,6 +43,45 @@ jobs:
       - name: Run isolated API unit tests
         run: pnpm --filter @1ce/api test
 
+  railway-api-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.18.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install the exact Railway workspace dependency graph
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Start API from monorepo root and verify health
+        shell: bash
+        env:
+          PORT: '18081'
+        run: |
+          set -euo pipefail
+          pnpm --filter @1ce/api start > "$RUNNER_TEMP/onece-api-smoke.log" 2>&1 &
+          api_pid=$!
+          trap 'kill "$api_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:$PORT/health" 2>/dev/null | grep -q '"ok":true'; then
+              echo "Railway candidate start command: HEALTHY"
+              exit 0
+            fi
+            if ! kill -0 "$api_pid" 2>/dev/null; then
+              cat "$RUNNER_TEMP/onece-api-smoke.log"
+              exit 1
+            fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/onece-api-smoke.log"
+          echo "API did not respond to the health probe" >&2
+          exit 1
+
   web-build:
     runs-on: ubuntu-latest
     strategy:
