@@ -261,6 +261,7 @@ test('expired session is denied even when its hashed token remains stored',async
  assert.equal(me.status,401);
  assert.equal(me.json.error,'Not authenticated');
  assert.equal(h.sessions.has(hash(token)),true); // Rejected by expires_at query, not deleted by GET.
+ assert.equal(h.queries.some(x=>x.sql.includes('s.expires_at>now()')),true);
 });
 
 test('auth rejects oversized payloads and malformed OAuth JSON without creating sessions',async()=>{
@@ -282,6 +283,7 @@ test('expired Google callback state rejects before token exchange',async()=>{
  assert.match(callback.headers.Location,/\/app\?login=error$/);
  assert.equal(h.googleFetches.length,0);
  assert.equal(h.sessions.size,0);
+ assert.equal(h.queries.some(x=>x.sql.includes('callback_used_at IS NULL AND expires_at>now()')),true);
 });
 
 test('expired Google exchange authorization cannot create a session',async()=>{
@@ -296,6 +298,7 @@ test('expired Google exchange authorization cannot create a session',async()=>{
  assert.equal((await send('POST','/auth/google/exchange',{loginCode,verifier})).status,400);
  assert.equal(h.sessions.size,0);
  assert.equal(attempt.exchanged,false);
+ assert.equal(h.queries.some(x=>x.sql.includes('exchange_expires_at>now()')),true);
 });
 
 test('health endpoints are isolated from authentication; DB health is verified through the fixture',async()=>{
