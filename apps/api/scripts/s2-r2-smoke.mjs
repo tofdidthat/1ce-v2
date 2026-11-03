@@ -20,7 +20,7 @@ const s3=new S3Client({region:'auto',
 const nonce=randomUUID(),prefix='s2-smoke/'+nonce+'/';
 const staging=prefix+'staging.bin',final=prefix+'verified.bin',race=prefix+'raced.bin';
 const payload=Buffer.from('1CE S2 isolated R2 signed PUT / CopyObject smoke '+nonce);
-const overwritten=Buffer.from('replaced staging '+nonce);
+const overwritten=Buffer.alloc(payload.length,0x52); // preserve signed Content-Length
 const uploaded=[];
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
 const check=(condition,message)=>{if(!condition)throw Error(message);};
