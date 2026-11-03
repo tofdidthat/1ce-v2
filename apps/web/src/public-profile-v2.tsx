@@ -11,6 +11,8 @@ import {profilePictureV2} from './profile-picture-v2';
 import {normalizeProfileProjectsV2,normalizeLibraryProjectsV2,type ProfileProjectV2} from './project-read-v2';
 import {savedProjectKeyV2} from './project-identity-v2';
 import {getProfileFollowsV2,setProfileFollowV2,type ProfileFollowsV2} from './profile-follows-v2';
+import EditProfilePanelV2 from './edit-profile-panel-v2';
+import {ProfileSocialLinksV2} from './profile-social-links-v2';
 
 function CatalogLibraryIcon({size=17}:{size?:number}){
  // Same SVG paths and styling as the Library navigation HomeMark.
@@ -19,8 +21,9 @@ function CatalogLibraryIcon({size=17}:{size?:number}){
 const api=import.meta.env.VITE_API_URL;
 type PublicProject=ProfileProjectV2;
 type ProfileTab='catalog'|'saves'|'following';
-export default function PublicProfileV2({user,onSettings,onBack,onLogin,onOpenProfile,profileId,onPlayProject,playback}:{user:any;onSettings:()=>void;onBack:()=>void;onLogin:()=>void;onOpenProfile:(identifier:string)=>void;profileId?:string;onPlayProject?:(ownerId:number,kind:'beat'|'pack',id:string)=>void;playback?:{ownerId:number;kind:'beat'|'pack';id:string;playing:boolean}|null}){
+export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,onOpenProfile,profileId,onPlayProject,playback}:{user:any;onIdentityUpdated:(updated:any)=>void;onBack:()=>void;onLogin:()=>void;onOpenProfile:(identifier:string)=>void;profileId?:string;onPlayProject?:(ownerId:number,kind:'beat'|'pack',id:string)=>void;playback?:{ownerId:number;kind:'beat'|'pack';id:string;playing:boolean}|null}){
  const [tab,setTab]=useState<ProfileTab>('catalog');
+ const [editorOpen,setEditorOpen]=useState(false);
  const [projects,setProjects]=useState<{catalog:PublicProject[];saves:PublicProject[]}>({catalog:[],saves:[]});
  const {saved,published,status:flagsStatus,error:flagsError,refresh:retryFlags,toggleSaved,togglePublished}=useProjectFlagsV2();
  const [menu,setMenu]=useState<{project:PublicProject;x:number;y:number}|null>(null);
@@ -50,6 +53,7 @@ export default function PublicProfileV2({user,onSettings,onBack,onLogin,onOpenPr
  React.useEffect(()=>subscribeV2DataChanges(['library','saves','publications','shares','identity'],
   ()=>setRefreshRevision(v=>v+1)),[targetId,user?.id]);
  React.useEffect(()=>subscribeV2Resume(()=>setRefreshRevision(v=>v+1)),[targetId,user?.id]);
+ React.useEffect(()=>setEditorOpen(false),[targetId,user?.id]);
  React.useEffect(()=>subscribeV2DataChanges(['follows'],()=>setFollowRevision(v=>v+1),user?.id),[targetId,user?.id]);
  React.useEffect(()=>subscribeV2Resume(()=>setFollowRevision(v=>v+1)),[targetId,user?.id]);
  React.useEffect(()=>{setFollowBusy(false);setCopyStatus('');},[followKey]);
@@ -155,7 +159,7 @@ export default function PublicProfileV2({user,onSettings,onBack,onLogin,onOpenPr
   window.addEventListener('keydown',dismiss);
   return()=>{window.removeEventListener('pointerdown',dismiss);window.removeEventListener('scroll',dismiss,true);window.removeEventListener('keydown',dismiss)};
  },[menu]);
- const shownUser=profileId?visibleProfileUser:user;
+ const shownUser=visibleProfileUser||user;
  const name=String(shownUser?.displayName||shownUser?.name||shownUser?.username||'Profile');
  const handle=String(shownUser?.username||shownUser?.handle||'');
  const picture=profilePictureV2(shownUser);
@@ -171,7 +175,7 @@ export default function PublicProfileV2({user,onSettings,onBack,onLogin,onOpenPr
    </div>
    <div className="onece-workspace-actions onece-profile-nav-actions">
     {(profileStatus==='ready'||!profileId)&&(isOwner?
-     <button type="button" className="library-settings onece-profile-nav-edit" aria-label="Edit profile" title="Edit profile" onClick={onSettings}><Pencil size={22}/></button>:
+     <button type="button" className="library-settings onece-profile-nav-edit" aria-label="Edit profile" title="Edit profile" disabled={profileStatus!=='ready'} onClick={()=>setEditorOpen(true)}><Pencil size={22}/></button>:
      <button type="button" className="library-settings onece-profile-nav-follow" onClick={()=>void changeFollow()}
       disabled={!resolvedTargetId||followBusy||Boolean(user?.id&&followStatus!=='ready')}
       aria-label={followData?.viewerFollows?'Unfollow profile':'Follow profile'} aria-pressed={Boolean(followData?.viewerFollows)}>
@@ -186,6 +190,7 @@ export default function PublicProfileV2({user,onSettings,onBack,onLogin,onOpenPr
     <h1>{handle?'@'+handle.replace(/^@/,''):name}</h1>
    </div>
    {handle&&name.toLowerCase()!==handle.toLowerCase()&&<p className="onece-profile-display-name">{name}</p>}
+   <ProfileSocialLinksV2 compact links={Array.isArray(shownUser?.links)?shownUser.links:[]}/>
   </div>
   <nav className="onece-profile-tabs" role="tablist" aria-label="Profile sections">
    {tabs.map(t=><button key={t.id} id={'onece-tab-'+t.id} type="button" role="tab" aria-selected={tab===t.id} aria-controls="onece-profile-tab-panel" className={tab===t.id?'is-active':''} onClick={()=>setTab(t.id)} aria-label={t.label} title={t.label}>{t.icon}</button>)}
@@ -220,5 +225,7 @@ export default function PublicProfileV2({user,onSettings,onBack,onLogin,onOpenPr
   {menu&&<ProjectContextMenuV2 project={menu.project} x={menu.x} y={menu.y} owner={ownerOf(menu.project)} published={published.has(menu.project.kind+':'+menu.project.id)} saved={saved.has(menu.project.owner_id+':'+menu.project.kind+':'+menu.project.id)}
    onPublish={flagsStatus==='ready'?()=>void publishProject(menu.project):undefined} onSave={flagsStatus==='ready'?()=>{const project=menu.project;setMenu(null);void toggleSave(project)}:undefined} onShare={()=>void copyProjectLink(menu.project)} onAction={action=>showProjectAction(action,menu.project)}/>}
   {actionDialog&&<ProjectActionDialogV2 key={actionDialog.action+':'+actionDialog.project.id} project={actionDialog.project} action={actionDialog.action} packs={ownerPacks} userId={user?.id} onClose={()=>setActionDialog(null)} onChanged={onProjectChanged}/>}
+  {editorOpen&&isOwner&&<EditProfilePanelV2 key={String(user.id)} user={user} profile={visibleProfileUser||user} catalog={visibleProjects.catalog}
+    onClose={()=>setEditorOpen(false)} onIdentityUpdated={onIdentityUpdated} onProfileUpdated={()=>setRefreshRevision(v=>v+1)}/>}
   </section>
 }
