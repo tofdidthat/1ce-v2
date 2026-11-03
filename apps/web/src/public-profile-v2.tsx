@@ -1,5 +1,5 @@
 import React,{useState} from 'react';
-import {Bookmark,Users,ArrowLeft,Copy,Eye,EyeOff,Link2,ListPlus,FolderPlus,Pencil,Image as ImageIcon,Download,Layers,Trash2,ChevronRight,Play,Pause} from 'lucide-react';
+import {Bookmark,Users,ArrowLeft,Link2,Eye,EyeOff,Link2,ListPlus,FolderPlus,Pencil,Image as ImageIcon,Download,Layers,Trash2,ChevronRight,Play,Pause} from 'lucide-react';
 import './public-profile-v2.css';
 import ProjectContextMenuV2 from './project-context-menu-v2';
 import ProjectCardV2 from './project-card-v2';
@@ -165,16 +165,18 @@ export default function PublicProfileV2({user,onSettings,onBack,onLogin,onOpenPr
   {id:'following',label:'Following',icon:<Users size={16}/>}
  ];
  return <section className="onece-public-profile" aria-label="Public profile">
-  <header className="onece-profile-navbar" aria-label="Profile navigation">
-   <button type="button" className="onece-profile-nav-back" aria-label="Go back" title="Back" onClick={onBack}><ArrowLeft size={19}/></button>
-   <div className="onece-profile-nav-actions">
+  <header className="onece-workspace-header onece-profile-navbar" aria-label="Profile navigation">
+   <div className="onece-workspace-brand">
+    <button type="button" className="library-settings onece-profile-nav-back" aria-label="Go back" title="Back" onClick={onBack}><ArrowLeft size={22}/></button>
+   </div>
+   <div className="onece-workspace-actions onece-profile-nav-actions">
     {(profileStatus==='ready'||!profileId)&&(isOwner?
-     <button type="button" className="onece-profile-nav-edit" aria-label="Edit profile" title="Edit profile" onClick={onSettings}><Pencil size={19}/></button>:
-     <button type="button" className="onece-profile-nav-follow" onClick={()=>void changeFollow()}
+     <button type="button" className="library-settings onece-profile-nav-edit" aria-label="Edit profile" title="Edit profile" onClick={onSettings}><Pencil size={22}/></button>:
+     <button type="button" className="library-settings onece-profile-nav-follow" onClick={()=>void changeFollow()}
       disabled={!resolvedTargetId||followBusy||Boolean(user?.id&&followStatus!=='ready')}
       aria-label={followData?.viewerFollows?'Unfollow profile':'Follow profile'} aria-pressed={Boolean(followData?.viewerFollows)}>
       {followBusy?'…':followData?.viewerFollows?'Following':'Follow'}</button>)}
-    <button type="button" className="onece-profile-nav-copy" aria-label="Copy profile link" title="Copy profile link" onClick={()=>void copyProfileLink()}><Copy size={19}/></button>
+    <button type="button" className="library-settings onece-profile-nav-copy" aria-label="Copy profile link" title="Copy profile link" onClick={()=>void copyProfileLink()}><Link2 size={22}/></button>
     {copyStatus&&<span className="onece-profile-copy-status" role="status">{copyStatus}</span>}
    </div>
   </header>
