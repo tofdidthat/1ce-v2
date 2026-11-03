@@ -4,7 +4,7 @@ import { S3Client, PutObjectCommand, HeadObjectCommand, GetObjectCommand, Delete
 import {verifyUploadedObject,InvalidMedia,VerificationUnavailable} from './upload-security.js';
 import {rateLimitExceeded,uploadLimits} from './api-rate-limits.js';
 import {accountStorageQuota} from './storage-plans.js';
-import {acquireCompletionLease,releaseCompletionLease,promoteReadyWithLease} from './upload-leases.js';
+import {acquireCompletionLease,releaseCompletionLease,promoteReadyWithLease,failPendingWithLease,discardPendingWithLease} from './upload-leases.js';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import {resolveAuthorizedMediaFile} from './project-media.js';
 import {streamAuthorizedAudio} from './audio-stream.js';
@@ -202,13 +202,24 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser,{
    try{await s3.send(new DeleteObjectCommand({Bucket:cfg.bucket,Key:key}),{abortSignal:AbortSignal.timeout(15000)});}
    catch(err){console.error('R2 cleanup deferred',err?.message);}
   };
+  const lostLease=async()=>{
+   const current=await pool.query('SELECT status FROM library_files WHERE id=$1 AND user_id=$2',[id,user.id]);
+   if(current.rows[0]?.status==='ready')send(res,200,{ok:true,id:file.id});
+   else send(res,409,{error:'Upload finalization ownership changed; retry shortly'});
+   return true;
+  };
+  const rejectInvalid=async error=>{
+   // A former owner may be resuming after its lease expired. Only the current
+   // token may mark the row failed, and only then may staging be deleted.
+   const failed=await failPendingWithLease(pool,{fileId:id,ownerId:user.id,token:leaseToken});
+   if(!failed.rowCount)return lostLease();
+   await deleteObject(stagingKey);
+   send(res,422,{error});return true;
+  };
   try{
    const head=await s3.send(new HeadObjectCommand({Bucket:cfg.bucket,Key:stagingKey}),{abortSignal:AbortSignal.timeout(15000)});
-   if(Number(head.ContentLength)!==Number(file.byte_size)||head.ContentType!==file.content_type){
-    await pool.query("UPDATE library_files SET status='failed',updated_at=now() WHERE id=$1 AND user_id=$2 AND status='pending'",[id,user.id]);
-    await deleteObject(stagingKey);
-    send(res,422,{error:'Uploaded file metadata did not match'});return true;
-   }
+   if(Number(head.ContentLength)!==Number(file.byte_size)||head.ContentType!==file.content_type)
+    return await rejectInvalid('Uploaded file metadata did not match');
    // Source-conditional copy must fail closed when HEAD lacks a usable ETag.
    if(typeof head.ETag!=='string'||!head.ETag.trim())
     throw new VerificationUnavailable('Storage ETag unavailable for conditional copy');
@@ -221,11 +232,7 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser,{
    await verifyUploadedObject({s3,bucket:cfg.bucket,key:finalKey,file});
   }catch(err){
    await deleteObject(finalKey);
-   if(err instanceof InvalidMedia){
-    await pool.query("UPDATE library_files SET status='failed',updated_at=now() WHERE id=$1 AND user_id=$2 AND status='pending'",[id,user.id]);
-    await deleteObject(stagingKey);
-    send(res,422,{error:err.message});return true;
-   }
+   if(err instanceof InvalidMedia)return await rejectInvalid(err.message);
    if(err?.name==='NotFound'||err?.$metadata?.httpStatusCode===404){
     send(res,409,{error:'Upload not found in storage'});return true;
    }
@@ -251,9 +258,12 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser,{
    if(err?.code==='23505'){
     const existing=await pool.query("SELECT id FROM library_files WHERE user_id=$1 AND kind=$2 AND sha256=$3 AND status='ready'",[user.id,file.kind,file.sha256]);
     if(existing.rows[0]){
+     // The original lease may have expired while handling the 23505; never
+     // delete a newer finalizer's pending DB row or its staging object.
+     const discarded=await discardPendingWithLease(pool,{fileId:id,ownerId:user.id,token:leaseToken});
      await deleteObject(finalKey);
+     if(!discarded.rowCount)return await lostLease();
      await deleteObject(stagingKey);
-     await pool.query("DELETE FROM library_files WHERE id=$1 AND user_id=$2 AND status='pending'",[id,user.id]);
      send(res,200,{ok:true,id:existing.rows[0].id,reused:true});return true;
     }
    }

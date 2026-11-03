@@ -17,6 +17,7 @@ const uploaded=(bytes=sample)=>({kind:'audio',name:'original.mp3',contentType:'a
 
 function setup(){
  const files=new Map(),objects=new Map(),queries=[],commands=[],signed=[],rates=new Map(),planBytes=new Map(),leases=new Map();
+ const ownsLease=(id,token)=>{const lease=leases.get(Number(id));return lease?.token===token&&!lease.expired;};
  let onCopy=()=>{},onHead=()=>{};
  let nextId=100,forceUniqueCollision=false;
  const pool={async query(sql,args=[]){
@@ -76,24 +77,31 @@ function setup(){
    const rows=file&&file.user_id===args[1]?[file]:[];
    return {rows,rowCount:rows.length};
   }
-  if(sql.startsWith("UPDATE library_files SET status='failed'")){
+  if(sql.includes("UPDATE library_files SET status='failed'")){
    const file=files.get(Number(args[0]));
-   if(file&&file.user_id===args[1])file.status='failed';
-   return {rowCount:file?1:0,rows:[]};
+   const allowed=file&&file.user_id===args[1]&&file.status==='pending'&&ownsLease(args[0],args[2]);
+   if(allowed)file.status='failed';
+   return {rowCount:allowed?1:0,rows:[]};
   }
-  if(sql.startsWith("UPDATE library_files SET object_key=$3,status='ready'")){
-   if(forceUniqueCollision){const err=new Error('duplicate ready sha');err.code='23505';throw err;}
+  if(sql.includes("UPDATE library_files SET object_key=$3,status='ready'")){
    const file=files.get(Number(args[0]));
-   // Simulate the real DB unique constraint on READY owner/kind/SHA,
-   // including when two completions overlap in independent handlers.
-   if(file&&[...files.values()].some(other=>other.id!==file.id&&
+   const updated=file&&file.user_id===args[1]&&file.status==='pending'&&ownsLease(args[0],args[3]);
+   if(!updated)return {rowCount:0,rows:[]};
+   if(forceUniqueCollision){const err=new Error('duplicate ready sha');err.code='23505';throw err;}
+   // Simulate the DB unique constraint only for rows actually promoted.
+   if([...files.values()].some(other=>other.id!==file.id&&
     other.user_id===file.user_id&&other.kind===file.kind&&
     other.sha256===file.sha256&&other.status==='ready')){
     const err=new Error('duplicate ready sha');err.code='23505';throw err;
    }
-   const updated=file&&file.user_id===args[1]&&file.status==='pending'&&leases.get(Number(args[0]))?.token===args[3];
-   if(updated){file.status='ready';file.object_key=args[2];}
-   return {rowCount:updated?1:0,rows:[]};
+   file.status='ready';file.object_key=args[2];
+   return {rowCount:1,rows:[]};
+  }
+  if(sql.includes("DELETE FROM library_files")&&sql.includes("active_lease")){
+   const file=files.get(Number(args[0]));
+   const allowed=file&&file.user_id===args[1]&&file.status==='pending'&&ownsLease(args[0],args[2]);
+   if(allowed){files.delete(file.id);leases.delete(file.id);}
+   return {rowCount:allowed?1:0,rows:[]};
   }
   if(sql.startsWith("DELETE FROM library_files WHERE id=$1 AND user_id=$2 AND status='pending'")){
    const file=files.get(Number(args[0]));
@@ -108,7 +116,7 @@ function setup(){
   if(command.constructor.name==='HeadObjectCommand'){
    if(!object){const err=new Error('Not found');err.name='NotFound';throw err;}
    const head={ContentLength:object.bytes.length,ContentType:object.type,ETag:'"'+checksum(object.bytes)+'"'};
-    onHead(key,objects,head);return head;
+    await onHead(key,objects,head);return head;
   }
   if(command.constructor.name==='GetObjectCommand'){
    if(!object){const err=new Error('Not found');err.name='NotFound';throw err;}
@@ -126,7 +134,7 @@ function setup(){
     if(command.input.CopySourceIfMatch&&command.input.CopySourceIfMatch!=='"'+checksum(src.bytes)+'"'){
      const err=Error('Source changed');err.$metadata={httpStatusCode:412};throw err;
     }
-    objects.set(key,{bytes:Buffer.from(src.bytes),type:src.type});onCopy(source,key,objects);
+    objects.set(key,{bytes:Buffer.from(src.bytes),type:src.type});await onCopy(source,key,objects);
     return {};
    }
    if(command.constructor.name==='DeleteObjectCommand'){objects.delete(key);return {};}
@@ -474,6 +482,86 @@ test('two simultaneous completions of the same file leave one READY R2 key',asyn
  assert.equal(h.objects.get(file.object_key).bytes.equals(sample),true);
 });
 
+
+
+const barrier=()=>{
+ let release;
+ const promise=new Promise(resolve=>{release=resolve;});
+ return {promise,release};
+};
+
+test('stale HEAD failure cannot mark another lease owner failed or delete its staging upload',async()=>{
+ const h=setup(),start=await h.invoke('/api/library/files/init',uploaded());
+ const file=h.files.get(start.body.id);h.put(file);
+ const firstAtHead=barrier(),resumeFirst=barrier(),secondAtHead=barrier(),resumeSecond=barrier();
+ let seen=0;
+ h.onHead(async (_key,_objects,head)=>{
+  if(++seen===1){
+   head.ContentType='image/png'; // Only the first worker sees stale bad metadata.
+   h.leases.get(file.id).expired=true; // Simulate 10-minute lease expiration.
+   firstAtHead.release();
+   await resumeFirst.promise;
+  }else if(seen===2){
+   secondAtHead.release();
+   await resumeSecond.promise;
+  }
+ });
+ const first=h.invoke('/api/library/files/'+file.id+'/complete');
+ await firstAtHead.promise;
+ const second=h.invoke('/api/library/files/'+file.id+'/complete');
+ await secondAtHead.promise;
+ // The first request has lost its lease, while the second is still working.
+ resumeFirst.release();
+ const stale=await first;
+ assert.equal(stale.status,409);
+ assert.equal(file.status,'pending');
+ assert.equal(h.objects.has(file.object_key),true);
+ assert.equal(h.leases.has(file.id),true);
+ assert.equal(h.commands.filter(c=>c.constructor.name==='DeleteObjectCommand'&&c.input.Key===file.object_key).length,0);
+ resumeSecond.release();
+ const winner=await second;
+ assert.equal(winner.status,200);
+ assert.equal(file.status,'ready');
+ assert.equal(h.objects.has(file.object_key),true); // The DB now points to the immutable READY key.
+ assert.equal([...h.objects.keys()].filter(k=>k.includes('/verified/')).length,1);
+});
+
+test('stale invalid-media result after COPY cannot fail or delete staging owned by successor',async()=>{
+ const h=setup(),start=await h.invoke('/api/library/files/init',uploaded());
+ const file=h.files.get(start.body.id);h.put(file);
+ const firstCopied=barrier(),resumeFirst=barrier(),secondAtHead=barrier(),resumeSecond=barrier();
+ let copyCount=0,headCount=0;
+ h.onCopy(async (_source,key,objects)=>{
+  if(++copyCount!==1)return;
+  const tampered=Buffer.from(sample);tampered[tampered.length-1]^=0x01;
+  objects.set(key,{bytes:tampered,type:'audio/mpeg'});
+  h.leases.get(file.id).expired=true;
+  firstCopied.release();
+  await resumeFirst.promise;
+ });
+ h.onHead(async()=>{
+  if(++headCount===2){
+   secondAtHead.release();
+   await resumeSecond.promise;
+  }
+ });
+ const first=h.invoke('/api/library/files/'+file.id+'/complete');
+ await firstCopied.promise;
+ const second=h.invoke('/api/library/files/'+file.id+'/complete');
+ await secondAtHead.promise;
+ resumeFirst.release();
+ const stale=await first;
+ assert.equal(stale.status,409);
+ assert.equal(file.status,'pending');
+ assert.equal(h.objects.has(file.object_key),true);
+ assert.equal(h.leases.has(file.id),true);
+ resumeSecond.release();
+ const winner=await second;
+ assert.equal(winner.status,200);
+ assert.equal(file.status,'ready');
+ assert.equal(h.objects.has(file.object_key),true);
+ assert.equal([...h.objects.keys()].filter(k=>k.includes('/verified/')).length,1);
+});
 
 test('per-account storage plan quota changes without modifying other account entitlements',async()=>{
  const h=setup(),body=uploaded();

@@ -6,6 +6,7 @@ import {resolve,dirname} from 'node:path';
 import pg from 'pg';
 import {rateLimitExceeded,pruneExpiredRateLimits} from '../src/api-rate-limits.js';
 import {accountStorageQuota,GIB} from '../src/storage-plans.js';
+import {acquireCompletionLease,failPendingWithLease,discardPendingWithLease,promoteReadyWithLease} from '../src/upload-leases.js';
 
 const connectionString=process.env.S2_TEST_DATABASE_URL;
 if(!connectionString)throw new Error('S2_TEST_DATABASE_URL is required');
@@ -67,16 +68,38 @@ try{
   throw Error('Two concurrent owners acquired the same upload lease');
  const winner=leases.find(x=>x.rowCount===1).rows[0].lease_token;
  const loser=winner===tokenA?tokenB:tokenA;
- const fence=await pool.query(
-  `UPDATE library_files SET status='ready' WHERE id=$1 AND status='pending'
-   AND EXISTS(SELECT 1 FROM v2_upload_completion_leases
-    WHERE file_id=$1 AND lease_token=$2::uuid AND expires_at>now())`,[fileId,loser]);
- if(fence.rowCount!==0)throw Error('Expired/stale lease token bypassed promotion fence');
- const allowed=await pool.query(
-  `UPDATE library_files SET status='ready' WHERE id=$1 AND status='pending'
-   AND EXISTS(SELECT 1 FROM v2_upload_completion_leases
-    WHERE file_id=$1 AND lease_token=$2::uuid AND expires_at>now())`,[fileId,winner]);
- if(allowed.rowCount!==1)throw Error('Lease owner could not finish');
+ if((await failPendingWithLease(pool,{fileId,ownerId:id,token:loser})).rowCount!==0)
+  throw Error('Non-owner marked an active upload as failed');
+ if((await discardPendingWithLease(pool,{fileId,ownerId:id,token:loser})).rowCount!==0)
+  throw Error('Non-owner discarded a pending upload');
+ // Simulate a worker taking over after the first worker's lease expired.
+ await pool.query("UPDATE v2_upload_completion_leases SET expires_at=now()-interval '1 second' WHERE file_id=$1",[fileId]);
+ const successor=await acquireCompletionLease(pool,fileId,id);
+ if(!successor||successor===winner)throw Error('Expired lease could not be replaced');
+ if((await failPendingWithLease(pool,{fileId,ownerId:id,token:winner})).rowCount!==0)
+  throw Error('Former owner marked the successor upload as failed');
+ if((await discardPendingWithLease(pool,{fileId,ownerId:id,token:winner})).rowCount!==0)
+  throw Error('Former owner discarded the successor upload');
+ if((await promoteReadyWithLease(pool,{fileId,ownerId:id,finalKey:'ci/invalid',token:winner})).rowCount!==0)
+  throw Error('Former owner bypassed READY promotion fence');
+ if((await promoteReadyWithLease(pool,{fileId,ownerId:id,finalKey:'ci/verified',token:successor})).rowCount!==1)
+  throw Error('Successor could not finish the pending upload');
+ const promoted=await pool.query('SELECT status,object_key FROM library_files WHERE id=$1',[fileId]);
+ if(promoted.rows[0]?.status!=='ready'||promoted.rows[0]?.object_key!=='ci/verified')
+  throw Error('Upload did not preserve successor final object key');
+ // Test legal failure and dedup deletion for separate pending rows.
+ const insertPending=key=>pool.query(`INSERT INTO library_files(user_id,kind,object_key,original_name,content_type,byte_size,status)
+  VALUES($1,'audio',$2,'ci.mp3','audio/mpeg',64,'pending') RETURNING id`,[id,key]);
+ const rejectId=(await insertPending('ci/reject')).rows[0].id;
+ const rejectToken=await acquireCompletionLease(pool,rejectId,id);
+ if((await failPendingWithLease(pool,{fileId:rejectId,ownerId:id,token:rejectToken})).rowCount!==1)
+  throw Error('Active owner could not fail its own invalid file');
+ const discardId=(await insertPending('ci/discard')).rows[0].id;
+ const discardToken=await acquireCompletionLease(pool,discardId,id);
+ if((await discardPendingWithLease(pool,{fileId:discardId,ownerId:id,token:discardToken})).rowCount!==1)
+  throw Error('Active owner could not discard its own duplicate');
+ if((await pool.query('SELECT id FROM library_files WHERE id=$1',[discardId])).rowCount!==0)
+  throw Error('Discarded upload still exists');
  await pool.query(`INSERT INTO v2_api_rate_limits(scope,subject_hash,window_started_at,hits)
   VALUES('s2-old',repeat('a',64),now()-interval '8 days',1),
    ('s2-new',repeat('b',64),now(),1)`);

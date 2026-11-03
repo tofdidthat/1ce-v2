@@ -27,12 +27,46 @@ export async function releaseCompletionLease(pool,fileId,token){
  );
 }
 
+// Every terminal transition locks its lease row before changing file metadata.
+// A worker whose lease expired or was replaced must not fail, discard or
+// promote the newer owner's upload. No DB lock is held during R2 I/O.
 // Call with the exact same final key that was server-copied and verified.
 // Expired/stolen lease holders cannot transition metadata to READY.
 export async function promoteReadyWithLease(pool,{fileId,ownerId,finalKey,token}){
- return pool.query(`UPDATE library_files SET object_key=$3,status='ready',updated_at=now()
+ return pool.query(`WITH active_lease AS MATERIALIZED (
+   SELECT file_id FROM v2_upload_completion_leases
+   WHERE file_id=$1 AND lease_token=$4::uuid AND expires_at>clock_timestamp()
+   FOR UPDATE
+  )
+  UPDATE library_files SET object_key=$3,status='ready',updated_at=now()
   WHERE id=$1 AND user_id=$2 AND status='pending'
-  AND EXISTS(SELECT 1 FROM v2_upload_completion_leases
-   WHERE file_id=$1 AND lease_token=$4::uuid AND expires_at>now())`,
+   AND id IN (SELECT file_id FROM active_lease)`,
   [fileId,ownerId,finalKey,token]);
+}
+
+export async function failPendingWithLease(pool,{fileId,ownerId,token}){
+ return pool.query(`WITH active_lease AS MATERIALIZED (
+   SELECT file_id FROM v2_upload_completion_leases
+   WHERE file_id=$1 AND lease_token=$3::uuid AND expires_at>clock_timestamp()
+   FOR UPDATE
+  )
+  UPDATE library_files SET status='failed',updated_at=now()
+  WHERE id=$1 AND user_id=$2 AND status='pending'
+   AND id IN (SELECT file_id FROM active_lease)`,
+  [fileId,ownerId,token]);
+}
+
+// Duplicate READY asset exists: a stale request must not delete a pending
+// upload currently owned by a different finalizer. ON DELETE CASCADE removes
+// only the lease associated with the row we successfully discarded.
+export async function discardPendingWithLease(pool,{fileId,ownerId,token}){
+ return pool.query(`WITH active_lease AS MATERIALIZED (
+   SELECT file_id FROM v2_upload_completion_leases
+   WHERE file_id=$1 AND lease_token=$3::uuid AND expires_at>clock_timestamp()
+   FOR UPDATE
+  )
+  DELETE FROM library_files
+  WHERE id=$1 AND user_id=$2 AND status='pending'
+   AND id IN (SELECT file_id FROM active_lease)`,
+  [fileId,ownerId,token]);
 }
