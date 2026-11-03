@@ -27,8 +27,8 @@ test('the new angled Link glyph is shared by right-click Copy link and the profi
  assert.doesNotMatch(menu,/<Link2 size=/);
  assert.match(profile,/navigator\.clipboard\.writeText\(url\)/);
  assert.match(menu,/onShare/);
- // Generic social URLs keep the previously agreed Link2 glyph.
- assert.match(social,/return <Link2 size=\{size\}\/>/);
+ // Generic social URLs reuse the same diagonal Copy Link glyph.
+ assert.match(social,/return <CopyLinkIconV2 size=\{size\}\/>/);
 });
 
 test('Editor close, save and social Add align to the same 44px transparent button grid',()=>{

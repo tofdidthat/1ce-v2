@@ -49,12 +49,12 @@ test('photo, username, social row and published grid remain in expected vertical
  assert.match(panel,/<Plus size=\{23\}\/>/);
 });
 
-test('social icon styles map known hosts and use canonical Link2 for other HTTPS links',()=>{
+test('social icon styles map known hosts and use shared diagonal Copy Link for other HTTPS links',()=>{
  assert.match(social,/spotify\.com/);
  assert.match(social,/youtube\.com/);
  assert.match(social,/youtu\.be/);
  assert.match(social,/instagram\.com/);
- assert.match(social,/return <Link2 size=\{size\}\/>/);
+ assert.match(social,/return <CopyLinkIconV2 size=\{size\}\/>/);
  assert.match(social,/target="_blank" rel="noopener noreferrer"/);
  assert.match(profile,/<ProfileSocialLinksV2 compact links=/);
  assert.match(panel,/onAdd=\{links\.length<6/);
