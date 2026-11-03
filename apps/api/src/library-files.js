@@ -207,7 +207,7 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser,{
    promoted=true;
    await verifyUploadedObject({s3,bucket:cfg.bucket,key:finalKey,file});
   }catch(err){
-   if(promoted)await deleteObject(finalKey);
+   await deleteObject(finalKey);
    if(err instanceof InvalidMedia){
     await pool.query("UPDATE library_files SET status='failed',updated_at=now() WHERE id=$1 AND user_id=$2 AND status='pending'",[id,user.id]);
     await deleteObject(stagingKey);
