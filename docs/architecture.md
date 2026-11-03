@@ -4,6 +4,10 @@
 
 > **Mandatory working agreement (2026-11-02).** Whenever the user requests a complete feature, a refactor, several changes, or a production correction, **first read this entire `docs/architecture.md` and the relevant behavior/contract documentation** (notably `docs/refactor-phase-a-inventory.md`, `docs/shared-playback-v2.md`, `docs/reactive-refresh-v2.md`, and related migration/rollout notes). Compare the guide against the live code, the current branch, tests and deployment state; update this document when a decision or phase status changes **before implementing the feature**. Do not rely on historical chat descriptions or stale snapshots to declare work complete.
 
+## Edit Profile social-link inline controls (2026-11-03, draft UI batch)
+
+User-supplied screenshots compare the current expanded link editor with the compact reference. Keep social links as **URL only**, with no mandatory title, and retain a **single compact editing row**. Remove the purple focus ring on the URL field (including its parent via focus-within) while keeping a subtle accessible keyboard focus cue on the surrounding editor action buttons. Buttons appear to the right of the input in this exact order: **X cancel**, **check save**, **red Trash2 delete** (the same Lucide Trash2 as the project right-click Delete action). Buttons have transparent backgrounds, no borders, identical hit targets and aligned centers; delete appears only for an existing link. Keep existing HTTPS/duplicate validation and existing /auth/me persistence, without new routes or changing the rest of the drawer, player, Catalog, or Library icon. Work in isolated branch `fix/v2-inline-link-controls`, tests/build, draft PR, no merge/deploy until explicitly approved.
+
 ## Batch / deployment protocol
 
 1. **Inventory and behavior:** identify user-visible acceptance criteria and affected UI, API, auth, SQL schema, R2, player, Saves/Catalog and permissions; inspect current existing methods before adding routes, tables or state. Document changes to behavior and architecture, including expected deletion and optional-asset behavior.
