@@ -10,6 +10,14 @@
 .onece-profile-top .onece-social-links.is-compact{justify-content:center;margin-top:20px;max-width:100%;gap:9px}
 .onece-profile-top .onece-social-links.is-compact .onece-social-link{width:34px;height:34px;flex-basis:34px;background:#242226;border-color:#ffffff11;color:#bcb3c6}
 .onece-profile-top .onece-social-links.is-compact .onece-social-link:hover{background:#353038;color:#f8f5fa}
+/* Profile link below the username: diagonal chain only, no pill/disc. */
+.onece-profile-top .onece-social-links.is-compact .onece-social-link.is-generic{
+ display:grid;place-items:center;width:34px;height:34px;flex:0 0 34px;
+ padding:0;border:0;background:transparent;box-shadow:none;color:#c7c0cf
+}
+.onece-profile-top .onece-social-links.is-compact .onece-social-link.is-generic:hover{
+ border:0;background:transparent;box-shadow:none;color:#fff
+}
 
 .onece-profile-actions{display:flex;align-items:center;gap:5px;flex-shrink:0}
 .onece-profile-actions button{display:grid;place-items:center;width:27px;height:27px;padding:0;border:1px solid transparent;border-radius:8px;background:transparent;color:#aaa2b4;cursor:pointer;transition:background .18s ease,color .18s ease}
