@@ -22,3 +22,15 @@ Branch: `feature/v2-trash-r2-safe-purge`. No main merge or deploy until separate
 - Railway inspection identified v2 project `courteous-spontaneity`, production Postgres and `1ce-v2` API service sourced from `tofdidthat/1ce-v2:main`; the legacy `content-empathy` project with `1ce-server` must remain untouched. No public PostgreSQL TCP proxy was found for v2. Do not expose a database merely to run this migration.
 - **PENDING:** verify a recoverable backup, arrange an authorized secure DB execution path, apply the guarded 012 against **v2 only**, record six true results, confirm rollback/retry plan, then rerun final-HEAD CI and isolated DB/R2 integration safety tests. PR remains draft; do not merge or deploy without a fresh go/no-go decision.
 - **Concurrency audit to complete:** publishing, saving, sharing and beat/pack creation are separate transactions and do not consistently take the per-account Trash advisory lock. Verify races against moving projects to Trash; guard against stale relations after deletion. Also test UI behavior when a beat is hidden in a trashed pack, and when shared covers remain live. Do not treat static tests alone as proof of these invariants.
+
+## Production database migration 012 — applied and verified (2026-11-03)
+
+**DONE:** Migration `012_trash_and_r2_delete_outbox.sql` was applied to the isolated **v2 production PostgreSQL** in Railway project `courteous-spontaneity` (project `31168d29-2738-4a74-8a62-a13d2e2cc52c`, environment `55e9e0df-8408-4930-8722-63fa1d0d8942`). An ephemeral, private, one-shot Bun Function used an internal `Postgres.DATABASE_URL` reference, checked the v2/S2 schema markers, applied the additive DDL in a transaction with 5-second lock and 60-second statement timeouts, and performed post-commit read-only verification. Railway deploy logs for temporary deployment `8d29800d-0c9a-4ec2-8ec0-65ac8d75cd31` reported:
+
+```text
+MIGRATION_012_APPLIED
+MIGRATION_012_VERIFY {"beat_trash_column":true,"pack_trash_column":true,"r2_delete_outbox":true,"beat_index":true,"pack_index":true,"r2_pending_index":true}
+MIGRATION_012_SUCCESS
+```
+
+The one-off executor service `1ce-v2-migration-012-once` was **deleted after success**, with no volumes attached/detached. Follow-up inventory confirmed only the original `Postgres` and `1ce-v2` services, both at `SUCCESS`, no staged changes. **No application deployment or main merge occurred, no R2 object removal was invoked.** The PR remains draft, and the Trash API/UI is not yet live. Backups were not independently verified through the available connector; do not mark that release gate complete. Remaining gates: final-HEAD CI, isolated integration/R2 concurrency safety review, backup verification and user-approved coordinated application rollout before merge/deploy. Do not re-run 012 unless checking an unexpected schema discrepancy; it is additive/idempotent.
