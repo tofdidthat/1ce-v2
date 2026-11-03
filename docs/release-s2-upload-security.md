@@ -1,5 +1,16 @@
 # 1CE v2 — PR #27 (S2) security release and rollback checklist
 
+## Proteção de CPU no login — PR #27 (ponto 3, 2026-11-03)
+
+**Implementado na branch:** antes de executar `scrypt` para uma conta que tem hash de senha, a API aplica admissão local por instância (`apps/api/src/login-admission.js`): burst de 48 verificações e reposição de 8/s, sem usar e-mail, socket/IP ou `X-Forwarded-For` como chave. Também usa o limitador atômico PostgreSQL existente (`v2_api_rate_limits`, scope `login-work`, sujeito constante `all-identities`) com teto global de **480 verificações por minuto** entre réplicas. Se qualquer controle exceder a capacidade, a requisição retorna `429` **antes** da operação criptográfica, sem abrir sessão. A trava de 8 verificações scrypt em paralelo permanece. Não cria tabelas, variáveis, arquivo de configuração WAF ou migração nova.
+
+**Preservação do login:** o limite de 20 senhas incorretas/15 min por conta continua contado apenas **após** senha inválida; uma pessoa que sabe a senha não é bloqueada pelo contador específico de falhas. Tentativas para contas inexistentes não executam scrypt nem consomem o orçamento global de verificações, e continuam compartilhando o bucket de falhas `unknown-account`. Requisições malformadas não consomem orçamento nem criam linha de rate limit.
+
+**Ameaça residual explícita:** o controle global de capacidade é um fusível para proteger CPU; sob ataque volumétrico sustentado ele **pode temporariamente devolver 429 até para logins corretos**. Isso é uma troca de disponibilidade, não uma garantia de login sob DDoS. O limite local é por processo e o teto PostgreSQL é por todas as réplicas. Não confiar em `X-Forwarded-For` fornecido pelo cliente. Proteção granular por IP real e desafios/bots exigem WAF/edge com sinal de identidade de origem **verificado** e revisão de infraestrutura; nenhuma regra edge foi implementada ou aprovada neste lote.
+
+**Testes:** cobertura de reposição/burst, relógio anômalo, recusa pré-scrypt via budget compartilhado, identidade/IP forjados não alterando a chave, desconhecidos não ocupando budget. Validar CI do HEAD final e testar tráfego legítimo/429 em ambiente autorizado antes do deploy. **Sem merge ou deploy como parte deste ajuste.**
+
+---
 ## Reconciliação somente leitura de objetos verified/ — PR #27
 
 **OBJETIVO:** localizar candidatos a objetos permanentes órfãos que possam ter sido copiados pelo servidor para verified/ antes de uma interrupção da API ou falha na atualização do banco. Este recurso NÃO limpa arquivos, NÃO recupera quota, NÃO modifica a API em produção e NÃO substitui o Trash / GC da PR #28.

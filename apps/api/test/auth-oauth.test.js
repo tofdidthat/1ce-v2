@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {createHash,scryptSync} from 'node:crypto';
 import {Readable} from 'node:stream';
 import {apiServer,apiPool} from '../src/server.js';
+import {passwordWorkPolicy} from '../src/login-admission.js';
 
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const shaBase64=value=>createHash('sha256').update(value).digest('base64url');
@@ -169,6 +170,31 @@ test('valid credentials work even if an attacker exhausted the known account fai
  assert.equal(owner.json.user.id,h.user.id);
  assert.equal(h.sessions.size,1);
 });
+
+test('shared password work budget rejects costly verification before scrypt with no session creation',async()=>{
+ const subject='login-work:'+hash('all-identities');
+ h.rates.set(subject,passwordWorkPolicy.sharedPerMinute);
+ const req={email:h.user.email,password:'correct-secret'};
+ const denied=await send('POST','/auth/login',req,{'x-forwarded-for':'192.0.2.22'});
+ assert.equal(denied.status,429);
+ assert.equal(denied.json.error,'Login temporarily busy. Please retry.');
+ assert.equal(h.sessions.size,0);
+ assert.equal(h.rates.get(subject),passwordWorkPolicy.sharedPerMinute+1);
+ assert.equal(h.rates.has('login-failure:'+hash(h.user.email)),false);
+ // Changing a supplied IP header or socket address cannot bypass the global budget.
+ const another=await send('POST','/auth/login',req,{'x-forwarded-for':'203.0.113.90'},'203.0.113.57');
+ assert.equal(another.status,429);
+ assert.equal(h.sessions.size,0);
+ assert.equal(h.rates.size,1);
+});
+
+test('unknown accounts never expend the expensive-password verification budget',async()=>{
+ const unknown=await send('POST','/auth/login',{email:'missing'+Date.now()+'@example.test',password:'wrong'});
+ assert.equal(unknown.status,401);
+ assert.equal(h.rates.has('login-work:'+hash('all-identities')),false);
+ assert.equal(h.rates.has('login-failure:'+hash('unknown-account')),true);
+});
+
 test('malformed login input cannot fill hashed account rate-limit storage',async()=>{
  for(let i=0;i<25;i++)
   assert.equal((await send('POST','/auth/login',{email:'bad',password:'x'})).status,400);

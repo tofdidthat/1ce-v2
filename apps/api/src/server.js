@@ -5,6 +5,7 @@ import { promisify } from 'node:util';
 import pg from 'pg';
 import { handleLibraryFiles } from './library-files.js';
 import {rateLimitExceeded} from './api-rate-limits.js';
+import {passwordWorkLimiter,passwordWorkPolicy} from './login-admission.js';
 import {handleProjectActions} from './project-actions.js';
 import { handlePublicProfiles } from './public-profiles.js';
 import { handleProfileFollows } from './profile-follows.js';
@@ -158,8 +159,17 @@ const server=createServer(async(req,res)=>{
    const q=await pool.query('SELECT id,email,name,picture,password_hash,email_verified FROM account_users WHERE lower(email)=$1 LIMIT 1',[email]);
    const user=q.rows[0];
    let validPassword=false;
-   try{if(user)validPassword=await verify(password,user.password_hash);}
-   catch(err){
+   try{
+    if(user?.password_hash){
+     // Fail fast before scrypt. The process burst/refill limits local CPU work;
+     // the DB limit caps work across replicas without keying on a target email
+     // or spoofable forwarded IP. No additional database migration required.
+     if(!passwordWorkLimiter.take()||
+      await rateLimitExceeded(pool,'login-work','all-identities',passwordWorkPolicy.sharedPerMinute,1))
+      return json(res,429,{error:'Login temporarily busy. Please retry.'});
+     validPassword=await verify(password,user.password_hash);
+    }
+   }catch(err){
     if(err instanceof LoginCapacityExceeded)return json(res,429,{error:'Login temporarily busy. Please retry.'});
     throw err;
    }
