@@ -4,7 +4,7 @@ import {readFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {resolve,dirname} from 'node:path';
 import pg from 'pg';
-import {rateLimitExceeded} from '../src/api-rate-limits.js';
+import {rateLimitExceeded,pruneExpiredRateLimits} from '../src/api-rate-limits.js';
 import {accountStorageQuota,GIB} from '../src/storage-plans.js';
 
 const connectionString=process.env.S2_TEST_DATABASE_URL;
@@ -77,6 +77,14 @@ try{
    AND EXISTS(SELECT 1 FROM v2_upload_completion_leases
     WHERE file_id=$1 AND lease_token=$2::uuid AND expires_at>now())`,[fileId,winner]);
  if(allowed.rowCount!==1)throw Error('Lease owner could not finish');
+ await pool.query(`INSERT INTO v2_api_rate_limits(scope,subject_hash,window_started_at,hits)
+  VALUES('s2-old',repeat('a',64),now()-interval '8 days',1),
+   ('s2-new',repeat('b',64),now(),1)`);
+ if(await pruneExpiredRateLimits(pool,{batchSize:1})!==1)
+  throw Error('Rate-limit cleanup did not remove old row');
+ const remaining=await pool.query("SELECT scope FROM v2_api_rate_limits WHERE scope IN ('s2-old','s2-new')");
+ if(remaining.rows.length!==1||remaining.rows[0].scope!=='s2-new')
+  throw Error('Rate-limit cleanup removed an active row or kept stale one');
  console.log('S2 isolated PostgreSQL migration: PASS (010+011 idempotent DDL, plan isolation, per-file lease fencing, atomic shared rate limits)');
 }finally{
  await pool.end();
