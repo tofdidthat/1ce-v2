@@ -5,6 +5,7 @@ import CopyLinkIconV2 from './copy-link-icon-v2';
 import ProjectContextMenuV2 from './project-context-menu-v2';
 import ProjectCardV2 from './project-card-v2';
 import {createProjectShareLinkV2} from './project-requests-v2';
+import {fetchPlayableProjectV2,downloadAuthorizedMp3V2,publicProjectLinkV2,type PlayableTrackV2} from './public-project-actions-v2';
 import ProjectActionDialogV2,{type ContextProject,type ProjectAction,type ChangedProject} from './project-action-dialog-v2';
 import {subscribeV2DataChanges,subscribeV2Resume,notifyV2DataChanged} from './data-refresh-v2';
 import useProjectFlagsV2 from './project-flags-v2';
@@ -22,12 +23,15 @@ function CatalogLibraryIcon({size=17}:{size?:number}){
 const api=import.meta.env.VITE_API_URL;
 type PublicProject=ProfileProjectV2;
 type ProfileTab='catalog'|'saves'|'following';
-export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,onOpenProfile,profileId,onPlayProject,playback}:{user:any;onIdentityUpdated:(updated:any)=>void;onBack:()=>void;onLogin:()=>void;onOpenProfile:(identifier:string)=>void;profileId?:string;onPlayProject?:(ownerId:number,kind:'beat'|'pack',id:string)=>void;playback?:{ownerId:number;kind:'beat'|'pack';id:string;playing:boolean}|null}){
+export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,onOpenProfile,profileId,onPlayProject,onQueueProject,playback}:{user:any;onIdentityUpdated:(updated:any)=>void;onBack:()=>void;onLogin:()=>void;onOpenProfile:(identifier:string)=>void;profileId?:string;onPlayProject?:(ownerId:number,kind:'beat'|'pack',id:string)=>void;onQueueProject?:(ownerId:number,kind:'beat'|'pack',id:string)=>void;playback?:{ownerId:number;kind:'beat'|'pack';id:string;playing:boolean}|null}){
  const [tab,setTab]=useState<ProfileTab>('catalog');
  const [editorOpen,setEditorOpen]=useState(false);
  const [projects,setProjects]=useState<{catalog:PublicProject[];saves:PublicProject[]}>({catalog:[],saves:[]});
  const {saved,published,status:flagsStatus,error:flagsError,refresh:retryFlags,toggleSaved,togglePublished}=useProjectFlagsV2();
  const [menu,setMenu]=useState<{project:PublicProject;x:number;y:number}|null>(null);
+ const [downloadPicker,setDownloadPicker]=useState<{project:PublicProject;tracks:PlayableTrackV2[];busy:boolean;error:string}|null>(null);
+ const [downloadBusy,setDownloadBusy]=useState(false);
+ const downloadRequest=React.useRef<AbortController|null>(null);
  const [actionDialog,setActionDialog]=useState<{project:ContextProject;action:ProjectAction}|null>(null);
  const [ownerPacks,setOwnerPacks]=useState<{id:string;title:string;track_count:number}[]>([]);
  const [profileUser,setProfileUser]=useState<any>(null);
@@ -59,6 +63,18 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
   ()=>setRefreshRevision(v=>v+1)),[targetId,user?.id]);
  React.useEffect(()=>subscribeV2Resume(()=>setRefreshRevision(v=>v+1)),[targetId,user?.id]);
  React.useEffect(()=>setEditorOpen(false),[targetId,user?.id]);
+ React.useEffect(()=>{downloadRequest.current?.abort();setDownloadPicker(null);setDownloadBusy(false);},[targetId,user?.id]);
+ // Stable public profile project links do not mint grants. Query only navigates
+ // to a card already returned by the existing authorized Catalog request.
+ React.useEffect(()=>{
+  const project=new URLSearchParams(window.location.search).get('project');
+  if(!project||!visibleProjects.catalog.some(p=>p.kind+':'+p.id===project)||profileStatus!=='ready')return;
+  setTab('catalog');
+  const element=visibleProjects.catalog.find(p=>p.kind+':'+p.id===project);
+  if(!element)return;
+  const frame=window.requestAnimationFrame(()=>document.getElementById('onece-project-'+element.kind+'-'+element.id)?.scrollIntoView({block:'center'}));
+  return()=>window.cancelAnimationFrame(frame);
+ },[profileStatus,visibleProjects.catalog]);
  React.useEffect(()=>subscribeV2DataChanges(['follows'],()=>setFollowRevision(v=>v+1),user?.id),[targetId,user?.id]);
  React.useEffect(()=>subscribeV2Resume(()=>setFollowRevision(v=>v+1)),[targetId,user?.id]);
  React.useEffect(()=>{setFollowBusy(false);setCopyStatus('');},[followKey]);
@@ -153,9 +169,43 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
  const copyProjectLink=async(project:PublicProject)=>{
   setMenu(null);setError('');
   try{
-   const url=await createProjectShareLinkV2(project.kind,project.id);
+   // A visitor cannot mint someone else's private share grant.
+   // On a public profile use the existing public URL with a project selector.
+   const url=ownerOf(project)
+    ?await createProjectShareLinkV2(project.kind,project.id)
+    :publicProjectLinkV2(window.location.origin,project.owner_id,project.kind,project.id);
    await navigator.clipboard.writeText(url);
   }catch(e){setError(e instanceof Error?e.message:'Unable to copy link')}
+ };
+ const beginDownload=async(project:PublicProject)=>{
+  if(downloadBusy)return;
+  setMenu(null);setError('');setDownloadBusy(true);
+  downloadRequest.current?.abort();
+  const controller=new AbortController();downloadRequest.current=controller;
+  try{
+   const manifest=await fetchPlayableProjectV2(project.owner_id,project.kind,project.id,controller.signal);
+   if(controller.signal.aborted)return;
+   if(project.kind==='pack'){
+    setDownloadPicker({project,tracks:manifest.tracks,busy:false,error:''});
+   }else{
+    await downloadAuthorizedMp3V2(manifest.tracks[0],controller.signal);
+   }
+  }catch(e){if(!controller.signal.aborted)setError(e instanceof Error?e.message:'Unable to download MP3');}
+  finally{if(downloadRequest.current===controller){setDownloadBusy(false);downloadRequest.current=null;}}
+ };
+ const downloadPackTrack=async(track:PlayableTrackV2)=>{
+  if(downloadBusy||!downloadPicker)return;
+  setDownloadBusy(true);
+  setDownloadPicker(previous=>previous?{...previous,busy:true,error:''}:previous);
+  const controller=new AbortController();downloadRequest.current=controller;
+  try{
+   await downloadAuthorizedMp3V2(track,controller.signal);
+  }catch(e){
+   if(!controller.signal.aborted)setDownloadPicker(previous=>previous?{...previous,error:e instanceof Error?e.message:'Unable to download MP3'}:previous);
+  }finally{
+   if(downloadRequest.current===controller){downloadRequest.current=null;setDownloadBusy(false);}
+   setDownloadPicker(previous=>previous?{...previous,busy:false}:previous);
+  }
  };
  React.useEffect(()=>{
   if(!menu)return;
@@ -219,7 +269,7 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
     <div className="onece-profile-projects">{(tab==='catalog'?visibleProjects.catalog:visibleProjects.saves).map(project=>{
      const key=savedProjectKeyV2(project.owner_id,project.kind,project.id);
      const isPlaying=!!playback&&playback.ownerId===project.owner_id&&playback.kind===project.kind&&playback.id===project.id&&playback.playing;
-     return <ProjectCardV2 key={key} variant="profile" project={project} ownerId={project.owner_id}
+     return <ProjectCardV2 key={key} id={'onece-project-'+project.kind+'-'+project.id} variant="profile" project={project} ownerId={project.owner_id}
        secondary={project.kind==='pack'?(project.track_count||0)+' beats':'Beat'} playing={isPlaying}
        onContextMenu={event=>{event.preventDefault();setMenu({project,x:event.clientX,y:event.clientY})}}
        onPlay={onPlayProject?()=>onPlayProject(project.owner_id,project.kind,project.id):undefined}/>;
@@ -228,7 +278,24 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
     <div className="onece-profile-empty"><Bookmark size={27}/><h2>No saves yet</h2><p>Saved projects will appear here.</p></div>}
   </div>
   {menu&&<ProjectContextMenuV2 project={menu.project} x={menu.x} y={menu.y} owner={ownerOf(menu.project)} published={published.has(menu.project.kind+':'+menu.project.id)} saved={saved.has(menu.project.owner_id+':'+menu.project.kind+':'+menu.project.id)}
-   onPublish={flagsStatus==='ready'?()=>void publishProject(menu.project):undefined} onSave={flagsStatus==='ready'?()=>{const project=menu.project;setMenu(null);void toggleSave(project)}:undefined} onShare={()=>void copyProjectLink(menu.project)} onAction={action=>showProjectAction(action,menu.project)}/>}
+   onPublish={flagsStatus==='ready'?()=>void publishProject(menu.project):undefined}
+   onSave={flagsStatus==='ready'||!user?.id?()=>{const project=menu.project;setMenu(null);if(!user?.id){onLogin();return;}void toggleSave(project)}:undefined}
+   onShare={()=>void copyProjectLink(menu.project)}
+   onQueue={onQueueProject?()=>{const project=menu.project;setMenu(null);onQueueProject(project.owner_id,project.kind,project.id)}:undefined}
+   onDownload={!ownerOf(menu.project)?()=>void beginDownload(menu.project):undefined}
+   onAction={action=>showProjectAction(action,menu.project)}/>}
+  {downloadPicker&&<div className="onece-profile-download-overlay" onMouseDown={event=>{if(event.target===event.currentTarget&&!downloadBusy)setDownloadPicker(null);}}>
+   <section className="onece-profile-download-dialog" role="dialog" aria-modal="true" aria-label="Choose MP3 from pack">
+    <header><h2>Download MP3</h2><button type="button" aria-label="Close MP3 picker" disabled={downloadBusy} onClick={()=>setDownloadPicker(null)}>×</button></header>
+    <p>Choose a track from {downloadPicker.project.title}</p>
+    <div className="onece-profile-download-tracks">{downloadPicker.tracks.map(track=>
+     <button type="button" key={track.id} disabled={downloadBusy} onClick={()=>void downloadPackTrack(track)}>
+      <span>{track.title}</span><Download size={17}/>
+     </button>)}</div>
+    {downloadPicker.error&&<p role="alert" className="onece-profile-download-error">{downloadPicker.error}</p>}
+    {downloadPicker.busy&&<p role="status">Downloading MP3…</p>}
+   </section>
+  </div>}
   {actionDialog&&<ProjectActionDialogV2 key={actionDialog.action+':'+actionDialog.project.id} project={actionDialog.project} action={actionDialog.action} packs={ownerPacks} userId={user?.id} onClose={()=>setActionDialog(null)} onChanged={onProjectChanged}/>}
   {editorOpen&&isOwner&&<EditProfilePanelV2 key={String(user.id)} user={user} profile={visibleProfileUser||user} catalog={visibleProjects.catalog}
     onClose={()=>setEditorOpen(false)} onIdentityUpdated={onIdentityUpdated} onProfileUpdated={()=>setRefreshRevision(v=>v+1)}/>}
