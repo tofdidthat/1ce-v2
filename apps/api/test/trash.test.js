@@ -125,5 +125,5 @@ test('restoring a pack first revives only auto-trashed member beats inside the s
  assert.ok(eligible>=0&&members>eligible&&packRestore>members);
  assert.match(checks[members],/source_p.deleted_at=b.deleted_at/);
  assert.match(checks[members],/b.library_visible=FALSE/);
- assert.equal(checks.at(-2),'COMMIT');
+ assert.equal(checks.at(-1),'COMMIT');
 });
