@@ -23,7 +23,7 @@ function CatalogLibraryIcon({size=17}:{size?:number}){
 const api=import.meta.env.VITE_API_URL;
 type PublicProject=ProfileProjectV2;
 type ProfileTab='catalog'|'saves'|'following';
-export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,onOpenProfile,profileId,onPlayProject,onQueueProject,playback}:{user:any;onIdentityUpdated:(updated:any)=>void;onBack:()=>void;onLogin:()=>void;onOpenProfile:(identifier:string)=>void;profileId?:string;onPlayProject?:(ownerId:number,kind:'beat'|'pack',id:string)=>void;onQueueProject?:(ownerId:number,kind:'beat'|'pack',id:string)=>void;playback?:{ownerId:number;kind:'beat'|'pack';id:string;playing:boolean}|null}){
+export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,onOpenProfile,profileId,onPlayProject,onQueueProject,playback,active=true}:{user:any;active?:boolean;onIdentityUpdated:(updated:any)=>void;onBack:()=>void;onLogin:()=>void;onOpenProfile:(identifier:string)=>void;profileId?:string;onPlayProject?:(ownerId:number,kind:'beat'|'pack',id:string)=>void;onQueueProject?:(ownerId:number,kind:'beat'|'pack',id:string)=>void;playback?:{ownerId:number;kind:'beat'|'pack';id:string;playing:boolean}|null}){
  const [tab,setTab]=useState<ProfileTab>('catalog');
  const [editorOpen,setEditorOpen]=useState(false);
  const [projects,setProjects]=useState<{catalog:PublicProject[];saves:PublicProject[]}>({catalog:[],saves:[]});
@@ -40,6 +40,11 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
  const [error,setError]=useState('');
  const [refreshRevision,setRefreshRevision]=useState(0);
  const [followRevision,setFollowRevision]=useState(0);
+ const previouslyActive=React.useRef(active);
+ React.useEffect(()=>{
+  if(active&&!previouslyActive.current){setRefreshRevision(value=>value+1);setFollowRevision(value=>value+1);}
+  previouslyActive.current=active;
+ },[active]);
  const [followState,setFollowState]=useState<{key:string;status:'loading'|'ready'|'error';data:ProfileFollowsV2|null}>({key:'',status:'loading',data:null});
  const [followError,setFollowError]=useState('');
  const [followBusy,setFollowBusy]=useState(false);
@@ -59,9 +64,15 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
  currentFollowRequest.current=followKey;
  const followStatus=followState.key===followKey?followState.status:'loading';
  const followData=followState.key===followKey?followState.data:null;
- React.useEffect(()=>subscribeV2DataChanges(['library','saves','publications','shares','identity'],
-  ()=>setRefreshRevision(v=>v+1)),[targetId,user?.id]);
- React.useEffect(()=>subscribeV2Resume(()=>setRefreshRevision(v=>v+1)),[targetId,user?.id]);
+ React.useEffect(()=>{
+  if(!active)return;
+  return subscribeV2DataChanges(['library','saves','publications','shares','identity'],
+   ()=>setRefreshRevision(v=>v+1));
+ },[active,targetId,user?.id]);
+ React.useEffect(()=>{
+  if(!active)return;
+  return subscribeV2Resume(()=>setRefreshRevision(v=>v+1));
+ },[active,targetId,user?.id]);
  React.useEffect(()=>setEditorOpen(false),[targetId,user?.id]);
  React.useEffect(()=>{downloadRequest.current?.abort();setDownloadPicker(null);setDownloadBusy(false);},[targetId,user?.id]);
  // Stable public profile project links do not mint grants. Query only navigates
@@ -75,8 +86,14 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
   const frame=window.requestAnimationFrame(()=>document.getElementById('onece-project-'+element.kind+'-'+element.id)?.scrollIntoView({block:'center'}));
   return()=>window.cancelAnimationFrame(frame);
  },[profileStatus,visibleProjects.catalog]);
- React.useEffect(()=>subscribeV2DataChanges(['follows'],()=>setFollowRevision(v=>v+1),user?.id),[targetId,user?.id]);
- React.useEffect(()=>subscribeV2Resume(()=>setFollowRevision(v=>v+1)),[targetId,user?.id]);
+ React.useEffect(()=>{
+  if(!active)return;
+  return subscribeV2DataChanges(['follows'],()=>setFollowRevision(v=>v+1),user?.id);
+ },[active,targetId,user?.id]);
+ React.useEffect(()=>{
+  if(!active)return;
+  return subscribeV2Resume(()=>setFollowRevision(v=>v+1));
+ },[active,targetId,user?.id]);
  React.useEffect(()=>{setFollowBusy(false);setCopyStatus('');},[followKey]);
  React.useEffect(()=>{
   if(!api||!targetId){
@@ -85,7 +102,16 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
   const controller=new AbortController();
   setLoadState({key:requestKey,status:'loading'});setError('');
   fetch(api+'/api/public/profile/'+targetId,{credentials:'include',signal:controller.signal,cache:'no-store'})
-    .then(async response=>{if(!response.ok)throw Error('Unable to load profile');return response.json()})
+    .then(async response=>{
+     if(!response.ok){
+      // Never keep previously authorized private cards if access is revoked.
+      if(!controller.signal.aborted&&[401,403,404].includes(response.status)){
+       lastVerifiedProfileKey.current='';setProjects({catalog:[],saves:[]});setProfileUser(null);
+      }
+      throw Error('Unable to load profile');
+     }
+     return response.json();
+    })
     .then(result=>{
      if(controller.signal.aborted)return;
      lastVerifiedProfileKey.current=requestKey;
@@ -224,7 +250,7 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
   {id:'saves',label:'Saves',icon:<Bookmark size={16}/>},
   {id:'following',label:'Following',icon:<Users size={16}/>}
  ];
- return <section className="onece-public-profile" aria-label="Public profile">
+ return <section className="onece-public-profile" aria-label="Public profile" style={active?undefined:{display:'none'}}>
   <header className="onece-workspace-header onece-profile-navbar" aria-label="Profile navigation">
    <div className="onece-workspace-brand">
     <button type="button" className="library-settings onece-profile-nav-back" aria-label="Go back" title="Back" onClick={onBack}><ChevronLeft size={20}/></button>
@@ -255,7 +281,7 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
    {Boolean(user?.id)&&flagsStatus==='loading'&&<p className="onece-profile-status">Loading Save and Publish actions…</p>}
    {Boolean(user?.id)&&flagsStatus==='error'&&<p role="alert" className="onece-profile-status">{flagsError}<button type="button" onClick={retryFlags}>Retry</button></p>}
    {followError&&<p role="alert" className="onece-profile-status">{followError}<button type="button" onClick={()=>setFollowRevision(v=>v+1)}>Retry</button></p>}
-   {profileStatus==='loading'?<p className="onece-profile-status">Loading profile…</p>:profileStatus==='error'?null:tab==='following'?
+   {profileStatus==='loading'&&!sameVerifiedProfile?<p className="onece-profile-status">Loading profile…</p>:profileStatus==='error'&&!sameVerifiedProfile?null:tab==='following'?
     followStatus==='loading'?<p className="onece-profile-status">Loading following…</p>:followStatus==='error'?null:
     followData?.followingUsers.length?
      <div className="onece-profile-following-list">{followData.followingUsers.map(person=>

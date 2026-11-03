@@ -297,7 +297,17 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
   setError('');setLoading(true);
   lastLibraryFetch.current=Date.now();
   fetch(api+'/api/library/files/items',{credentials:'include',cache:'no-store',signal:controller.signal})
-   .then(async r=>{const body=await r.json().catch(()=>({}));if(!r.ok)throw Error(body.error||'Unable to load Home');return body})
+   .then(async r=>{
+    const body=await r.json().catch(()=>({}));
+    if(!r.ok){
+     // Expired/revoked session cannot keep displaying old private Home metadata.
+     if(!controller.signal.aborted&&(r.status===401||r.status===403)){
+      setData({beats:[],packs:[]});setLoadedViewerId(null);
+     }
+     throw Error(body.error||'Unable to load Home');
+    }
+    return body;
+   })
    .then(body=>{if(!controller.signal.aborted){setData(normalizeLibraryProjectsV2(body,Number(userId)));setLoadedViewerId(Number(userId));}})
    .catch(e=>{if(e.name!=='AbortError')setError(e.message||'Unable to load Library')})
    .finally(()=>{if(!controller.signal.aborted)setLoading(false)});
@@ -312,8 +322,8 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
   {actionError&&<p role="alert" className="v2-library-status">{actionError}</p>}
   {flagsStatus==='loading'&&active&&<p className="v2-library-status">Loading Save and Publish actions…</p>}
   {flagsStatus==='error'&&active&&<div className="v2-library-status" role="alert">{flagsError}<button type="button" onClick={retryFlags}>Retry</button></div>}
-  {error?<div className="v2-library-status" role="alert">{error}<button type="button" onClick={()=>setLibraryRevision(v=>v+1)}>Retry</button></div>:
-   loading||loadedViewerId!==Number(userId)?<p className="v2-library-status">Loading your Home…</p>:
+  {error&&<div className="v2-library-status" role="alert">{error}<button type="button" onClick={()=>setLibraryRevision(v=>v+1)}>Retry</button></div>}
+  {loadedViewerId!==Number(userId)?(loading||!error?<p className="v2-library-status">Loading your Home…</p>:null):
    empty?<div className="library-empty"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M4 4v16M9 4v16M14 4l4 16"/></svg><h2>Your Home is empty</h2><button type="button" className="library-add-audio" onClick={onUpload}>Add Audio</button></div>:
    <div className="v2-library-contents">
     {openedPack?<div className="library-pack-detail v2-pack-detail">
