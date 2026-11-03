@@ -167,7 +167,7 @@ export async function handlePublicProfiles(req,res,pathname,pool,currentUser){
   });
   send(res,response.status,response.data);return true;
  }
- if(parts.length===6&&parts[2]==='save'&&/^\\d+$/.test(parts[3])&&['beat','pack'].includes(parts[4])&&uuid.test(parts[5])&&['POST','DELETE'].includes(req.method)){
+ if(parts.length===6&&parts[2]==='save'&&/^\d+$/.test(parts[3])&&['beat','pack'].includes(parts[4])&&uuid.test(parts[5])&&['POST','DELETE'].includes(req.method)){
   const [, , ,ownerText,kind,id]=parts;
   const owner=Number(ownerText);
   if(!Number.isSafeInteger(owner)||owner<1||owner>2147483647){send(res,404,{error:'Project not found'});return true;}
