@@ -1,3 +1,17 @@
+## Atualização PR #28 — exclusão em cascata de packs e preparação de release (2026-11-03)
+
+**REGRA DEFINIDA PELO USUÁRIO:** Ao mover um pack para a lixeira, os beats que **só existem dentro dele** (sem card individual e sem outro pack ativo) devem ser movidos junto com o pack. Beats já visíveis individualmente na Home ou presentes em outro pack ativo são preservados e seus arquivos continuam referenciados, sem duplicação no R2. Pack e beats exclusivos recebem o mesmo `deleted_at` na transação, distinguindo cascata de beats apagados manualmente antes. Restaurar o pack restaura os beats cascata automaticamente, mas não os apagados individualmente. A listagem da Trash mostra o pack como um só item, sem beats filhos duplicados.
+
+**CORREÇÃO DE CONCORRÊNCIA:** Operações de criar beats/packs, editar projetos, adicionar membros, publicar, salvar e compartilhar usam o mesmo advisory lock por titular que a lixeira/GC; publicações e grants são validados novamente após obter lock. O purge mantém transação + outbox + proteção de FKs para mídias compartilhadas.
+
+**ESTADO DA MIGRATION:** A `012` já foi aplicada em produção v2, validada com 6/6 verificações true via executor temporário no Railway; executor removido, sem deploy do aplicativo e sem exclusão R2. **Não executar novamente.**
+
+**VALIDAÇÃO:** GitHub Actions `V2 API and frontend checks` run `41722000497` passou 6/6 jobs no commit `05a792a5`: incluindo migração 012 idempotente em PostgreSQL descartável, testes reais de relacionamento de packs/arquivos, API, builds web Node 22/26 e smoke da API. Alterações posteriores de documentação podem disparar nova execução a verificar.
+
+**PENDENTE ANTES DE MERGE/DEPLOY:** comprovar backup/restauração atual do banco v2 (há histórico de backup verificado antes da 012, mas não confirmado no conector agora); revisão final de exclusões R2/isolamento; plano de canary e testes manuais pós-release com mídia descartável; aprovação expressa do rollout coordenado. PR permanece isolada da main; R2 não foi apagado.
+
+---
+
 ## PR #28 — Trash em Settings, restauração e limpeza R2 segura (2026-11-03)
 
 **DECISÃO DO USUÁRIO:** Adicionar **Trash** às opções de Settings, **acima de Terms of Service**. O usuário deve poder esvaziar a lixeira, excluindo os objetos órfãos do Cloudflare R2 permanentemente. Manter o projeto de áudio/música sem duplicar mídias quando beats, packs e capas são compartilhados.
