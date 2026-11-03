@@ -28,7 +28,7 @@ test('square cover, playback overlay and card labels remain unchanged',()=>{
 
 test('up to five profile cards stay at 172px and center; six or more use fluid desktop grid',()=>{
  assert.match(profile,/length<=5\?" is-compact":""/);
- assert.match(css,/\.onece-profile-projects\.is-compact\{display:flex;flex-wrap:wrap;justify-content:center\}/);
+ assert.match(css,/\.onece-profile-projects\.is-compact\{display:flex;flex-wrap:wrap;justify-content:center;gap:24px 12px\}/);
  assert.match(css,/\.onece-profile-projects\.is-compact>\.onece-profile-project\{flex:0 0 172px;width:172px;max-width:100%\}/);
  assert.match(css,/\.onece-profile-projects\{display:grid;grid-template-columns:repeat\(6,minmax\(0,1fr\)\)/);
  assert.match(css,/@media\(max-width:680px\)\{[^\n]*?\.onece-profile-projects\.is-compact>\.onece-profile-project\{flex-basis:calc\(\(100% - 24px\)\/3\)/);
