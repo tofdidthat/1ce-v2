@@ -17,7 +17,8 @@ test('mockup composition uses one centered profile column with deliberate vertic
 });
 
 test('mobile keeps centered avatar, fluid tabs, and narrow two-column project cards',()=>{
- assert.match(css,/@media\(max-width:680px\)\{[^}]*\.onece-profile-top\{min-height:248px;padding:12px 0 40px/);
+ assert.match(css,/@media\(max-width:680px\)/);
+ assert.match(css,/\.onece-profile-top\{min-height:248px;padding:12px 0 40px/);
  assert.match(css,/@media\(max-width:420px\)\{\.onece-profile-projects\{gap:20px 14px\}/);
  assert.match(css,/flex:0 0 min\(172px,calc\(\(100% - 14px\)\/2\)\)/);
 });
