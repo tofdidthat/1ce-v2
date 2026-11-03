@@ -5,7 +5,7 @@ import './library-items-v2.css';
 import {subscribeV2DataChanges,subscribeV2Resume} from './data-refresh-v2';
 import useProjectFlagsV2 from './project-flags-v2';
 import ProjectContextMenuV2 from './project-context-menu-v2';
-import ProjectCoverV2 from './project-cover-v2';
+import ProjectCoverV2,{useProjectCoverUrlV2} from './project-cover-v2';
 import ProjectCardV2 from './project-card-v2';
 import {normalizeLibraryProjectsV2,normalizePackTracksV2,type LibraryBeatV2,type LibraryPackV2,type LibraryProjectsV2} from './project-read-v2';
 import {createProjectShareLinkV2} from './project-requests-v2';
@@ -210,21 +210,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
  const [muted,setMuted]=useState(false);
  const [shuffle,setShuffle]=useState(false);
  const [repeat,setRepeat]=useState<'off'|'all'|'one'>('off');
- const [coverUrl,setCoverUrl]=useState('');
- const [coverLoadedId,setCoverLoadedId]=useState<number|null>(null);
- useEffect(()=>{
-  const id=current?.cover_file_id??null;
-  setCoverUrl('');
-  setCoverLoadedId(null);
-  if(!id||!api)return;
-  let active=true;
-  let objectUrl='';
-  fetch(api+'/api/public/cover/'+(current?.owner_id??userId)+'/'+id,{credentials:'include'})
-   .then(response=>{if(!response.ok)throw Error('Cover unavailable');return response.blob()})
-   .then(blob=>{objectUrl=URL.createObjectURL(blob);if(active){setCoverUrl(objectUrl);setCoverLoadedId(id)}else URL.revokeObjectURL(objectUrl)})
-   .catch(()=>{if(active){setCoverUrl('');setCoverLoadedId(null)}});
-  return()=>{active=false;if(objectUrl)URL.revokeObjectURL(objectUrl)};
- },[current?.cover_file_id,current?.owner_id,userId]);
+ const coverUrl=useProjectCoverUrlV2(current?.owner_id??userId??null,current?.cover_file_id??null);
  useEffect(()=>{if(audioRef.current){audioRef.current.volume=volume;audioRef.current.muted=muted}},[volume,muted,current?.id]);
  useEffect(()=>{if(!popup)return;const key=(e:KeyboardEvent)=>{if(e.key==='Escape')setPopup(null)};document.addEventListener('keydown',key);return()=>document.removeEventListener('keydown',key)},[popup]);
  const audioRef=useRef<HTMLAudioElement|null>(null);
@@ -348,7 +334,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
  </div>}
  {current&&<div className="onece-player-dock v2-active-player" aria-label="Audio player">
   <div className="onece-global-player">
-   <div className="onece-player-cover" aria-hidden="true">{coverUrl&&coverLoadedId===current.cover_file_id?<img src={coverUrl} alt=""/>:<Music2 size={20}/>}</div>
+   <div className="onece-player-cover" aria-hidden="true">{coverUrl?<img src={coverUrl} alt=""/>:<Music2 size={20}/>}</div>
    <div className="onece-player-meta"><span className="onece-player-title" title={current.title}>{current.title}</span><span className="onece-player-author">1CE</span></div>
    <div className="onece-player-wave" style={{'--played':(duration?elapsed/duration*100:0)+'%'} as React.CSSProperties}>
     <div className={'onece-wave-bars'+(!waveBars.length?' is-loading':'')} aria-hidden="true">{waveBars.map((height,index)=><span key={index} className={index/waveBars.length*100<=(duration?elapsed/duration*100:0)?'is-played':''} style={{height:Math.max(2,height*34)+'px'}}/>)}</div><span className="onece-wave-cursor" aria-hidden="true"/>

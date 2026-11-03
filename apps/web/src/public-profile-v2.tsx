@@ -1,15 +1,16 @@
 import React,{useState} from 'react';
-import {Bookmark,Users,Share2,Eye,EyeOff,Link2,ListPlus,FolderPlus,Pencil,Image as ImageIcon,Download,Layers,Trash2,ChevronRight,Play,Pause} from 'lucide-react';
+import {Bookmark,Users,ArrowLeft,Copy,Eye,EyeOff,Link2,ListPlus,FolderPlus,Pencil,Image as ImageIcon,Download,Layers,Trash2,ChevronRight,Play,Pause} from 'lucide-react';
 import './public-profile-v2.css';
 import ProjectContextMenuV2 from './project-context-menu-v2';
 import ProjectCardV2 from './project-card-v2';
 import {createProjectShareLinkV2} from './project-requests-v2';
 import ProjectActionDialogV2,{type ContextProject,type ProjectAction,type ChangedProject} from './project-action-dialog-v2';
-import {subscribeV2DataChanges,subscribeV2Resume} from './data-refresh-v2';
+import {subscribeV2DataChanges,subscribeV2Resume,notifyV2DataChanged} from './data-refresh-v2';
 import useProjectFlagsV2 from './project-flags-v2';
 import {profilePictureV2} from './profile-picture-v2';
 import {normalizeProfileProjectsV2,normalizeLibraryProjectsV2,type ProfileProjectV2} from './project-read-v2';
 import {savedProjectKeyV2} from './project-identity-v2';
+import {getProfileFollowsV2,setProfileFollowV2,type ProfileFollowsV2} from './profile-follows-v2';
 
 function CatalogLibraryIcon({size=17}:{size?:number}){
  // Same SVG paths and styling as the Library navigation HomeMark.
@@ -18,7 +19,7 @@ function CatalogLibraryIcon({size=17}:{size?:number}){
 const api=import.meta.env.VITE_API_URL;
 type PublicProject=ProfileProjectV2;
 type ProfileTab='catalog'|'saves'|'following';
-export default function PublicProfileV2({user,onSettings,profileId,onPlayProject,playback}:{user:any;onSettings:()=>void;profileId?:string;onPlayProject?:(ownerId:number,kind:'beat'|'pack',id:string)=>void;playback?:{ownerId:number;kind:'beat'|'pack';id:string;playing:boolean}|null}){
+export default function PublicProfileV2({user,onSettings,onBack,onLogin,onOpenProfile,profileId,onPlayProject,playback}:{user:any;onSettings:()=>void;onBack:()=>void;onLogin:()=>void;onOpenProfile:(identifier:string)=>void;profileId?:string;onPlayProject?:(ownerId:number,kind:'beat'|'pack',id:string)=>void;playback?:{ownerId:number;kind:'beat'|'pack';id:string;playing:boolean}|null}){
  const [tab,setTab]=useState<ProfileTab>('catalog');
  const [projects,setProjects]=useState<{catalog:PublicProject[];saves:PublicProject[]}>({catalog:[],saves:[]});
  const {saved,published,status:flagsStatus,error:flagsError,refresh:retryFlags,toggleSaved,togglePublished}=useProjectFlagsV2();
@@ -29,15 +30,29 @@ export default function PublicProfileV2({user,onSettings,profileId,onPlayProject
  const [loadState,setLoadState]=useState<{key:string;status:'loading'|'ready'|'error'}>({key:'',status:'loading'});
  const [error,setError]=useState('');
  const [refreshRevision,setRefreshRevision]=useState(0);
+ const [followRevision,setFollowRevision]=useState(0);
+ const [followState,setFollowState]=useState<{key:string;status:'loading'|'ready'|'error';data:ProfileFollowsV2|null}>({key:'',status:'loading',data:null});
+ const [followError,setFollowError]=useState('');
+ const [followBusy,setFollowBusy]=useState(false);
+ const [copyStatus,setCopyStatus]=useState('');
+ const currentFollowRequest=React.useRef('');
  const targetId=profileId||String(user?.id||'');
  const requestKey=String(user?.id||'anonymous')+':'+targetId;
  const profileStatus=loadState.key===requestKey?loadState.status:'loading';
  const visibleProjects=profileStatus==='ready'?projects:{catalog:[],saves:[]};
  const visibleProfileUser=profileStatus==='ready'?profileUser:null;
- const isOwner=!profileId||String(user?.id)===String(visibleProfileUser?.id)||Boolean(user?.username&&user.username===profileId);
+ const isOwner=!!user?.id&&(!profileId||String(user.id)===String(visibleProfileUser?.id));
+ const resolvedTargetId=profileStatus==='ready'&&Number.isSafeInteger(Number(visibleProfileUser?.id))?Number(visibleProfileUser?.id):null;
+ const followKey=requestKey+':'+String(resolvedTargetId??'');
+ currentFollowRequest.current=followKey;
+ const followStatus=followState.key===followKey?followState.status:'loading';
+ const followData=followState.key===followKey?followState.data:null;
  React.useEffect(()=>subscribeV2DataChanges(['library','saves','publications','shares','identity'],
   ()=>setRefreshRevision(v=>v+1)),[targetId,user?.id]);
  React.useEffect(()=>subscribeV2Resume(()=>setRefreshRevision(v=>v+1)),[targetId,user?.id]);
+ React.useEffect(()=>subscribeV2DataChanges(['follows'],()=>setFollowRevision(v=>v+1),user?.id),[targetId,user?.id]);
+ React.useEffect(()=>subscribeV2Resume(()=>setFollowRevision(v=>v+1)),[targetId,user?.id]);
+ React.useEffect(()=>{setFollowBusy(false);setCopyStatus('');},[followKey]);
  React.useEffect(()=>{
   if(!api||!targetId){
    setLoadState({key:requestKey,status:'error'});setError('Profile API is not configured');return;
@@ -54,6 +69,20 @@ export default function PublicProfileV2({user,onSettings,profileId,onPlayProject
     }).catch(e=>{if(!controller.signal.aborted){setError(e instanceof Error?e.message:'Unable to load profile');setLoadState({key:requestKey,status:'error'});}});
    return()=>controller.abort();
  },[requestKey,refreshRevision]);
+ React.useEffect(()=>{
+  if(!resolvedTargetId){setFollowState({key:followKey,status:'loading',data:null});return;}
+  const controller=new AbortController();
+  setFollowState(previous=>({key:followKey,status:'loading',data:previous.key===followKey?previous.data:null}));setFollowError('');
+  void getProfileFollowsV2(resolvedTargetId,controller.signal).then(data=>{
+   if(!controller.signal.aborted)setFollowState({key:followKey,status:'ready',data});
+  }).catch(caught=>{
+   if(!controller.signal.aborted){
+    setFollowState({key:followKey,status:'error',data:null});
+    setFollowError(caught instanceof Error?caught.message:'Unable to load following');
+   }
+  });
+  return()=>controller.abort();
+ },[followKey,followRevision]);
  const toggleSave=async(project:PublicProject)=>{
   const key=savedProjectKeyV2(project.owner_id,project.kind,project.id);
   const already=saved.has(key);
@@ -89,6 +118,28 @@ export default function PublicProfileV2({user,onSettings,profileId,onPlayProject
    setProjects(previous=>({...previous,catalog:already?previous.catalog.filter(p=>p.kind+':'+p.id!==key):previous.catalog}));
   }catch(e){setError(e instanceof Error?e.message:'Unable to change publication')}
  };
+ const changeFollow=async()=>{
+  if(!user?.id){onLogin();return;}
+  if(!resolvedTargetId||isOwner||followStatus!=='ready'||!followData||followBusy)return;
+  const key=followKey;
+  setFollowBusy(true);setFollowError('');
+  try{
+   const result=await setProfileFollowV2(resolvedTargetId,followData.viewerFollows);
+   if(currentFollowRequest.current===key){
+    setFollowState(previous=>previous.key===key&&previous.data?
+     {...previous,data:{...previous.data,viewerFollows:result.viewerFollows,followersCount:result.followersCount}}:previous);
+   }
+   notifyV2DataChanged(['follows'],Number(user.id));
+  }catch(caught){
+   if(currentFollowRequest.current===key)setFollowError(caught instanceof Error?caught.message:'Unable to update follow');
+  }finally{if(currentFollowRequest.current===key)setFollowBusy(false);}
+ };
+ const copyProfileLink=async()=>{
+  const identifier=String(visibleProfileUser?.username||visibleProfileUser?.id||user?.username||user?.id||targetId);
+  const url=window.location.origin+'/u/'+encodeURIComponent(identifier);
+  try{await navigator.clipboard.writeText(url);setCopyStatus('Link copied');}
+  catch{setCopyStatus('Could not copy the profile link');}
+ };
  const copyProjectLink=async(project:PublicProject)=>{
   setMenu(null);setError('');
   try{
@@ -114,13 +165,23 @@ export default function PublicProfileV2({user,onSettings,profileId,onPlayProject
   {id:'following',label:'Following',icon:<Users size={16}/>}
  ];
  return <section className="onece-public-profile" aria-label="Public profile">
+  <header className="onece-profile-navbar" aria-label="Profile navigation">
+   <button type="button" className="onece-profile-nav-back" aria-label="Go back" title="Back" onClick={onBack}><ArrowLeft size={19}/></button>
+   <div className="onece-profile-nav-actions">
+    {(profileStatus==='ready'||!profileId)&&(isOwner?
+     <button type="button" className="onece-profile-nav-edit" aria-label="Edit profile" title="Edit profile" onClick={onSettings}><Pencil size={19}/></button>:
+     <button type="button" className="onece-profile-nav-follow" onClick={()=>void changeFollow()}
+      disabled={!resolvedTargetId||followBusy||Boolean(user?.id&&followStatus!=='ready')}
+      aria-label={followData?.viewerFollows?'Unfollow profile':'Follow profile'} aria-pressed={Boolean(followData?.viewerFollows)}>
+      {followBusy?'…':followData?.viewerFollows?'Following':'Follow'}</button>)}
+    <button type="button" className="onece-profile-nav-copy" aria-label="Copy profile link" title="Copy profile link" onClick={()=>void copyProfileLink()}><Copy size={19}/></button>
+    {copyStatus&&<span className="onece-profile-copy-status" role="status">{copyStatus}</span>}
+   </div>
+  </header>
   <div className="onece-profile-top">
    <div className="onece-profile-avatar">{picture?<img src={picture} alt="" referrerPolicy="no-referrer"/>:<span>{name.slice(0,1).toUpperCase()}</span>}</div>
    <div className="onece-profile-name">
     <h1>{handle?'@'+handle.replace(/^@/,''):name}</h1>
-    <div className="onece-profile-actions">
-     <button type="button" onClick={()=>{if(navigator.share)void navigator.share({title:name,url:window.location.origin+'/u/'+encodeURIComponent(handle||targetId)}).catch(()=>{});else if(navigator.clipboard)void navigator.clipboard.writeText(window.location.origin+'/u/'+encodeURIComponent(handle||targetId))}} aria-label="Share profile" title="Share profile"><Share2 size={15}/></button>
-    </div>
    </div>
    {handle&&name.toLowerCase()!==handle.toLowerCase()&&<p className="onece-profile-display-name">{name}</p>}
   </div>
@@ -129,10 +190,19 @@ export default function PublicProfileV2({user,onSettings,profileId,onPlayProject
   </nav>
   <div className="onece-profile-panel" id="onece-profile-tab-panel" role="tabpanel" aria-labelledby={'onece-tab-'+tab}>
    {error&&<p role="alert" className="onece-profile-status">{error}{profileStatus==='error'&&<button type="button" onClick={()=>setRefreshRevision(v=>v+1)}>Retry</button>}</p>}
-   {flagsStatus==='loading'&&<p className="onece-profile-status">Loading Save and Publish actions…</p>}
-   {flagsStatus==='error'&&<p role="alert" className="onece-profile-status">{flagsError}<button type="button" onClick={retryFlags}>Retry</button></p>}
+   {Boolean(user?.id)&&flagsStatus==='loading'&&<p className="onece-profile-status">Loading Save and Publish actions…</p>}
+   {Boolean(user?.id)&&flagsStatus==='error'&&<p role="alert" className="onece-profile-status">{flagsError}<button type="button" onClick={retryFlags}>Retry</button></p>}
+   {followError&&<p role="alert" className="onece-profile-status">{followError}<button type="button" onClick={()=>setFollowRevision(v=>v+1)}>Retry</button></p>}
    {profileStatus==='loading'?<p className="onece-profile-status">Loading profile…</p>:profileStatus==='error'?null:tab==='following'?
-    <div className="onece-profile-empty"><Users size={27}/><h2>Not following anyone yet</h2><p>Artists you follow will appear here once following is available.</p></div>:
+    followStatus==='loading'?<p className="onece-profile-status">Loading following…</p>:followStatus==='error'?null:
+    followData?.followingUsers.length?
+     <div className="onece-profile-following-list">{followData.followingUsers.map(person=>
+      <button type="button" key={person.id} className="onece-profile-following-person" onClick={()=>onOpenProfile(person.username||String(person.id))}>
+       <span className="onece-profile-following-avatar">{profilePictureV2(person)?<img src={profilePictureV2(person)} alt="" referrerPolicy="no-referrer"/>:String(person.name||person.username||'U').charAt(0).toUpperCase()}</span>
+       <span className="onece-profile-following-identity"><strong>{person.username?'@'+person.username:person.name||'Artist'}</strong>{person.username&&person.name&&<small>{person.name}</small>}</span>
+       <ChevronRight size={17}/>
+      </button>)}</div>:
+     <div className="onece-profile-empty"><Users size={27}/><h2>Not following anyone yet</h2><p>Artists followed by this profile will appear here.</p></div>:
     (tab==='catalog'?visibleProjects.catalog:visibleProjects.saves).length?
     <div className="onece-profile-projects">{(tab==='catalog'?visibleProjects.catalog:visibleProjects.saves).map(project=>{
      const key=savedProjectKeyV2(project.owner_id,project.kind,project.id);

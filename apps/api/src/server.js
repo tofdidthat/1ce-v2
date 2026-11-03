@@ -5,6 +5,7 @@ import pg from 'pg';
 import { handleLibraryFiles } from './library-files.js';
 import {handleProjectActions} from './project-actions.js';
 import { handlePublicProfiles } from './public-profiles.js';
+import { handleProfileFollows } from './profile-follows.js';
 import { handleProfileIdentity } from './profile-identity.js';
 const scrypt=promisify(scryptCallback);
 const pool=new pg.Pool({connectionString:process.env.DATABASE_URL,ssl:process.env.DATABASE_SSL==='true'?{rejectUnauthorized:true}:undefined});
@@ -76,6 +77,7 @@ const server=createServer(async(req,res)=>{
  try{
 
   if(await handleProfileIdentity(req,res,pathname,pool,currentUser))return;
+  if(await handleProfileFollows(req,res,pathname,pool,currentUser))return;
   if(await handlePublicProfiles(req,res,pathname,pool,currentUser))return;
   if(await handleProjectActions(req,res,pathname,pool,currentUser))return;
   if(await handleLibraryFiles(req,res,pathname,pool,currentUser))return;

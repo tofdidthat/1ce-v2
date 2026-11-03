@@ -8,6 +8,7 @@ const sharedPage=file('main.tsx');
 const menu=file('project-context-menu-v2.tsx');
 const card=file('project-card-v2.tsx');
 const cover=file('project-cover-v2.tsx');
+const coverCache=file('project-cover-cache-v2.ts');
 const requests=file('project-requests-v2.ts');
 const flags=file('project-flags-v2.tsx');
 const workspace=file('workspace-v1.tsx');
@@ -35,9 +36,10 @@ test('Add to places the folder icon before the label and the chevron after it',(
 
 test('single authorized cover path and no duplicated view-specific fetch fallback',()=>{
  assert.match(cover,/\/api\/public\/cover\//);
- assert.match(cover,/credentials:'include',signal:controller\.signal/);
- assert.match(cover,/controller\.abort\(\)/);
- assert.match(cover,/URL\.revokeObjectURL/);
+ assert.match(cover,/credentials:'include',cache:'no-store',signal/);
+ assert.match(cover,/useEffect\(\(\)=>\(\)=>cache\.clear\(\),\[cache\]\)/);
+ assert.match(coverCache,/entry\.controller\?\.abort\(\)/);
+ assert.match(coverCache,/this\.revokeUrl\(entry\.url\)/);
  assert.doesNotMatch(library,/\/api\/library\/files\/cover\//);
  assert.doesNotMatch(profile,/\/api\/public\/cover\//);
  assert.doesNotMatch(profile,/\/api\/library\/files\/cover\//);

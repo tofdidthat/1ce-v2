@@ -51,3 +51,46 @@
 .onece-profile-project-art .v2-card-play.onece-profile-project-play:focus-visible{outline:2px solid #c4b5fd;outline-offset:3px}
 
 @media(max-width:420px){.onece-profile-projects{gap:20px 14px}.onece-profile-project{flex:0 0 min(160px,calc((100% - 14px)/2));width:min(160px,calc((100% - 14px)/2))}}
+
+/* Profile-only navigation: replaces the regular workspace header on own/public profiles. */
+.onece-profile-navbar{
+ position:fixed;inset:0 0 auto;z-index:60;box-sizing:border-box;
+ display:flex;align-items:flex-start;justify-content:space-between;gap:16px;
+ min-height:calc(76px + env(safe-area-inset-top));
+ padding:calc(9px + env(safe-area-inset-top)) max(30px,env(safe-area-inset-right)) 10px max(30px,env(safe-area-inset-left));
+ background:linear-gradient(to bottom,rgba(9,8,14,.93),rgba(9,8,14,.75) 75%,transparent);
+}
+.onece-profile-navbar button{
+ display:flex;align-items:center;justify-content:center;flex:0 0 auto;
+ height:44px;min-width:44px;padding:0 12px;
+ border:1px solid #ffffff0b;border-radius:14px;
+ background:#242328;color:#f5f3f7;font:inherit;font-size:13px;font-weight:600;
+ cursor:pointer;transition:background .15s ease,color .15s ease;
+}
+.onece-profile-navbar button:hover:not(:disabled){background:#323035}
+.onece-profile-navbar button:focus-visible{outline:2px solid #a78bfa;outline-offset:3px}
+.onece-profile-navbar button:disabled{opacity:.55;cursor:wait}
+.onece-profile-nav-actions{position:relative;display:flex;align-items:center;gap:9px}
+.onece-profile-navbar .onece-profile-nav-follow{min-width:68px;padding:0 14px}
+.onece-profile-copy-status{
+ position:absolute;top:calc(100% + 8px);right:0;white-space:nowrap;
+ padding:8px 12px;border:1px solid #ffffff20;border-radius:10px;
+ background:#242328;color:#ede9f0;font-size:12px;box-shadow:0 6px 24px #0006;
+}
+.onece-profile-following-list{display:flex;flex-direction:column;gap:8px;padding-top:8px}
+.onece-profile-following-person{
+ display:flex;align-items:center;gap:12px;width:100%;min-height:64px;
+ padding:8px 12px;border:1px solid #ffffff0e;border-radius:13px;
+ background:#ffffff06;color:#f6f4fa;text-align:left;font:inherit;cursor:pointer;
+}
+.onece-profile-following-person:hover{background:#ffffff0d}
+.onece-profile-following-person:focus-visible{outline:2px solid #a78bfa;outline-offset:3px}
+.onece-profile-following-avatar{display:grid;place-items:center;flex:0 0 42px;width:42px;height:42px;border-radius:50%;overflow:hidden;background:#292331;color:#d5cbec;font-size:17px}
+.onece-profile-following-avatar img{display:block;width:100%;height:100%;object-fit:cover}
+.onece-profile-following-identity{display:flex;flex:1;min-width:0;flex-direction:column;gap:2px}
+.onece-profile-following-identity strong{font-size:13px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.onece-profile-following-identity small{font-size:12px;color:#938a9f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.onece-profile-following-person>svg{color:#9d96a8;flex:0 0 auto}
+@media(max-width:680px){
+ .onece-profile-navbar{min-height:calc(76px + env(safe-area-inset-top));padding:calc(10px + env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) 10px max(16px,env(safe-area-inset-left))}
+}
