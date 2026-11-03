@@ -89,6 +89,8 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
  const [openedTracks,setOpenedTracks]=useState<BeatItem[]>([]);
  const [packLoading,setPackLoading]=useState(false);
  const [packError,setPackError]=useState('');
+ const packRequest=useRef<AbortController|null>(null);
+ useEffect(()=>()=>packRequest.current?.abort(),[]);
  const [openedBeat,setOpenedBeat]=useState<BeatItem|null>(null);
  const [contextBeat,setContextBeat]=useState<{beat:BeatItem;x:number;y:number}|null>(null);
  const [contextPack,setContextPack]=useState<{pack:PackItem;x:number;y:number}|null>(null);
@@ -152,7 +154,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
   return()=>{document.removeEventListener('pointerdown',dismiss);document.removeEventListener('keydown',key);window.removeEventListener('scroll',dismiss,true);window.removeEventListener('resize',dismiss)};
  },[contextBeat,contextPack]);
 
- const {published,saved,toggleSaved,togglePublished}=useProjectFlagsV2();
+ const {published,saved,status:flagsStatus,error:flagsError,refresh:retryFlags,toggleSaved,togglePublished}=useProjectFlagsV2();
  const savedBeatIds=useMemo(()=>new Set([...saved].filter(key=>key.startsWith(userId+':beat:')).map(key=>key.slice((userId+':beat:').length))),[saved,userId]);
  const savedPackIds=useMemo(()=>new Set([...saved].filter(key=>key.startsWith(userId+':pack:')).map(key=>key.slice((userId+':pack:').length))),[saved,userId]);
  const [actionError,setActionError]=useState('');
@@ -176,14 +178,17 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
   catch(error){setActionError(error instanceof Error?error.message:'Unable to save')}
  };
  const openPack=async(pack:PackItem)=>{
+  packRequest.current?.abort();
+  const controller=new AbortController();
+  packRequest.current=controller;
   setOpenedPack(pack);setOpenedTracks([]);setPackError('');setPackLoading(true);
   try{
-   const response=await fetch(api+'/api/library/files/pack-tracks/'+pack.id,{credentials:'include'});
+   const response=await fetch(api+'/api/library/files/pack-tracks/'+pack.id,{credentials:'include',signal:controller.signal});
    if(!response.ok)throw Error('Unable to load pack');
    const result=await response.json();
-   setOpenedTracks(normalizePackTracksV2(result,pack));
-  }catch(e){setPackError(e instanceof Error?e.message:'Unable to load pack')}
-  finally{setPackLoading(false)}
+   if(!controller.signal.aborted)setOpenedTracks(normalizePackTracksV2(result,pack));
+  }catch(e){if(!controller.signal.aborted)setPackError(e instanceof Error?e.message:'Unable to load pack')}
+  finally{if(!controller.signal.aborted)setPackLoading(false)}
  };
  useEffect(()=>{if(!openedBeat)return;const close=(event:KeyboardEvent)=>{if(event.key==='Escape')setOpenedBeat(null)};document.addEventListener('keydown',close);return()=>document.removeEventListener('keydown',close)},[openedBeat]);
 
@@ -287,8 +292,10 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
  const empty=!standaloneBeats.length&&!visibleData.packs.length;
  return <section className={"beat-profile library-page onece-v2-library"+(!active?" onece-library-inactive":"")}><div className="beat-profile-content"><div className="library-items">
   {actionError&&<p role="alert" className="v2-library-status">{actionError}</p>}
-  {loading||loadedViewerId!==Number(userId)?<p className="v2-library-status">Loading your Library…</p>:
-   error?<div className="v2-library-status" role="alert">{error}<button type="button" onClick={()=>setLibraryRevision(v=>v+1)}>Retry</button></div>:
+  {flagsStatus==='loading'&&active&&<p className="v2-library-status">Loading Save and Publish actions…</p>}
+  {flagsStatus==='error'&&active&&<div className="v2-library-status" role="alert">{flagsError}<button type="button" onClick={retryFlags}>Retry</button></div>}
+  {error?<div className="v2-library-status" role="alert">{error}<button type="button" onClick={()=>setLibraryRevision(v=>v+1)}>Retry</button></div>:
+   loading||loadedViewerId!==Number(userId)?<p className="v2-library-status">Loading your Library…</p>:
    empty?<div className="library-empty"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M4 4v16M9 4v16M14 4l4 16"/></svg><h2>Your Library is Empty</h2><button type="button" className="library-add-audio" onClick={onUpload}>Add Audio</button></div>:
    <div className="v2-library-contents">
     {openedPack?<div className="library-pack-detail v2-pack-detail">
@@ -306,15 +313,15 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
     </div>}
    </div>}
  </div></div>
- {contextPack&&<ProjectContextMenuV2 project={{...contextPack.pack,kind:'pack'}} x={contextPack.x} y={contextPack.y} owner published={published.has(publicationKey('pack',contextPack.pack.id))} saved={savedPackIds.has(contextPack.pack.id)} onPublish={()=>void togglePublish('pack',contextPack.pack.id)} onSave={()=>{const id=contextPack.pack.id;setContextPack(null);void toggleSavedProject('pack',id)}} onShare={()=>void copyProjectLink('pack',contextPack.pack.id)} onQueue={()=>{const pack=contextPack.pack;setContextPack(null);void (async()=>{try{const response=await fetch(api+'/api/library/files/pack-tracks/'+pack.id,{credentials:'include'});if(!response.ok)throw Error('Unable to load pack tracks');const result=await response.json();const tracks=normalizePackTracksV2(result,pack);if(!tracks.length)return;if(!current)choose(tracks[0],tracks,pack.id);else setQueue(previous=>[...previous,...tracks.map(beat=>({...beat,owner_id:userId}))])}catch(error){setPlayerError(error instanceof Error?error.message:'Unable to add pack to queue')}})()}} onAction={action=>showProjectAction(action,{...contextPack.pack,kind:'pack'})}/>}
- {contextBeat&&<ProjectContextMenuV2 project={{...contextBeat.beat,kind:'beat'}} x={contextBeat.x} y={contextBeat.y} owner published={published.has(publicationKey('beat',contextBeat.beat.id))} saved={savedBeatIds.has(contextBeat.beat.id)} onPublish={()=>void togglePublish('beat',contextBeat.beat.id)} onSave={()=>{const id=contextBeat.beat.id;setContextBeat(null);void toggleSavedProject('beat',id)}} onShare={()=>void copyProjectLink('beat',contextBeat.beat.id)} onQueue={()=>addToQueue(contextBeat.beat)} onAction={action=>showProjectAction(action,{...contextBeat.beat,kind:'beat'})}/>}
+ {contextPack&&<ProjectContextMenuV2 project={{...contextPack.pack,kind:'pack'}} x={contextPack.x} y={contextPack.y} owner published={published.has(publicationKey('pack',contextPack.pack.id))} saved={savedPackIds.has(contextPack.pack.id)} onPublish={flagsStatus==='ready'?()=>void togglePublish('pack',contextPack.pack.id):undefined} onSave={flagsStatus==='ready'?()=>{const id=contextPack.pack.id;setContextPack(null);void toggleSavedProject('pack',id)}:undefined} onShare={()=>void copyProjectLink('pack',contextPack.pack.id)} onQueue={()=>{const pack=contextPack.pack;setContextPack(null);void (async()=>{try{const response=await fetch(api+'/api/library/files/pack-tracks/'+pack.id,{credentials:'include'});if(!response.ok)throw Error('Unable to load pack tracks');const result=await response.json();const tracks=normalizePackTracksV2(result,pack);if(!tracks.length)return;if(!current)choose(tracks[0],tracks,pack.id);else setQueue(previous=>[...previous,...tracks.map(beat=>({...beat,owner_id:userId}))])}catch(error){setPlayerError(error instanceof Error?error.message:'Unable to add pack to queue')}})()}} onAction={action=>showProjectAction(action,{...contextPack.pack,kind:'pack'})}/>}
+ {contextBeat&&<ProjectContextMenuV2 project={{...contextBeat.beat,kind:'beat'}} x={contextBeat.x} y={contextBeat.y} owner published={published.has(publicationKey('beat',contextBeat.beat.id))} saved={savedBeatIds.has(contextBeat.beat.id)} onPublish={flagsStatus==='ready'?()=>void togglePublish('beat',contextBeat.beat.id):undefined} onSave={flagsStatus==='ready'?()=>{const id=contextBeat.beat.id;setContextBeat(null);void toggleSavedProject('beat',id)}:undefined} onShare={()=>void copyProjectLink('beat',contextBeat.beat.id)} onQueue={()=>addToQueue(contextBeat.beat)} onAction={action=>showProjectAction(action,{...contextBeat.beat,kind:'beat'})}/>}
  {actionDialog&&<ProjectActionDialogV2
   key={actionDialog.action+':'+actionDialog.project.kind+':'+actionDialog.project.id}
   project={actionDialog.project} action={actionDialog.action} packs={visibleData.packs} userId={userId}
   onClose={()=>setActionDialog(null)} onChanged={onProjectChanged}/>}
  {openedBeat&&<div className="beat-player-overlay v2-beat-overlay" role="dialog" aria-modal="true" aria-label={openedBeat.title} onClick={()=>setOpenedBeat(null)}>
   <div className="beat-player-widget v2-beat-widget" onClick={e=>e.stopPropagation()}>
-   <button type="button" className={'v2-beat-save'+(savedBeatIds.has(openedBeat.id)?' is-saved':'')} aria-label={savedBeatIds.has(openedBeat.id)?'Unsave beat':'Save beat'} aria-pressed={savedBeatIds.has(openedBeat.id)} onClick={()=>void toggleSavedProject('beat',openedBeat.id)}><Bookmark size={18} fill={savedBeatIds.has(openedBeat.id)?'currentColor':'none'}/></button>
+   <button type="button" className={'v2-beat-save'+(savedBeatIds.has(openedBeat.id)?' is-saved':'')} aria-label={savedBeatIds.has(openedBeat.id)?'Unsave beat':'Save beat'} aria-pressed={savedBeatIds.has(openedBeat.id)} disabled={flagsStatus!=='ready'} onClick={()=>void toggleSavedProject('beat',openedBeat.id)}><Bookmark size={18} fill={savedBeatIds.has(openedBeat.id)?'currentColor':'none'}/></button>
    <button type="button" className="beat-player-close v2-beat-close" aria-label="Close player" onClick={()=>setOpenedBeat(null)}><X size={16} strokeWidth={1.8}/></button>
    <div className="card v2-music-card">
     <div className={'mask'+(playing&&current?.id===openedBeat.id?' is-playing':'')}><div className="spin"><ProjectCoverV2 ownerId={userId} fileId={openedBeat.cover_file_id} title={openedBeat.title} className="v2-item-cover"/></div><div className="hole"><div className="hole-inner"/></div></div>
