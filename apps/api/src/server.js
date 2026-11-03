@@ -20,7 +20,16 @@ let activePasswordChecks=0;
 const MAX_PARALLEL_PASSWORD_CHECKS=8;
 class LoginCapacityExceeded extends Error {}
 async function verify(password,stored){
- const p=(stored||'').split('
+ const p=(stored||'').split('$');
+ if(p.length!==3||p[0]!=='scrypt'||!/^[a-f0-9]{32}$/i.test(p[1])||!/^[a-f0-9]{128}$/i.test(p[2]))return false;
+ if(activePasswordChecks>=MAX_PARALLEL_PASSWORD_CHECKS)throw new LoginCapacityExceeded('Password verification busy');
+ activePasswordChecks++;
+ try{
+  const expected=Buffer.from(p[2],'hex');
+  const derived=await scrypt(password,Buffer.from(p[1],'hex'),expected.length,{N:16384,r:8,p:1});
+  return timingSafeEqual(derived,expected);
+ }finally{activePasswordChecks--;}
+}
 function cookie(token,maxAge){return cookieName+'='+token+'; HttpOnly; Secure; SameSite=None; Path=/; Max-Age='+maxAge;}
 async function currentUser(req){const token=parseCookies(req.headers.cookie)[cookieName];if(!token||!/^[a-f0-9]{64}$/.test(token))return null;const q=await pool.query('SELECT u.id,u.email,u.name,u.picture,u.username,(u.avatar_key IS NOT NULL) AS has_avatar,u.avatar_updated_at FROM account_sessions s JOIN account_users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>now()',[hash(token)]);return q.rows[0]||null;}
 
