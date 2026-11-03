@@ -1,0 +1,30 @@
+/* World — follows 1CE's deep-dark workspace, typography and compact profile tabs. */
+.onece-world{width:min(920px,calc(100% - 48px));margin:0 auto 90px;color:#f5f3ff;font-family:inherit}
+.onece-world-heading{width:min(560px,100%);margin:22px auto 28px}
+.onece-world-heading h1{margin:0;font-size:22px;font-weight:650;letter-spacing:-.035em;line-height:1.4}
+.onece-world-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:min(560px,100%);margin:0 auto;border-bottom:1px solid #ffffff15}
+.onece-world-tabs button{position:relative;min-width:0;min-height:52px;padding:12px 8px;border:0;background:transparent;color:#8f899e;font:inherit;font-size:14px;font-weight:550;text-align:center;cursor:pointer;transition:color .16s ease}
+.onece-world-tabs button:hover{color:#d9d1e7}
+.onece-world-tabs button.is-active{color:#f7f4fc;font-weight:650}
+.onece-world-tabs button.is-active::after{content:'';position:absolute;inset:auto 0 -1px;height:2px;border-radius:2px;background:#f7f4fc}
+.onece-world-tabs button:focus-visible,.onece-world-person:focus-visible,.onece-world-status button:focus-visible{outline:2px solid #a78bfa;outline-offset:3px}
+.onece-world-panel{width:min(560px,100%);margin:0 auto;padding-top:20px}
+.onece-world-content{box-sizing:border-box;width:100%;padding:20px;border:1px solid #ffffff0b;border-radius:20px;background:#ffffff05}
+.onece-world-content h2{margin:0 0 13px;color:#e8e3f0;font-size:13px;font-weight:600;letter-spacing:-.01em}
+.onece-world-empty{display:flex;align-items:center;justify-content:center;flex-direction:column;min-height:222px;padding:22px 20px;border-radius:15px;background:#ffffff04;text-align:center}
+.onece-world-empty>svg{margin-bottom:16px;color:#9e8cbf}
+.onece-world-empty h3{margin:0;color:#e6e0ec;font-size:15px;font-weight:600}
+.onece-world-empty p{margin:9px 0 0;max-width:330px;color:#92899d;font-size:12px;line-height:1.7}
+.onece-world-status{padding:55px 16px;color:#a89fb4;font-size:13px;text-align:center}
+.onece-world-status button{margin-left:12px;padding:7px 12px;border:1px solid #ffffff19;border-radius:10px;background:#ffffff0a;color:#f5f3ff;font:inherit;cursor:pointer}
+.onece-world-people{display:flex;flex-direction:column;gap:8px}
+.onece-world-person{width:100%;display:flex;align-items:center;gap:13px;min-height:72px;padding:11px 12px;border:1px solid #ffffff0b;border-radius:13px;background:#ffffff06;color:#f5f3ff;text-align:left;font:inherit;cursor:pointer;transition:background .16s ease}
+.onece-world-person:hover{background:#ffffff10}
+.onece-world-avatar{display:grid;place-items:center;flex:0 0 44px;width:44px;height:44px;border-radius:50%;overflow:hidden;background:#292331;color:#c4b5fd;font-size:18px;font-weight:600}
+.onece-world-avatar img{display:block;width:100%;height:100%;object-fit:cover}
+.onece-world-person-name{display:flex;flex-direction:column;flex:1;min-width:0;gap:3px}
+.onece-world-person-name strong{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.onece-world-person-name small{color:#978e9f;font-size:11px}
+.onece-world-person>svg{flex-shrink:0;color:#9b8da8}
+@media(max-width:680px){.onece-world{width:calc(100% - 32px)}.onece-world-heading{margin:12px auto 24px}.onece-world-heading h1{font-size:20px}.onece-world-tabs button{min-height:48px;font-size:13px}.onece-world-content{padding:15px;border-radius:16px}.onece-world-empty{min-height:215px}}
+@media(prefers-reduced-motion:reduce){.onece-world-tabs button,.onece-world-person{transition:none}}
