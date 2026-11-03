@@ -53,6 +53,7 @@ test('social icon styles map known hosts and use canonical Link2 for other HTTPS
 test('Post to profile picker uses canonical Library and shared Publish state, not duplicate routes',()=>{
  assert.match(panel,/fetch\(api\+'\/api\/library\/files\/items'/);
  assert.match(panel,/normalizeLibraryProjectsV2\(data,viewer\)/);
+ assert.match(panel,/normalized\.beats\.filter\(beat=>beat\.library_visible!==false\)/);
  assert.match(panel,/getProfileFollowsV2|togglePublished\(project\.kind,project\.id\)/);
  assert.match(panel,/published\.has\(projectKey\(project\)\)/);
  assert.match(panel,/className="onece-edit-picker-project"/);
