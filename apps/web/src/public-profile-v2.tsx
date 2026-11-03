@@ -41,7 +41,7 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
  const [refreshRevision,setRefreshRevision]=useState(0);
  const previouslyActive=React.useRef(active);
  React.useEffect(()=>{
-  if(active&&!previouslyActive.current)setRefreshRevision(value=>value+1);
+  if(active&&!previouslyActive.current){setRefreshRevision(value=>value+1);setFollowRevision(value=>value+1);}
   previouslyActive.current=active;
  },[active]);
  const [followRevision,setFollowRevision]=useState(0);
@@ -102,7 +102,16 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
   const controller=new AbortController();
   setLoadState({key:requestKey,status:'loading'});setError('');
   fetch(api+'/api/public/profile/'+targetId,{credentials:'include',signal:controller.signal,cache:'no-store'})
-    .then(async response=>{if(!response.ok)throw Error('Unable to load profile');return response.json()})
+    .then(async response=>{
+     if(!response.ok){
+      // Never keep previously authorized private cards if access is revoked.
+      if(!controller.signal.aborted&&[401,403,404].includes(response.status)){
+       lastVerifiedProfileKey.current='';setProjects({catalog:[],saves:[]});setProfileUser(null);
+      }
+      throw Error('Unable to load profile');
+     }
+     return response.json();
+    })
     .then(result=>{
      if(controller.signal.aborted)return;
      lastVerifiedProfileKey.current=requestKey;
