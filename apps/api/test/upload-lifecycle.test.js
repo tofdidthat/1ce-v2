@@ -89,7 +89,7 @@ function setup(){
   if(command.constructor.name==='HeadObjectCommand'){
    if(!object){const err=new Error('Not found');err.name='NotFound';throw err;}
    const head={ContentLength:object.bytes.length,ContentType:object.type,ETag:'"'+checksum(object.bytes)+'"'};
-    onHead(key,objects);return head;
+    onHead(key,objects,head);return head;
   }
   if(command.constructor.name==='GetObjectCommand'){
    if(!object){const err=new Error('Not found');err.name='NotFound';throw err;}
@@ -423,5 +423,18 @@ test('conditional CopyObject rejects staging replaced between HEAD and promotion
  assert.match(response.body.error,/changed during verification/);
  assert.equal(file.status,'pending');
  assert.equal(h.objects.has(file.object_key),true);
+ assert.equal([...h.objects.keys()].some(k=>k.includes('/verified/')),false);
+});
+
+
+test('R2 HEAD without ETag fails closed before any server-side copy',async()=>{
+ const h=setup(),start=await h.invoke('/api/library/files/init',uploaded());
+ const file=h.files.get(start.body.id);h.put(file);
+ h.onHead((key,objects,head)=>{delete head.ETag;});
+ const response=await h.invoke('/api/library/files/'+file.id+'/complete');
+ assert.equal(response.status,503);
+ assert.match(response.body.error,/verification unavailable/i);
+ assert.equal(file.status,'pending');
+ assert.equal(h.commands.some(c=>c.constructor.name==='CopyObjectCommand'),false);
  assert.equal([...h.objects.keys()].some(k=>k.includes('/verified/')),false);
 });
