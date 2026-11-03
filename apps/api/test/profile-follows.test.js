@@ -80,7 +80,9 @@ test('anonymous writes, self-follow, and nonexistent targets are rejected withou
  assert.equal((await request(db,'POST',999,1)).status,404);
  assert.equal((await request(db,'GET',999,1)).status,404);
  assert.equal((await request(db,'GET',0,null)).status,404);
- assert.equal((await request(db,'GET','not-a-user',null)).status,0);
+ const unmatched={method:'GET'};
+ const unused={status:0,writeHead(status){this.status=status},end(){}};
+ assert.equal(await handleProfileFollows(unmatched,unused,'/api/public/follows/not-a-user',db,async()=>null),false);
  assert.equal(db.rows.size,0);
 });
 test('only explicit follow resource can handle its own route; wrong method is blocked',async()=>{
