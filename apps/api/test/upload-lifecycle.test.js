@@ -385,7 +385,7 @@ test('shared completion throttle caps repeated R2 checks per owner',async()=>{
 
 test('per-account stored byte quota includes existing READY assets',async()=>{
  const h=setup(),ready=uploaded();
- h.addReady({...ready,size:10*1024*1024*1024});
+ h.addReady({...ready,sha256:checksum(Buffer.from('different existing asset')),size:10*1024*1024*1024});
  const denied=await h.invoke('/api/library/files/init',ready);
  assert.equal(denied.status,429);
  assert.match(denied.body.error,/quota/i);
