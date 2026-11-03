@@ -391,3 +391,19 @@ test('per-account stored byte quota includes existing READY assets',async()=>{
  assert.equal(denied.status,429);
  assert.match(denied.body.error,/quota/i);
 });
+
+
+test('conditional CopyObject rejects staging replaced between HEAD and promotion',async()=>{
+ const h=setup(),start=await h.invoke('/api/library/files/init',uploaded());
+ const file=h.files.get(start.body.id);h.put(file);
+ h.onHead((key,objects)=>{
+  const changed=Buffer.from(sample);changed[changed.length-1]^=0x01;
+  objects.set(key,{bytes:changed,type:'audio/mpeg'});
+ });
+ const response=await h.invoke('/api/library/files/'+file.id+'/complete');
+ assert.equal(response.status,409);
+ assert.match(response.body.error,/changed during verification/);
+ assert.equal(file.status,'pending');
+ assert.equal(h.objects.has(file.object_key),true);
+ assert.equal([...h.objects.keys()].some(k=>k.includes('/verified/')),false);
+});
