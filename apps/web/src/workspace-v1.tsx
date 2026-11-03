@@ -307,7 +307,16 @@ export default function WorkspaceV2({user,profileId}:{user:any;profileId?:string
  view==='upload'?<LibraryUploadV2 userId={account?.id}/>:
  view==='account'?<AccountSettingsV2 user={account} onUserChange={setAccount} onViewProfile={()=>onNavigate('profile')} onLogout={logout}/>:
  view==='profile'?<PublicProfileV2 user={account} profileId={profileId} playback={playback} onPlayProject={requestPlayback}
-  onIdentityUpdated={setAccount}
+  onIdentityUpdated={updated=>{
+    const oldHandle=String(account?.username||'').toLowerCase();
+    setAccount(updated);
+    // A renamed own /u/:username URL is no longer valid: keep profile in the
+    // editor's current context by replacing just that owned route, not replaying the player.
+    if(profileId&&oldHandle&&profileId.toLowerCase()===oldHandle&&updated?.username&&
+       String(updated.username).toLowerCase()!==oldHandle){
+      navigate('/u/'+encodeURIComponent(updated.username),{replace:true});
+    }
+   }}
   onBack={()=>{const index=window.history.state?.idx;if(typeof index==='number'&&index>0)navigate(-1);else navigate(account?.id?'/app/library':'/');}}
   onLogin={()=>navigate('/login')}
   onOpenProfile={identifier=>navigate('/u/'+encodeURIComponent(identifier))}/>: view==='edit-profile'?<section className="onece-workspace-placeholder"><h1>Edit Profile</h1><p>Profile editing is not yet available in v2.</p></section>:
