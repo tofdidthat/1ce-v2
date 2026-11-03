@@ -2,7 +2,8 @@
 import { randomUUID, createHash } from 'node:crypto';
 import { S3Client, PutObjectCommand, HeadObjectCommand, GetObjectCommand, DeleteObjectCommand, CopyObjectCommand } from '@aws-sdk/client-s3';
 import {verifyUploadedObject,InvalidMedia,VerificationUnavailable} from './upload-security.js';
-import {rateLimitExceeded,uploadLimits,storageQuotaBytes} from './api-rate-limits.js';
+import {rateLimitExceeded,uploadLimits} from './api-rate-limits.js';
+import {accountStorageQuota} from './storage-plans.js';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import {resolveAuthorizedMediaFile} from './project-media.js';
 import {streamAuthorizedAudio} from './audio-stream.js';
@@ -151,9 +152,10 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser,{
     COALESCE(sum(byte_size) FILTER (WHERE status='ready' OR
       (status='pending' AND created_at>now()-interval '30 minutes')),0)::text AS reserved_bytes
     FROM library_files WHERE user_id=$1`,[user.id]);
+   const maxStoredBytes=await accountStorageQuota(db,user.id);
    const count=Number(quota.rows[0]?.pending_count||0);
    const reserved=Number(quota.rows[0]?.reserved_bytes||0);
-   if(count>=uploadLimits.maxPending||reserved+size>storageQuotaBytes()){
+   if(count>=uploadLimits.maxPending||reserved+size>maxStoredBytes){
     await db.query('ROLLBACK');
     send(res,429,{error:'Account upload quota reached'});return true;
    }
