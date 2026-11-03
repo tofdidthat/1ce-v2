@@ -24,7 +24,7 @@ function poolFixture(){
    if(sql.startsWith('SELECT id,title,deleted_at FROM library_packs'))return {rows:[],rowCount:0};
    if(sql.startsWith('SELECT count(*)::int AS pending FROM v2_r2_delete_jobs'))return {rows:[{pending:0}],rowCount:1};
    if(sql.startsWith('UPDATE library_beats SET deleted_at=NULL'))return {rowCount:1,rows:[{id:beat}]};
-   if(['BEGIN','COMMIT','ROLLBACK'].includes(sql))return {rows:[],rowCount:0};
+   if(['BEGIN','COMMIT','ROLLBACK'].includes(sql)||sql.startsWith('SELECT pg_advisory_xact_lock'))return {rows:[],rowCount:0};
    throw Error('Unexpected query: '+sql);
   },
   async connect(){return {query:(...args)=>this.query(...args),release(){}};}
