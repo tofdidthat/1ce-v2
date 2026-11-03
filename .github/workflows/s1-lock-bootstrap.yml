@@ -1,0 +1,30 @@
+name: Temporary S1 pnpm lockfile bootstrap
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/s1-lock-bootstrap.yml'
+permissions:
+  contents: read
+jobs:
+  generate-lockfile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.18.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Resolve exact workspace graph without running scripts
+        run: pnpm install --lockfile-only --ignore-scripts
+      - name: Emit generated lock for reviewed commit (bootstrap only)
+        run: |
+          node - <<'NODE'
+          const {readFileSync}=require('node:fs');
+          const lines=readFileSync('pnpm-lock.yaml','utf8').split('\n');
+          console.log('1CE_LOCK_BEGIN');
+          for(const line of lines)console.log('1CE_LOCK_LINE:'+line);
+          console.log('1CE_LOCK_END');
+          NODE
