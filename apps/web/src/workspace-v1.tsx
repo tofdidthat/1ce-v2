@@ -293,8 +293,10 @@ export default function WorkspaceV2({user,profileId}:{user:any;profileId?:string
  const logout=async()=>{const api=import.meta.env.VITE_API_URL;if(!api)throw Error('API is not configured');const response=await fetch(api+'/auth/logout',{method:'POST',credentials:'include'});if(!response.ok)throw Error('Could not log out');window.location.assign('/login');};
  const [playerVisible,setPlayerVisible]=useState(false);
  const [playRequest,setPlayRequest]=useState<{ownerId:number;kind:'beat'|'pack';id:string;nonce:number}|null>(null);
+ const [queueRequest,setQueueRequest]=useState<{ownerId:number;kind:'beat'|'pack';id:string;nonce:number}|null>(null);
  const [playback,setPlayback]=useState<{ownerId:number;kind:'beat'|'pack';id:string;playing:boolean}|null>(null);
  const requestPlayback=(ownerId:number,kind:'beat'|'pack',id:string)=>setPlayRequest(previous=>({ownerId,kind,id,nonce:(previous?.nonce||0)+1}));
+ const requestQueue=(ownerId:number,kind:'beat'|'pack',id:string)=>setQueueRequest(previous=>({ownerId,kind,id,nonce:(previous?.nonce||0)+1}));
  const view=profileId?'profile':location.pathname==='/app/library'?'library':location.pathname.endsWith('/discover')?'discover':location.pathname.endsWith('/upload')?'upload':location.pathname.endsWith('/settings')?'account':location.pathname.endsWith('/profile/edit')?'edit-profile':'profile';
  const onNavigate=(next)=>navigate(next==='library'?'/app/library':next==='account'?'/app/settings':next==='edit-profile'?'/app/profile/edit':'/app/'+next);
  useEffect(()=>{document.title=({library:'Library',discover:'Discover',upload:'Upload',account:'Settings',profile:'Profile','edit-profile':'Edit Profile'}[view]||'Library')+' — 1CE'},[view]);
@@ -302,11 +304,11 @@ export default function WorkspaceV2({user,profileId}:{user:any;profileId?:string
  <style>{`.onece-library-inactive{position:static!important;padding:0!important;margin:0!important;min-height:0!important;height:0!important;overflow:visible!important}.onece-library-inactive>.beat-profile-content{display:none!important}`}</style>
  <HeaderV2 view={view} user={account} externalProfile={Boolean(profileId)} onNavigate={onNavigate}/>
  <main className="onece-v2-workspace-main">
- <LibraryItemsV2 active={view==='library'} playRequest={playRequest} userId={account?.id} onUpload={()=>onNavigate('upload')} onPlayerVisibility={setPlayerVisible} onPlaybackChange={setPlayback}/>
+ <LibraryItemsV2 active={view==='library'} playRequest={playRequest} queueRequest={queueRequest} userId={account?.id} onUpload={()=>onNavigate('upload')} onPlayerVisibility={setPlayerVisible} onPlaybackChange={setPlayback}/>
  {view==='library'?null:
  view==='upload'?<LibraryUploadV2 userId={account?.id}/>:
  view==='account'?<AccountSettingsV2 user={account} onUserChange={setAccount} onViewProfile={()=>onNavigate('profile')} onLogout={logout}/>:
- view==='profile'?<PublicProfileV2 user={account} profileId={profileId} playback={playback} onPlayProject={requestPlayback}
+ view==='profile'?<PublicProfileV2 user={account} profileId={profileId} playback={playback} onPlayProject={requestPlayback} onQueueProject={requestQueue}
   onIdentityUpdated={updated=>{
     const oldHandle=String(account?.username||'').toLowerCase();
     setAccount(updated);

@@ -9,6 +9,7 @@ import ProjectCoverV2,{useProjectCoverUrlV2} from './project-cover-v2';
 import ProjectCardV2 from './project-card-v2';
 import {normalizeLibraryProjectsV2,normalizePackTracksV2,type LibraryBeatV2,type LibraryPackV2,type LibraryProjectsV2} from './project-read-v2';
 import {createProjectShareLinkV2} from './project-requests-v2';
+import {fetchPlayableProjectV2} from './public-project-actions-v2';
 import ProjectActionDialogV2,{type ContextProject,type ProjectAction,type ChangedProject} from './project-action-dialog-v2';
 const api=import.meta.env.VITE_API_URL;
 type BeatItem = LibraryBeatV2;
@@ -64,7 +65,7 @@ function useWaveform(fileId:number|null,ownerId:number|null){
  },[fileId,ownerId]);
  return bars;
 }
-export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackChange,userId,active=true,playRequest}:{onUpload:()=>void;onPlayerVisibility?:(visible:boolean)=>void;onPlaybackChange?:(state:{ownerId:number;kind:'beat'|'pack';id:string;playing:boolean}|null)=>void;userId?:number;active?:boolean;playRequest?:{ownerId:number;kind:'beat'|'pack';id:string;nonce:number}|null}){
+export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackChange,userId,active=true,playRequest,queueRequest}:{onUpload:()=>void;onPlayerVisibility?:(visible:boolean)=>void;onPlaybackChange?:(state:{ownerId:number;kind:'beat'|'pack';id:string;playing:boolean}|null)=>void;userId?:number;active?:boolean;playRequest?:{ownerId:number;kind:'beat'|'pack';id:string;nonce:number}|null;queueRequest?:{ownerId:number;kind:'beat'|'pack';id:string;nonce:number}|null}){
  const [data,setData]=useState<LibraryData>({beats:[],packs:[]});
  const [loadedViewerId,setLoadedViewerId]=useState<number|null>(null);
  const [libraryRevision,setLibraryRevision]=useState(0);
@@ -85,6 +86,8 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
  },[active]);
  const [loading,setLoading]=useState(true);
  const [current,setCurrent]=useState<BeatItem|null>(null);
+ const currentRef=useRef<BeatItem|null>(null);
+ currentRef.current=current;
  const [openedPack,setOpenedPack]=useState<PackItem|null>(null);
  const [openedTracks,setOpenedTracks]=useState<BeatItem[]>([]);
  const [packLoading,setPackLoading]=useState(false);
@@ -258,6 +261,29 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
   })();
   return()=>controller.abort();
  },[playRequest?.nonce]);
+ // Queue-only requests never replace the playing track. Playback manifests
+ // remain server-authorized; packs append their member beats in original order.
+ useEffect(()=>{
+  if(!queueRequest)return;
+  const controller=new AbortController();
+  const {ownerId,kind,id}=queueRequest;
+  setPlayerError('');
+  void (async()=>{
+   try{
+    const project=await fetchPlayableProjectV2(ownerId,kind,id,controller.signal);
+    const tracks=normalizeLibraryProjectsV2({beats:project.tracks},ownerId).beats.map(beat=>({
+     ...beat,cover_file_id:beat.cover_file_id??project.cover_file_id
+    }));
+    if(!tracks.length)throw Error('No playable tracks to queue');
+    if(controller.signal.aborted)return;
+    if(!currentRef.current){choose(tracks[0],tracks,kind==='pack'?id:null);}
+    else setQueue(previous=>[...previous,...tracks]);
+   }catch(error){
+    if(!controller.signal.aborted)setPlayerError(error instanceof Error?error.message:'Unable to add to queue');
+   }
+  })();
+  return()=>controller.abort();
+ },[queueRequest?.nonce]);
  useEffect(()=>{
   if(!current){onPlaybackChange?.(null);return;}
   onPlaybackChange?.({ownerId:current.owner_id??userId!,kind:activePackId?'pack':'beat',
