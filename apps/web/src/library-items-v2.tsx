@@ -95,6 +95,12 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
  const [contextBeat,setContextBeat]=useState<{beat:BeatItem;x:number;y:number}|null>(null);
  const [contextPack,setContextPack]=useState<{pack:PackItem;x:number;y:number}|null>(null);
  const [actionDialog,setActionDialog]=useState<{project:ContextProject;action:ProjectAction}|null>(null);
+ // A hidden, persistent Library must not retain another viewer's open metadata panels.
+ useEffect(()=>{
+  packRequest.current?.abort();
+  setOpenedPack(null);setOpenedTracks([]);setOpenedBeat(null);
+  setContextBeat(null);setContextPack(null);setActionDialog(null);
+ },[userId]);
  const showProjectAction=(action:ProjectAction,project:ContextProject)=>{
   setContextBeat(null);setContextPack(null);setActionDialog({action,project});
  };
@@ -299,7 +305,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
    empty?<div className="library-empty"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M4 4v16M9 4v16M14 4l4 16"/></svg><h2>Your Library is Empty</h2><button type="button" className="library-add-audio" onClick={onUpload}>Add Audio</button></div>:
    <div className="v2-library-contents">
     {openedPack?<div className="library-pack-detail v2-pack-detail">
-      <button type="button" className="library-pack-back" aria-label="Back to library" onClick={()=>setOpenedPack(null)}><ChevronLeft size={20}/></button>
+      <button type="button" className="library-pack-back" aria-label="Back to library" onClick={()=>{packRequest.current?.abort();setOpenedPack(null)}}><ChevronLeft size={20}/></button>
       <div className="library-pack-cover beat-art-0"><ProjectCoverV2 ownerId={userId} fileId={openedPack.cover_file_id} title={openedPack.title} className="v2-item-cover"/></div>
       <header className="library-pack-info"><div className="library-pack-title-row"><div className="library-pack-title-block"><h2>{openedPack.title}</h2><p>{openedTracks.length} {openedTracks.length===1?'beat':'beats'}</p></div><div className="library-pack-play-controls"><button type="button" className="library-pack-shuffle" aria-label="Shuffle pack" onClick={()=>{if(openedTracks.length){const mixed=[...openedTracks].sort(()=>Math.random()-.5);choose(mixed[0],mixed,openedPack.id)}}}><Shuffle size={19}/></button><button type="button" className="library-pack-play" aria-label={(activePackId===openedPack.id&&playing?'Pause ':'Play ')+openedPack.title} onClick={()=>playPack(openedPack)}>{activePackId===openedPack.id&&playing?<Pause/>:<Play/>}</button></div></div><button type="button" className="library-pack-add" disabled title="Add tracks is not yet available in v2"><span>+</span><span>Add tracks</span></button></header>
       {packLoading?<p className="v2-library-status">Loading beats…</p>:packError?<p role="alert">{packError}</p>:<ol className="beat-track-list">{openedTracks.map((beat,index)=><li key={beat.id} onContextMenu={e=>showBeatMenu(e,beat)} className={current?.id===beat.id?'beat-track-active':''}><button type="button" className="beat-track-play" onClick={()=>choose(beat,openedTracks,openedPack.id)} aria-label={(current?.id===beat.id&&playing?'Pause ':'Play ')+beat.title}><span className="beat-track-number">{current?.id===beat.id&&playing?'▥':index+1}</span><span><strong>{beat.title}</strong></span></button><div className="beat-track-menu"><button type="button" aria-label={'Open '+beat.title} onClick={()=>setOpenedBeat(beat)}>•••</button></div></li>)}</ol>}
