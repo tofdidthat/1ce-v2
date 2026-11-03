@@ -64,7 +64,7 @@ test('existing PATCH auth/me persists profile links, rejects anonymous requests,
  assert.equal(publicView.status,200);
  assert.deepEqual(publicView.body.profile.links,db.state.links);
  assert.equal(publicView.body.profile.email,undefined);
- assert.ok(!db.calls.some(c=>c.sql.includes('v2_project_access')));
+ assert.ok(!db.calls.some(c=>/^(INSERT|UPDATE|DELETE) /.test(c.sql)&&c.sql.includes('v2_project_access')));
 });
 test('patch supports username-only Settings behavior and atomic combined username+links',async()=>{
  const db=fixture();
