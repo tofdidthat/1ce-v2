@@ -5,7 +5,14 @@ import {Readable} from 'node:stream';
 import {handleLibraryFiles} from '../src/library-files.js';
 
 const checksum=bytes=>createHash('sha256').update(bytes).digest('hex');
-const sample=Buffer.from([0x49,0x44,0x33,0x04,0,0,0,0,0,0,0xff,0xfb,0x90,0x64]);
+const mp3Frame=()=>{
+ const frame=Buffer.alloc(417,0);
+ Buffer.from([0xff,0xfb,0x90,0x64]).copy(frame,0); // MPEG-1 Layer III, 128k/44.1k
+ return frame;
+};
+const sample=Buffer.concat([
+ Buffer.from([0x49,0x44,0x33,0x04,0,0,0,0,0,0]),mp3Frame(),mp3Frame()
+]);
 const uploaded=(bytes=sample)=>({kind:'audio',name:'original.mp3',contentType:'audio/mpeg',size:bytes.length,sha256:checksum(bytes)});
 
 function setup(){
@@ -299,6 +306,17 @@ test('invalid complete IDs and failed uploads do not expose other users assets',
 // positive tests. These need a separate behavior-changing security batch.
 
 
+
+test('well-formed ID3 tag plus arbitrary non-audio payload fails closed',async()=>{
+ const h=setup(),bytes=Buffer.concat([sample.subarray(0,10),Buffer.alloc(sample.length-10,0x61)]);
+ const start=await h.invoke('/api/library/files/init',uploaded(bytes));
+ const file=h.files.get(start.body.id);h.put(file,bytes);
+ const done=await h.invoke('/api/library/files/'+file.id+'/complete');
+ assert.equal(done.status,422);
+ assert.match(done.body.error,/MP3 first audio frame/);
+ assert.equal(file.status,'failed');
+ assert.equal(h.objects.size,0);
+});
 
 test('spoofed MP3 bytes with a matching declared SHA never become READY',async()=>{
  const h=setup(),bytes=Buffer.alloc(sample.length,0x61);
