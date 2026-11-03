@@ -129,8 +129,8 @@ export default function PublicProfileV2({user,onSettings,profileId,onPlayProject
   </nav>
   <div className="onece-profile-panel" id="onece-profile-tab-panel" role="tabpanel" aria-labelledby={'onece-tab-'+tab}>
    {error&&<p role="alert" className="onece-profile-status">{error}{profileStatus==='error'&&<button type="button" onClick={()=>setRefreshRevision(v=>v+1)}>Retry</button>}</p>}
-   {flagsStatus==='loading'&&<p className="onece-profile-status">Loading Save and Publish actions…</p>}
-   {flagsStatus==='error'&&<p role="alert" className="onece-profile-status">{flagsError}<button type="button" onClick={retryFlags}>Retry</button></p>}
+   {Boolean(user?.id)&&flagsStatus==='loading'&&<p className="onece-profile-status">Loading Save and Publish actions…</p>}
+   {Boolean(user?.id)&&flagsStatus==='error'&&<p role="alert" className="onece-profile-status">{flagsError}<button type="button" onClick={retryFlags}>Retry</button></p>}
    {profileStatus==='loading'?<p className="onece-profile-status">Loading profile…</p>:profileStatus==='error'?null:tab==='following'?
     <div className="onece-profile-empty"><Users size={27}/><h2>Not following anyone yet</h2><p>Artists you follow will appear here once following is available.</p></div>:
     (tab==='catalog'?visibleProjects.catalog:visibleProjects.saves).length?
