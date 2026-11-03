@@ -109,6 +109,37 @@ function validateSignature(file,prefix,tail){
  throw new InvalidMedia('Unsupported media kind or MIME type');
 }
 
+// ID3 metadata alone is not an MP3. Validate two consecutive MPEG Layer III
+// frame headers at the actual audio offset; VBR may change bitrate per frame.
+// This is a bounded structural check, NOT full audio decoding.
+function mp3Frame(header){
+ if(header.length!==4||header[0]!==0xff||(header[1]&0xe0)!==0xe0)return null;
+ const version=(header[1]>>3)&3,layer=(header[1]>>1)&3;
+ const bitrateIndex=(header[2]>>4)&15,sampleIndex=(header[2]>>2)&3;
+ if(version===1||layer!==1||bitrateIndex===0||bitrateIndex===15||sampleIndex===3)return null;
+ const rates=version===3?[32000,40000,48000,56000,64000,80000,96000,112000,128000,160000,192000,224000,256000,320000]:
+ [8000,16000,24000,32000,40000,48000,56000,64000,80000,96000,112000,128000,144000,160000];
+ const sampleRates=version===3?[44100,48000,32000]:version===2?[22050,24000,16000]:[11025,12000,8000];
+ const bitrate=rates[bitrateIndex-1],sampleRate=sampleRates[sampleIndex];
+ const padding=(header[2]>>1)&1;
+ const bytes=Math.floor((version===3?144:72)*bitrate/sampleRate)+padding;
+ return bytes>=24?{version,sampleRate,bytes}:null;
+}
+async function validateMp3Frames(s3,bucket,key,file,prefix){
+ const tagged=matches(prefix,0,'ID3');
+ const encoded=tagged?((prefix[6]<<21)|(prefix[7]<<14)|(prefix[8]<<7)|prefix[9]):0;
+ const footer=tagged&&prefix[3]===4&&(prefix[5]&0x10)?10:0;
+ const offset=tagged?10+encoded+footer:0;
+ const size=Number(file.byte_size);
+ if(offset+8>size)throw new InvalidMedia('MP3 has no complete audio frames');
+ const first=mp3Frame(await rangedBytes(s3,bucket,key,offset,offset+3));
+ if(!first||offset+first.bytes+4>size)
+  throw new InvalidMedia('MP3 first audio frame is invalid or truncated');
+ const next=mp3Frame(await rangedBytes(s3,bucket,key,offset+first.bytes,offset+first.bytes+3));
+ if(!next||next.version!==first.version||next.sampleRate!==first.sampleRate)
+  throw new InvalidMedia('MP3 requires consecutive compatible Layer III frames');
+}
+
 async function validateZip(s3,bucket,key,size){
  const deadline=Date.now()+60000;
  const remaining=()=>{
@@ -191,5 +222,7 @@ export async function verifyUploadedObject({s3,bucket,key,file,timeoutMs}){
  if(total!==size)throw new InvalidMedia('Uploaded file size mismatch');
  if(hash.digest('hex')!==file.sha256)throw new InvalidMedia('File checksum mismatch');
  validateSignature(file,prefix,tail);
+ if(file.kind==='audio'&&['audio/mpeg','audio/mp3'].includes(file.content_type))
+  await validateMp3Frames(s3,bucket,key,file,prefix);
  if(file.kind==='stems')await validateZip(s3,bucket,key,size);
 }
