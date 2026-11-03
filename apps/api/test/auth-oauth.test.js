@@ -215,3 +215,34 @@ test('Google exchange rejects malformed codes without reaching database',async()
  assert.equal(h.attempts.size,0);
  assert.equal(h.sessions.size,0);
 });
+
+test('untrusted browser Origin is denied before auth/database work',async()=>{
+ const denied=await send('GET','/auth/me',undefined,{origin:'https://untrusted.example.test'});
+ assert.equal(denied.status,403);
+ assert.equal(denied.json.error,'Origin not allowed');
+ assert.equal(h.queries.length,0);
+});
+
+test('Google token/userinfo verification failure never creates a session or redeemable login code',async()=>{
+ const verifier=Buffer.alloc(32,21).toString('base64url');
+ const challenge=shaBase64(verifier);
+ const start=await send('GET','/auth/google?challenge='+challenge);
+ const state=new URL(start.headers.Location).searchParams.get('state');
+ globalThis.fetch=async url=>{
+  h.googleFetches.push(String(url));
+  return {ok:true,json:async()=>String(url).includes('/token')?
+   {access_token:'only-a-fake-token'}:
+   {sub:h.user.google_id,email:h.user.email,email_verified:false}};
+ };
+ const failed=await send('GET','/auth/google/callback?state='+state+'&code=mock-code',undefined,{cookie:'onece_v2_google_state='+state});
+ assert.equal(failed.status,302);
+ assert.match(failed.headers.Location,/\/app\?login=error$/);
+ assert.equal(h.sessions.size,0);
+ assert.equal([...h.attempts.values()][0].exchanged,false);
+ assert.equal((await send('GET','/auth/google/callback?state='+state+'&code=mock-code',undefined,{cookie:'onece_v2_google_state='+state})).status,302);
+ assert.equal(h.googleFetches.length,2);
+});
+
+test('imported API request handler does not bind a production port during tests',()=>{
+ assert.equal(apiServer.listening,false);
+});
