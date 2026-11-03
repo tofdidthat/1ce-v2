@@ -58,6 +58,8 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - name: Install the exact Railway workspace dependency graph
         run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Verify Railway API-only build command
+        run: node --check apps/api/src/server.js
       - name: Start API from monorepo root and verify health
         shell: bash
         env:
