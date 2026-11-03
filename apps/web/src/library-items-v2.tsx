@@ -297,7 +297,17 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
   setError('');setLoading(true);
   lastLibraryFetch.current=Date.now();
   fetch(api+'/api/library/files/items',{credentials:'include',cache:'no-store',signal:controller.signal})
-   .then(async r=>{const body=await r.json().catch(()=>({}));if(!r.ok)throw Error(body.error||'Unable to load Home');return body})
+   .then(async r=>{
+    const body=await r.json().catch(()=>({}));
+    if(!r.ok){
+     // Expired/revoked session cannot keep displaying old private Home metadata.
+     if(!controller.signal.aborted&&(r.status===401||r.status===403)){
+      setData({beats:[],packs:[]});setLoadedViewerId(null);
+     }
+     throw Error(body.error||'Unable to load Home');
+    }
+    return body;
+   })
    .then(body=>{if(!controller.signal.aborted){setData(normalizeLibraryProjectsV2(body,Number(userId)));setLoadedViewerId(Number(userId));}})
    .catch(e=>{if(e.name!=='AbortError')setError(e.message||'Unable to load Library')})
    .finally(()=>{if(!controller.signal.aborted)setLoading(false)});
