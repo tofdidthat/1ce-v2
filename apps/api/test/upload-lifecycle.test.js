@@ -361,3 +361,32 @@ test('expired pending reservations cannot become READY',async()=>{
  assert.equal(file.status,'pending');
  assert.equal(h.commands.some(c=>c.constructor.name==='CopyObjectCommand'),false);
 });
+
+
+test('shared upload init throttle rejects the 81st request without signing',async()=>{
+ const h=setup(),body=uploaded();
+ for(let i=0;i<80;i++)await h.invoke('/api/library/files/init',body);
+ const before=h.signed.length;
+ const denied=await h.invoke('/api/library/files/init',body);
+ assert.equal(denied.status,429);
+ assert.equal(denied.body.error,'Upload rate limit reached');
+ assert.equal(h.signed.length,before);
+});
+
+test('shared completion throttle caps repeated R2 checks per owner',async()=>{
+ const h=setup(),start=await h.invoke('/api/library/files/init',uploaded());
+ for(let i=0;i<120;i++)
+  assert.equal((await h.invoke('/api/library/files/'+start.body.id+'/complete')).status,409);
+ const before=h.commands.length;
+ const denied=await h.invoke('/api/library/files/'+start.body.id+'/complete');
+ assert.equal(denied.status,429);
+ assert.equal(h.commands.length,before);
+});
+
+test('per-account stored byte quota includes existing READY assets',async()=>{
+ const h=setup(),ready=uploaded();
+ h.addReady({...ready,size:10*1024*1024*1024});
+ const denied=await h.invoke('/api/library/files/init',ready);
+ assert.equal(denied.status,429);
+ assert.match(denied.body.error,/quota/i);
+});
