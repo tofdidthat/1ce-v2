@@ -8,11 +8,11 @@
  background:#19191a;color:#f4f2f6;box-shadow:0 14px 70px #0009;
  font-family:inherit;
 }
-.onece-edit-toolbar{height:74px;padding:12px 20px;display:grid;grid-template-columns:44px 1fr 44px;align-items:center;gap:10px}
+.onece-edit-toolbar{height:74px;padding:12px 20px;display:grid;grid-template-columns:44px minmax(0,1fr) 44px;align-items:center;gap:10px}
 .onece-edit-toolbar strong{font-size:15px;font-weight:650;text-align:center}
-.onece-edit-toolbar button{display:grid;place-items:center;border:0;border-radius:14px;width:44px;height:44px;background:#262628;color:#eeeaf1;cursor:pointer}
-.onece-edit-toolbar button.onece-edit-save{background:#f8f8f9;color:#161518}
-.onece-edit-toolbar button:hover:not(:disabled){filter:brightness(1.15)}
+.onece-edit-toolbar button{display:grid;place-items:center;width:44px;height:44px;padding:0;border:0;border-radius:14px;background:transparent;color:#d3ccd9;cursor:pointer}
+.onece-edit-toolbar button.onece-edit-save{background:transparent;color:#d3ccd9}
+.onece-edit-toolbar button:hover:not(:disabled){background:transparent;color:#fff}
 .onece-edit-toolbar button:disabled{opacity:.5;cursor:not-allowed}
 .onece-edit-sections{overflow:auto;flex:1;padding:8px 20px 32px;scrollbar-width:thin;scrollbar-color:#464248 transparent}
 .onece-edit-profile-identity{display:flex;align-items:center;flex-direction:column;border-bottom:1px solid #ffffff13;padding:4px 0 24px;gap:10px}
@@ -30,7 +30,9 @@
 .onece-edit-section-heading span{font-size:12px;color:#8b8590}
 .onece-social-links{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .onece-social-link,.onece-social-add{display:grid;place-items:center;flex:0 0 38px;width:38px;height:38px;border:1px solid #ffffff10;border-radius:50%;color:#d3ccd9;background:#242427;text-decoration:none;cursor:pointer;transition:background .15s,color .15s}
-.onece-social-link:hover,.onece-social-add:hover{background:#34313a;color:#fff}
+.onece-social-link:hover{background:#34313a;color:#fff}
+.onece-edit-links .onece-social-add{flex:0 0 44px;width:44px;height:44px;padding:0;border:0;background:transparent;color:#d3ccd9}
+.onece-edit-links .onece-social-add:hover{background:transparent;color:#fff}
 .onece-social-link:focus-visible,.onece-social-add:focus-visible{outline:2px solid #b794f4;outline-offset:2px}
 .onece-edit-link-row{display:flex;align-items:center;gap:6px;margin-top:14px}
 .onece-edit-link-field{display:flex;align-items:center;gap:8px;flex:1;min-width:0;background:#252426;border:1px solid #353138;border-radius:11px;padding:0 10px;color:#ada3b2}
