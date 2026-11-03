@@ -92,3 +92,19 @@
 .onece-profile-following-identity strong{font-size:13px;font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .onece-profile-following-identity small{font-size:12px;color:#938a9f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .onece-profile-following-person>svg{color:#9d96a8;flex:0 0 auto}
+
+
+/* Track picker for an authorized public pack MP3 download (no new media route). */
+.onece-profile-download-overlay{position:fixed;inset:0;z-index:1050;display:flex;justify-content:center;align-items:center;padding:24px;background:#000a}
+.onece-profile-download-dialog{box-sizing:border-box;width:min(430px,100%);max-height:min(75vh,600px);overflow:hidden;display:flex;flex-direction:column;padding:20px;border:1px solid #37323b;border-radius:18px;background:#19191b;color:#f4f0f6;box-shadow:0 18px 64px #0009}
+.onece-profile-download-dialog header{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.onece-profile-download-dialog header h2{margin:0;font-size:16px;font-weight:650}
+.onece-profile-download-dialog header button{display:grid;place-items:center;width:36px;height:36px;border:0;border-radius:10px;background:transparent;color:inherit;font:inherit;font-size:24px;cursor:pointer}
+.onece-profile-download-dialog>p{margin:12px 0;color:#aaa2b1;font-size:12px;line-height:1.6}
+.onece-profile-download-tracks{display:flex;flex-direction:column;gap:5px;min-height:0;overflow:auto}
+.onece-profile-download-tracks button{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 10px;border:0;border-radius:10px;background:#ffffff06;color:#f5f2f7;font:inherit;text-align:left;cursor:pointer}
+.onece-profile-download-tracks button:hover:not(:disabled){background:#ffffff13}
+.onece-profile-download-tracks button:disabled{opacity:.5;cursor:wait}
+.onece-profile-download-tracks button span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.onece-profile-download-error{color:#ff9eab!important}
+.onece-profile-download-dialog button:focus-visible{outline:2px solid #c4b5fd;outline-offset:2px}
