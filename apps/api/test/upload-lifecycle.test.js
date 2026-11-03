@@ -363,9 +363,9 @@ test('expired pending reservations cannot become READY',async()=>{
 });
 
 
-test('shared upload init throttle rejects the 81st request without signing',async()=>{
+test('shared upload init throttle rejects the 241st request without signing',async()=>{
  const h=setup(),body=uploaded();
- for(let i=0;i<80;i++)await h.invoke('/api/library/files/init',body);
+ for(let i=0;i<240;i++)await h.invoke('/api/library/files/init',body);
  const before=h.signed.length;
  const denied=await h.invoke('/api/library/files/init',body);
  assert.equal(denied.status,429);
@@ -375,7 +375,7 @@ test('shared upload init throttle rejects the 81st request without signing',asyn
 
 test('shared completion throttle caps repeated R2 checks per owner',async()=>{
  const h=setup(),start=await h.invoke('/api/library/files/init',uploaded());
- for(let i=0;i<120;i++)
+ for(let i=0;i<360;i++)
   assert.equal((await h.invoke('/api/library/files/'+start.body.id+'/complete')).status,409);
  const before=h.commands.length;
  const denied=await h.invoke('/api/library/files/'+start.body.id+'/complete');
