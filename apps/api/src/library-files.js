@@ -4,6 +4,7 @@ import { S3Client, PutObjectCommand, HeadObjectCommand, GetObjectCommand, Delete
 import {verifyUploadedObject,InvalidMedia,VerificationUnavailable} from './upload-security.js';
 import {rateLimitExceeded,uploadLimits} from './api-rate-limits.js';
 import {accountStorageQuota} from './storage-plans.js';
+import {acquireCompletionLease,releaseCompletionLease,promoteReadyWithLease} from './upload-leases.js';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import {resolveAuthorizedMediaFile} from './project-media.js';
 import {streamAuthorizedAudio} from './audio-stream.js';
@@ -185,6 +186,15 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser,{
   }
   const pending=await pool.query("SELECT created_at>now()-interval '30 minutes' AS valid FROM library_files WHERE id=$1 AND user_id=$2 AND status='pending'",[id,user.id]);
   if(!pending.rows[0]?.valid){send(res,410,{error:'Upload expired; start a new upload'});return true;}
+  const leaseToken=await acquireCompletionLease(pool,id,user.id);
+  if(!leaseToken){
+   // The first request still owns the finalization. Do not make redundant R2
+   // HEAD, COPY or GET requests while it runs on another API replica.
+   const current=await pool.query('SELECT status FROM library_files WHERE id=$1 AND user_id=$2',[id,user.id]);
+   if(current.rows[0]?.status==='ready'){send(res,200,{ok:true,id:file.id});return true;}
+   send(res,409,{error:'Upload finalization in progress; retry shortly'});return true;
+  }
+  try{
   const stagingKey=file.object_key;
   const extension=stagingKey.split('.').pop();
   const finalKey='users/'+user.id+'/assets/'+file.kind+'/verified/'+randomUUID()+'.'+extension;
@@ -228,7 +238,9 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser,{
    throw err;
   }
   try{
-   const updated=await pool.query("UPDATE library_files SET object_key=$3,status='ready',updated_at=now() WHERE id=$1 AND user_id=$2 AND status='pending'",[id,user.id,finalKey]);
+   const updated=await promoteReadyWithLease(pool,{
+    fileId:id,ownerId:user.id,finalKey,token:leaseToken
+   });
    if(!updated.rowCount){
     await deleteObject(finalKey);
     const current=await pool.query('SELECT id,status FROM library_files WHERE id=$1 AND user_id=$2',[id,user.id]);
@@ -253,6 +265,9 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser,{
   // Staging can be recreated by a still-live PUT but cannot affect READY.
   await deleteObject(stagingKey);
   send(res,200,{ok:true,id:file.id});return true;
+  }finally{
+   await releaseCompletionLease(pool,id,leaseToken);
+  }
  }
  send(res,404,{error:'Not found'});return true;
 }
