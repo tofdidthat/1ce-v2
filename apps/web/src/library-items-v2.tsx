@@ -314,9 +314,10 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
   return ()=>controller.abort();
  },[userId,libraryRevision]);
  const visibleData=loadedViewerId===Number(userId)?data:{beats:[],packs:[]};
- const standaloneBeats=visibleData.beats.filter(b=>b.library_visible!==false);
+ // Pack-only beats return to Home when their last active pack is trashed.
+ const standaloneBeats=visibleData.beats.filter(b=>b.library_visible!==false||b.pack_count===0);
  // Warm the first standalone waveform while the user browses the Library.
- useEffect(()=>{const first=visibleData.beats.find(b=>b.library_visible!==false);if(first&&userId)void loadWaveform(first.audio_file_id,userId).catch(()=>{})},[data.beats,loadedViewerId,userId]);
+ useEffect(()=>{const first=visibleData.beats.find(b=>b.library_visible!==false||b.pack_count===0);if(first&&userId)void loadWaveform(first.audio_file_id,userId).catch(()=>{})},[data.beats,loadedViewerId,userId]);
  const empty=!standaloneBeats.length&&!visibleData.packs.length;
  return <section className={"beat-profile library-page onece-v2-library"+(!active?" onece-library-inactive":"")}><div className="beat-profile-content"><div className="library-items">
   {actionError&&<p role="alert" className="v2-library-status">{actionError}</p>}
