@@ -68,7 +68,7 @@ export default function EditProfilePanelV2({user,profile,catalog,onClose,onIdent
   const controller=new AbortController();
   setLibrary(previous=>({...previous,status:'loading',error:''}));
   void fetch(api+'/api/library/files/items',{credentials:'include',cache:'no-store',signal:controller.signal})
-   .then(async response=>{if(!response.ok)throw Error('Unable to load Library');return response.json()})
+   .then(async response=>{if(!response.ok)throw Error('Unable to load Home');return response.json()})
    .then(data=>{
     if(controller.signal.aborted)return;
     const normalized=normalizeLibraryProjectsV2(data,viewer);
@@ -237,12 +237,12 @@ export default function EditProfilePanelV2({user,profile,catalog,onClose,onIdent
   {picker&&<div className="onece-edit-picker-backdrop" onPointerDown={event=>{if(event.target===event.currentTarget&&!busyKey)setPicker(false);}}>
    <section className="onece-edit-picker" role="dialog" aria-modal="true" aria-label="Post to profile">
     <header><h2>Post to profile</h2><button type="button" aria-label="Close project picker" onClick={()=>setPicker(false)} disabled={!!busyKey}><X size={20}/></button></header>
-    <div className="onece-edit-picker-search"><Search size={18}/><input aria-label="Search your library" placeholder="Search your library" value={query} onChange={e=>setQuery(e.target.value)}/></div>
+    <div className="onece-edit-picker-search"><Search size={18}/><input aria-label="Search your Home" placeholder="Search your Home" value={query} onChange={e=>setQuery(e.target.value)}/></div>
     <div className="onece-edit-picker-results">
      {flagsStatus!=='ready'&&<div className="onece-edit-picker-state">{flagsStatus==='error'?(flagsError||'Unable to load publications'):'Loading publications…'}{flagsStatus==='error'&&<button type="button" onClick={retryFlags}>Retry</button>}</div>}
-     {library.status==='loading'&&<div className="onece-edit-picker-state">Loading Library…</div>}
+     {library.status==='loading'&&<div className="onece-edit-picker-state">Loading Home…</div>}
      {library.status==='error'&&<div className="onece-edit-picker-state" role="alert">{library.error} <button type="button" onClick={()=>setRevision(v=>v+1)}>Retry</button></div>}
-     {library.status==='ready'&&shownItems.length===0&&<div className="onece-edit-picker-state">{query?'No projects match your search.':'Your Library is empty.'}</div>}
+     {library.status==='ready'&&shownItems.length===0&&<div className="onece-edit-picker-state">{query?'No projects match your search.':'Your Home is empty.'}</div>}
      {library.status==='ready'&&shownItems.map(project=>{
       const active=published.has(projectKey(project)),busy=busyKey===projectKey(project);
       return <button type="button" className="onece-edit-picker-project" key={projectKey(project)} onClick={()=>void toggleProject(project)}
