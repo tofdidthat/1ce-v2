@@ -72,18 +72,24 @@ export default function EditProfilePanelV2({user,profile,catalog,onClose,onIdent
    status:previous.viewerId===viewer&&previous.status==='ready'?'ready':'loading',
    items:previous.viewerId===viewer?previous.items:[],error:''}));
   void fetch(api+'/api/library/files/items',{credentials:'include',cache:'no-store',signal:controller.signal})
-   .then(async response=>{if(!response.ok)throw Error('Unable to load Home');return response.json()})
+   .then(async response=>{
+    if(!response.ok)throw Object.assign(Error('Unable to load Home'),{status:response.status});
+    return response.json();
+   })
    .then(data=>{
     if(controller.signal.aborted)return;
     const normalized=normalizeLibraryProjectsV2(data,viewer);
     setLibrary({viewerId:viewer,status:'ready',items:[...normalized.packs,...normalized.beats.filter(beat=>beat.library_visible!==false)],error:''});
    }).catch(caught=>{
-    if(!controller.signal.aborted)setLibrary(previous=>({
-     viewerId:viewer,
-     status:previous.viewerId===viewer&&previous.status==='ready'?'ready':'error',
-     items:previous.viewerId===viewer?previous.items:[],
-     error:caught instanceof Error?caught.message:'Unable to load Home'
-    }));
+    if(!controller.signal.aborted){
+     const denied=[401,403].includes((caught as Error&{status?:number})?.status??0);
+     setLibrary(previous=>({
+      viewerId:viewer,
+      status:!denied&&previous.viewerId===viewer&&previous.status==='ready'?'ready':'error',
+      items:!denied&&previous.viewerId===viewer?previous.items:[],
+      error:caught instanceof Error?caught.message:'Unable to load Home'
+     }));
+    }
    });
   return()=>controller.abort();
  },[viewer,revision]);
