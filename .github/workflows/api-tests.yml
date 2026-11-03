@@ -6,39 +6,128 @@ on:
     paths:
       - 'apps/api/**'
       - 'apps/web/**'
+      - 'package.json'
+      - 'pnpm-workspace.yaml'
+      - 'pnpm-lock.yaml'
+      - 'scripts/**'
+      - 'docs/architecture.md'
       - '.github/workflows/api-tests.yml'
   pull_request:
     paths:
       - 'apps/api/**'
       - 'apps/web/**'
+      - 'package.json'
+      - 'pnpm-workspace.yaml'
+      - 'pnpm-lock.yaml'
+      - 'scripts/**'
+      - 'docs/architecture.md'
       - '.github/workflows/api-tests.yml'
 
 permissions:
   contents: read
 
 jobs:
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.18.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Audit frozen workspace and production dependency graphs
+        run: node scripts/audit-dependencies.mjs
+
   api-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.18.0
+          run_install: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Install v2 API dependencies
-        run: npm install --prefix apps/api --no-package-lock --ignore-scripts --no-audit --no-fund
+          cache: 'pnpm'
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install frozen workspace dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Run isolated API unit tests
-        run: npm test --prefix apps/api
+        run: pnpm --filter @1ce/api test
 
-  web-build:
+  railway-api-smoke:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.18.0
+          run_install: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Install v2 frontend dependencies
-        run: npm install --prefix apps/web --no-package-lock --ignore-scripts --no-audit --no-fund
+          cache: 'pnpm'
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install like Railpack with frozen workspace dependency graph
+        run: pnpm install --frozen-lockfile --prefer-offline
+      - name: Verify Railway API-only build command
+        run: node --check apps/api/src/server.js
+      - name: Start API from monorepo root and verify health
+        shell: bash
+        env:
+          PORT: '18081'
+        run: |
+          set -euo pipefail
+          pnpm --filter @1ce/api start > "$RUNNER_TEMP/onece-api-smoke.log" 2>&1 &
+          api_pid=$!
+          trap 'kill "$api_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:$PORT/health" 2>/dev/null | grep -q '"ok":true'; then
+              # Validate response/cache behavior without a live DB or credentials.
+              curl -fsS -D "$RUNNER_TEMP/onece-health-headers" -o "$RUNNER_TEMP/onece-health-body" "http://127.0.0.1:$PORT/health"
+              grep -Eiq '^cache-control:[[:space:]]*no-store' "$RUNNER_TEMP/onece-health-headers"
+              node -e "const x=JSON.parse(require('node:fs').readFileSync(process.argv[1]));if(x.ok!==true||x.service!=='1ce-v2-api')process.exit(1)" "$RUNNER_TEMP/onece-health-body"
+              unauth_status=$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/auth/me")
+              test "$unauth_status" = "401"
+              origin_status=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Origin: https://untrusted.invalid' "http://127.0.0.1:$PORT/auth/me")
+              test "$origin_status" = "403"
+              echo "Railway candidate start command: HEALTHY, no-store, unauthorized/private access denied"
+              exit 0
+            fi
+            if ! kill -0 "$api_pid" 2>/dev/null; then
+              cat "$RUNNER_TEMP/onece-api-smoke.log"
+              exit 1
+            fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/onece-api-smoke.log"
+          echo "API did not respond to the health probe" >&2
+          exit 1
+
+  web-build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ['22', '26']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.18.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'pnpm'
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install frozen workspace dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Test web refresh and shared project contracts
         run: node --experimental-strip-types --test apps/web/test/*.test.mjs
       - name: Typecheck and build v2 frontend
-        run: npm run build --prefix apps/web
+        run: pnpm --filter @1ce/web build

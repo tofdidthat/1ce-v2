@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import { pathToFileURL } from 'node:url';
 import { randomBytes, createHash, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import pg from 'pg';
@@ -152,4 +153,9 @@ const server=createServer(async(req,res)=>{
   return json(res,404,{error:'Not found'});
  }catch(err){console.error('v2 api error',err?.message);return json(res,500,{error:'Service unavailable'});}
 });
-server.listen(Number(process.env.PORT||3001),()=>console.log('1CE v2 API listening'));
+// Importing the router in isolated tests must not bind a live port. Direct
+// "node src/server.js" / Railway starts exactly as before.
+if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
+ server.listen(Number(process.env.PORT||3001),()=>console.log('1CE v2 API listening'));
+}
+export {server as apiServer,pool as apiPool};

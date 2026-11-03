@@ -28,12 +28,17 @@ async function bodyJSON(req){
  let raw='';for await(const chunk of req){raw+=chunk;if(raw.length>8192)throw new Error('Request too large');}
  try{return JSON.parse(raw)}catch{throw new Error('Invalid JSON');}
 }
-export async function handleLibraryFiles(req,res,pathname,pool,currentUser){
+// Optional dependencies are for request-level regression tests; in production
+// the exact same private R2 client and presigner are used as before.
+export async function handleLibraryFiles(req,res,pathname,pool,currentUser,{
+ storageFactory=()=>({s3:client(),bucket:config().bucket}),
+ signUrl=getSignedUrl
+}={}){
  if(!pathname.startsWith('/api/library/files'))return false;
  if(!['GET','POST'].includes(req.method)){send(res,405,{error:'Method not allowed'});return true;}
  const user=await currentUser(req);
  if(!user){send(res,401,{error:'Not authenticated'});return true;}
- const s3=client(),cfg=config();
+ const {s3,bucket}=storageFactory(),cfg={bucket};
  if(!s3){send(res,503,{error:'Storage is not configured'});return true;}
  const segments=pathname.split('/').filter(Boolean);
  if(req.method==='POST'&&segments.length===4&&segments[3]==='beats'){
@@ -130,7 +135,7 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser){
   const objectKey='users/'+user.id+'/assets/'+kind+'/'+randomUUID()+'.'+ext;
   const inserted=await pool.query("INSERT INTO library_files(user_id,kind,object_key,original_name,content_type,byte_size,status,sha256) VALUES($1,$2,$3,$4,$5,$6,'pending',$7) RETURNING id",[user.id,kind,objectKey,name,contentType,size,sha256]);
   try{
-   const uploadUrl=await getSignedUrl(s3,new PutObjectCommand({Bucket:cfg.bucket,Key:objectKey,ContentType:contentType,ContentLength:size}),{expiresIn:300});
+   const uploadUrl=await signUrl(s3,new PutObjectCommand({Bucket:cfg.bucket,Key:objectKey,ContentType:contentType,ContentLength:size}),{expiresIn:300});
    send(res,200,{id:inserted.rows[0].id,uploadUrl,expiresIn:300});
   }catch(err){
    await pool.query("DELETE FROM library_files WHERE id=$1 AND user_id=$2 AND status='pending'",[inserted.rows[0].id,user.id]);
