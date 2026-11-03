@@ -16,7 +16,9 @@ test('own profile pencil opens a modal drawer inside the existing Workspace with
  assert.match(profile,/<EditProfilePanelV2 key=\{String\(user\.id\)\}/);
  assert.match(profile,/editorOpen&&isOwner/);
  assert.match(profile,/onIdentityUpdated=\{onIdentityUpdated\}/);
- assert.match(workspace,/onIdentityUpdated=\{setAccount\}/);
+ assert.match(workspace,/onIdentityUpdated=\{updated=>\{/);
+ assert.match(workspace,/navigate\('\/u\/'\+encodeURIComponent\(updated\.username\),\{replace:true\}\)/);
+ assert.match(workspace,/setAccount\(updated\)/);
  assert.doesNotMatch(workspace,/onSettings=\{\(\)=>navigate\('\/app\/settings\?edit=profile'\)/);
  assert.match(panel,/role="dialog" aria-modal="true" aria-label="Edit profile"/);
  assert.match(panel,/onKey=\(event:KeyboardEvent\)/);
