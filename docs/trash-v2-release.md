@@ -23,6 +23,19 @@ Branch: `feature/v2-trash-r2-safe-purge`. No main merge or deploy until separate
 - **PENDING:** verify a recoverable backup, arrange an authorized secure DB execution path, apply the guarded 012 against **v2 only**, record six true results, confirm rollback/retry plan, then rerun final-HEAD CI and isolated DB/R2 integration safety tests. PR remains draft; do not merge or deploy without a fresh go/no-go decision.
 - **Concurrency audit to complete:** publishing, saving, sharing and beat/pack creation are separate transactions and do not consistently take the per-account Trash advisory lock. Verify races against moving projects to Trash; guard against stale relations after deletion. Also test UI behavior when a beat is hidden in a trashed pack, and when shared covers remain live. Do not treat static tests alone as proof of these invariants.
 
+## Pack-only beat deletion rule and release preparation (2026-11-03)
+
+The owner clarified that beats existing **only inside a pack** must go to Trash together with the pack. The implemented behavior is:
+
+- On pack delete, auto-trash member beats with `library_visible=false` and no other active pack membership, stamped with the parent pack's exact `deleted_at` in the same owner transaction. Do not trash visible standalone beats or members referenced by other active packs.
+- Revoke publication/save/share relationships for auto-trashed members and the parent. Show the parent as a single Trash item; children automatically trashed with it are not separately listed.
+- On restoring a pack within 30 days, restore only member beats auto-trashed as part of some now-trashed parent pack, identified by the matching `deleted_at`. Manually deleted beats remain trashed. Handles a member originally present in multiple packs whose last active pack was later deleted.
+- On explicit Empty Trash, purge the pack and its exclusive trashed members; retire and queue verified R2 objects only after confirming no remaining beat/pack FK references. No extra SQL migration was required beyond the already-applied 012.
+
+**Concurrency hardening:** per-owner advisory transactions now guard project writes, beat/pack creation, publication, saves and share grants as well as Trash. Cross-owner saves lock the **original owner** and recheck project state before insertion. Isolated PostgreSQL smoke tests cover exclusive member cascades, shared files, manual deletes, restore, R2 outbox safety and 012 idempotence. API unit tests and web builds passed in [CI run #41722000497](https://github.com/tofdidthat/1ce-v2/actions/runs/41722000497) (6/6 jobs) at SHA `05a792a5`. Subsequent documentation change triggered a new CI check; verify the final HEAD.
+
+**Release gate status:** v2 production migration 012 applied and verified; code + postgres tests validated. Do not merge/deploy until a current recoverable backup is independently confirmed (Railway connector does not expose volume backup status), the final HEAD CI passes, and a reviewer validates R2 deletion safety. The live canary should use uniquely named disposable files to exercise Trash, restore, and user-confirmed Empty Trash. Keep v1, existing customer media and production player untouched until the coordinated rollout is approved.
+
 ## Production database migration 012 — applied and verified (2026-11-03)
 
 **DONE:** Migration `012_trash_and_r2_delete_outbox.sql` was applied to the isolated **v2 production PostgreSQL** in Railway project `courteous-spontaneity` (project `31168d29-2738-4a74-8a62-a13d2e2cc52c`, environment `55e9e0df-8408-4930-8722-63fa1d0d8942`). An ephemeral, private, one-shot Bun Function used an internal `Postgres.DATABASE_URL` reference, checked the v2/S2 schema markers, applied the additive DDL in a transaction with 5-second lock and 60-second statement timeouts, and performed post-commit read-only verification. Railway deploy logs for temporary deployment `8d29800d-0c9a-4ec2-8ec0-65ac8d75cd31` reported:
