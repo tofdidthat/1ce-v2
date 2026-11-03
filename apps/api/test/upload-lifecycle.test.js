@@ -55,7 +55,7 @@ function setup(){
    if(file&&file.user_id===args[1])file.status='failed';
    return {rowCount:file?1:0,rows:[]};
   }
-  if(sql.startsWith("UPDATE library_files SET status='ready'")){
+  if(sql.startsWith("UPDATE library_files SET object_key=$3,status='ready'")){
    if(forceUniqueCollision){const err=new Error('duplicate ready sha');err.code='23505';throw err;}
    const file=files.get(Number(args[0]));
    // Simulate the real DB unique constraint on READY owner/kind/SHA,
