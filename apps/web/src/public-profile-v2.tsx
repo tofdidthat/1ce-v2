@@ -30,6 +30,7 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
  const [actionDialog,setActionDialog]=useState<{project:ContextProject;action:ProjectAction}|null>(null);
  const [ownerPacks,setOwnerPacks]=useState<{id:string;title:string;track_count:number}[]>([]);
  const [profileUser,setProfileUser]=useState<any>(null);
+ const lastVerifiedProfileKey=React.useRef('');
  const [loadState,setLoadState]=useState<{key:string;status:'loading'|'ready'|'error'}>({key:'',status:'loading'});
  const [error,setError]=useState('');
  const [refreshRevision,setRefreshRevision]=useState(0);
@@ -42,8 +43,11 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
  const targetId=profileId||String(user?.id||'');
  const requestKey=String(user?.id||'anonymous')+':'+targetId;
  const profileStatus=loadState.key===requestKey?loadState.status:'loading';
- const visibleProjects=profileStatus==='ready'?projects:{catalog:[],saves:[]};
- const visibleProfileUser=profileStatus==='ready'?profileUser:null;
+ // Revalidation must not close the owner's open editor, but old profile
+ // data must never leak across a different viewer or target profile.
+ const sameVerifiedProfile=lastVerifiedProfileKey.current===requestKey;
+ const visibleProjects=(profileStatus==='ready'||sameVerifiedProfile)?projects:{catalog:[],saves:[]};
+ const visibleProfileUser=(profileStatus==='ready'||sameVerifiedProfile)?profileUser:null;
  const isOwner=!!user?.id&&(!profileId||String(user.id)===String(visibleProfileUser?.id));
  const resolvedTargetId=profileStatus==='ready'&&Number.isSafeInteger(Number(visibleProfileUser?.id))?Number(visibleProfileUser?.id):null;
  const followKey=requestKey+':'+String(resolvedTargetId??'');
@@ -67,6 +71,7 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
     .then(async response=>{if(!response.ok)throw Error('Unable to load profile');return response.json()})
     .then(result=>{
      if(controller.signal.aborted)return;
+     lastVerifiedProfileKey.current=requestKey;
      setProjects(normalizeProfileProjectsV2(result));
      setProfileUser(result.profile||null);
      setLoadState({key:requestKey,status:'ready'});
