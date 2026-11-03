@@ -20,9 +20,12 @@ function poolFixture(){
  const pool={
   calls,async query(sql,args=[]){
    calls.push({sql,args});
-   if(sql.startsWith('SELECT id,title,deleted_at FROM library_beats'))return {rows:[{id:beat,title:'Test',deleted_at:'2026-11-03T00:00:00Z'}],rowCount:1};
+   if(sql.startsWith('SELECT b.id,b.title,b.deleted_at FROM library_beats b'))return {rows:[{id:beat,title:'Test',deleted_at:'2026-11-03T00:00:00Z'}],rowCount:1};
    if(sql.startsWith('SELECT id,title,deleted_at FROM library_packs'))return {rows:[],rowCount:0};
    if(sql.startsWith('SELECT count(*)::int AS pending FROM v2_r2_delete_jobs'))return {rows:[{pending:0}],rowCount:1};
+   if(sql.startsWith('SELECT id FROM library_packs WHERE user_id=$1')&&sql.includes('FOR UPDATE'))return {rows:[{id:beat}],rowCount:1};
+   if(sql.startsWith('UPDATE library_beats b SET deleted_at=NULL'))return {rows:[{id:beat}],rowCount:1};
+   if(sql.startsWith('UPDATE library_packs SET deleted_at=NULL'))return {rows:[{id:beat}],rowCount:1};
    if(sql.startsWith('UPDATE library_beats SET deleted_at=NULL'))return {rowCount:1,rows:[{id:beat}]};
    if(['BEGIN','COMMIT','ROLLBACK'].includes(sql)||sql.startsWith('SELECT pg_advisory_xact_lock'))return {rows:[],rowCount:0};
    throw Error('Unexpected query: '+sql);
@@ -107,4 +110,20 @@ test('transient R2 error preserves a pending job so Empty Trash can retry',async
  assert.equal(res.deletedMedia,0);
  assert.equal(res.failedMedia,1);
  assert.equal(res.pendingMedia,1);
+});
+
+test('restoring a pack first revives only auto-trashed member beats inside the same owner transaction',async()=>{
+ const pool=poolFixture();
+ const res=await invoke({pool,method:'POST',path:'/api/library/trash/pack/'+beat+'/restore',
+  storageFactory:()=>{throw Error('Restoring a pack must not use R2')}});
+ assert.equal(res.status,200);
+ assert.equal(res.body.kind,'pack');
+ const checks=pool.calls.map(x=>x.sql);
+ const eligible=checks.findIndex(x=>x.startsWith('SELECT id FROM library_packs WHERE user_id=$1'));
+ const members=checks.findIndex(x=>x.startsWith('UPDATE library_beats b SET deleted_at=NULL'));
+ const packRestore=checks.findIndex(x=>x.startsWith('UPDATE library_packs SET deleted_at=NULL'));
+ assert.ok(eligible>=0&&members>eligible&&packRestore>members);
+ assert.match(checks[members],/source_p.deleted_at=b.deleted_at/);
+ assert.match(checks[members],/b.library_visible=FALSE/);
+ assert.equal(checks.at(-2),'COMMIT');
 });
