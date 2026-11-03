@@ -77,3 +77,10 @@ test('stalled R2 Body is aborted on a short injected deadline',async()=>{
   VerificationUnavailable
  );
 });
+
+test('ZIP central filename cannot conceal a different local-header path',async()=>{
+ const bytes=zip('safe.wav');
+ // Local and central names have the same length, but differ in content.
+ Buffer.from('evil.wav').copy(bytes,30);
+ await assert.rejects(()=>verify(bytes),/local filename disagrees/);
+});
