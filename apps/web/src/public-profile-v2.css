@@ -6,6 +6,11 @@
 .onece-profile-name{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:18px;max-width:100%;min-width:0}
 .onece-profile-name h1{margin:0;font-size:20px;line-height:1.35;font-weight:650;letter-spacing:-.025em;overflow-wrap:anywhere}
 .onece-profile-display-name{margin:7px 0 0;color:#a8a0b2;font-size:12px}
+/* Public profile reuses the exact social glyphs shown in the editor. */
+.onece-profile-top .onece-social-links.is-compact{justify-content:center;margin-top:14px;max-width:100%;gap:9px}
+.onece-profile-top .onece-social-links.is-compact .onece-social-link{width:34px;height:34px;flex-basis:34px;background:#242226;border-color:#ffffff11;color:#bcb3c6}
+.onece-profile-top .onece-social-links.is-compact .onece-social-link:hover{background:#353038;color:#f8f5fa}
+
 .onece-profile-actions{display:flex;align-items:center;gap:5px;flex-shrink:0}
 .onece-profile-actions button{display:grid;place-items:center;width:27px;height:27px;padding:0;border:1px solid transparent;border-radius:8px;background:transparent;color:#aaa2b4;cursor:pointer;transition:background .18s ease,color .18s ease}
 .onece-profile-actions button:hover{background:#ffffff12;color:#fff}

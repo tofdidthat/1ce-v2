@@ -50,12 +50,13 @@ test('Back is aligned with right buttons, and Copy link is the exact icon from c
 
 test('Follow/Edit/Back/Copy behaviors remain intact; project player is untouched',()=>{
  assert.match(profile,/onClick=\{onBack\}/);
- assert.match(profile,/onClick=\{onSettings\}/);
+ assert.match(profile,/onClick=\{\(\)=>setEditorOpen\(true\)\}/);
  assert.match(profile,/onClick=\{\(\)=>void changeFollow\(\)\}/);
  assert.match(profile,/onClick=\{\(\)=>void copyProfileLink\(\)\}/);
  assert.match(profile,/setProfileFollowV2\(resolvedTargetId,followData\.viewerFollows\)/);
  assert.match(profile,/navigator\.clipboard\.writeText\(url\)/);
- assert.match(workspace,/onSettings=\{\(\)=>navigate\('\/app\/settings\?edit=profile'\)\}/);
+ assert.match(workspace,/onIdentityUpdated=\{updated=>\{/);
+ assert.match(workspace,/setAccount\(updated\)/);
  assert.match(workspace,/onBack=\{\(\)=>\{const index=window\.history\.state\?\.idx/);
  assert.match(workspace,/<LibraryItemsV2 active=\{view==='library'\}/);
  assert.match(workspace,/onPlaybackChange=\{setPlayback\}/);
