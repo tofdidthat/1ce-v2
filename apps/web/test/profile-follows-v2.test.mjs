@@ -27,7 +27,9 @@ test('other profiles expose real Follow/Unfollow; no follow mutation available f
  assert.match(profile,/if\(!user\?\.id\)\{onLogin\(\);return;\}/);
  assert.match(profile,/!resolvedTargetId\|\|isOwner\|\|followStatus!=='ready'/);
  assert.match(profile,/setProfileFollowV2\(resolvedTargetId,followData\.viewerFollows\)/);
- assert.match(profile,/followData\?\.viewerFollows\?'Following':'Follow'/);
+ assert.match(profile,/followData\?\.viewerFollows\?<UserRoundCheck size=\{22\}\/>:<UserRoundPlus size=\{22\}\/>/);
+ assert.match(profile,/aria-label=\{followData\?\.viewerFollows\?'Unfollow profile':'Follow profile'\}/);
+ assert.doesNotMatch(profile,/followData\?\.viewerFollows\?'Following':'Follow'/);
  assert.match(profile,/aria-pressed=\{Boolean\(followData\?\.viewerFollows\)\}/);
  assert.match(transport,/method:alreadyFollowing\?'DELETE':'POST'/);
  assert.match(transport,/credentials:'include'/);
