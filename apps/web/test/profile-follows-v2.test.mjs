@@ -12,7 +12,8 @@ test('profile navbar replaces normal header, preserves back and own pencil to re
  assert.match(workspace,/onBack=\{\(\)=>\{const index=window\.history\.state\?\.idx/);
  assert.match(workspace,/navigate\(-1\)/);
  assert.match(workspace,/navigate\(account\?\.id\?'\/app\/library':'\/'\)/);
- assert.match(workspace,/onSettings=\{\(\)=>navigate\('\/app\/settings'\)\}/);
+ assert.match(workspace,/onSettings=\{\(\)=>navigate\('\/app\/settings\?edit=profile'\)\}/);
+ assert.match(src('account-settings-v2.tsx'),/new URLSearchParams\(window\.location\.search\)\.get\('edit'\)==='profile'/);
  assert.match(profile,/<header className="onece-profile-navbar"/);
  assert.match(profile,/<ArrowLeft size=\{19\}\/>/);
  assert.match(profile,/<Pencil size=\{19\}\/>/);
