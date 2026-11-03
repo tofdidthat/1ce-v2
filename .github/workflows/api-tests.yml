@@ -93,6 +93,8 @@ jobs:
         run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Run isolated API unit tests
         run: pnpm --filter @1ce/api test
+      - name: Syntax-check opt-in real R2 preflight (do not execute or use secrets)
+        run: node --check apps/api/scripts/s2-r2-smoke.mjs
 
   railway-api-smoke:
     runs-on: ubuntu-latest
