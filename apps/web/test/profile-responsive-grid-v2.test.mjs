@@ -15,7 +15,7 @@ test('responsive project grid displays six desktop, four medium and three mobile
  assert.match(css,/\.onece-profile-projects\{display:grid;grid-template-columns:repeat\(6,minmax\(0,1fr\)\)/);
  assert.match(css,/@media\(max-width:900px\) and \(min-width:681px\)\{\.onece-profile-projects\{grid-template-columns:repeat\(4,minmax\(0,1fr\)\)\}\}/);
  assert.match(css,/@media\(max-width:680px\)\{\.onece-profile-projects\{grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
- assert.doesNotMatch(css,/\.onece-profile-project\{[^}]*flex:0 0 172px/);
+ assert.match(css,/\.onece-profile-project\{box-sizing:border-box;width:100%;min-width:0;position:relative\}/);
  assert.doesNotMatch(css,/\.onece-profile-projects\{[^}]*display:flex/);
 });
 
