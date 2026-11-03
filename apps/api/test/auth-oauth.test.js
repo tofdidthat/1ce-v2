@@ -17,9 +17,11 @@ function fixture(){
  const db={user,sessions,attempts,queries,googleFetches,async query(sql,args=[]){
   queries.push({sql,args});
   if(sql==='BEGIN'||sql==='COMMIT'||sql==='ROLLBACK')return {rowCount:0,rows:[]};
+  if(sql==='SELECT 1')return {rowCount:1,rows:[{'?column?':1}]};
   if(sql.includes('FROM account_sessions s JOIN account_users u')){
    const s=sessions.get(args[0]);
-   return {rowCount:s?1:0,rows:s?[{id:user.id,email:user.email,name:user.name,picture:user.picture,username:user.username,has_avatar:false,avatar_updated_at:null}]:[]};
+   const active=s&&s.expiresAt==='mock-future';
+   return {rowCount:active?1:0,rows:active?[{id:user.id,email:user.email,name:user.name,picture:user.picture,username:user.username,has_avatar:false,avatar_updated_at:null}]:[]};
   }
   if(sql.startsWith('SELECT id,email,name,picture,password_hash,email_verified FROM account_users')){
    return {rowCount:args[0]===user.email?1:0,rows:args[0]===user.email?[user]:[]};
@@ -32,11 +34,11 @@ function fixture(){
    const had=sessions.delete(args[0]);return {rowCount:had?1:0,rows:[]};
   }
   if(sql.startsWith('INSERT INTO account_google_login_attempts(')){
-   const a={id:nextAttempt++,stateHash:args[0],verifierChallenge:args[1],callbackUsed:false,exchanged:false};
+   const a={id:nextAttempt++,stateHash:args[0],verifierChallenge:args[1],callbackUsed:false,exchanged:false,callbackExpired:false,exchangeExpired:false};
    attempts.set(a.id,a);return {rowCount:1,rows:[]};
   }
   if(sql.startsWith('UPDATE account_google_login_attempts SET callback_used_at=')){
-   const a=[...attempts.values()].find(a=>a.stateHash===args[0]&&!a.callbackUsed);
+   const a=[...attempts.values()].find(a=>a.stateHash===args[0]&&!a.callbackUsed&&!a.callbackExpired);
    if(a)a.callbackUsed=true;
    return {rowCount:a?1:0,rows:a?[{id:a.id}]:[]};
   }
@@ -51,7 +53,7 @@ function fixture(){
    a.userId=args[0];a.exchangeHash=args[1];return {rowCount:1,rows:[]};
   }
   if(sql.startsWith('SELECT id,user_id,verifier_challenge FROM account_google_login_attempts WHERE exchange_hash=$1')){
-   const a=[...attempts.values()].find(a=>a.exchangeHash===args[0]&&a.callbackUsed&&!a.exchanged);
+   const a=[...attempts.values()].find(a=>a.exchangeHash===args[0]&&a.callbackUsed&&!a.exchanged&&!a.exchangeExpired);
    return {rowCount:a?1:0,rows:a?[{id:a.id,user_id:a.userId,verifier_challenge:a.verifierChallenge}]:[]};
   }
   if(sql.startsWith('UPDATE account_google_login_attempts SET exchanged_at=')){
@@ -245,4 +247,64 @@ test('Google token/userinfo verification failure never creates a session or rede
 
 test('imported API request handler does not bind a production port during tests',()=>{
  assert.equal(apiServer.listening,false);
+});
+
+
+test('expired session is denied even when its hashed token remains stored',async()=>{
+ const login=await send('POST','/auth/login',{email:h.user.email,password:'correct-secret'});
+ assert.equal(login.status,200);
+ const token=cookieValue(login.headers['Set-Cookie'],'onece_v2_session');
+ const record=h.sessions.get(hash(token));
+ assert.ok(record);
+ record.expiresAt='mock-expired';
+ const me=await send('GET','/auth/me',undefined,{cookie:'onece_v2_session='+token});
+ assert.equal(me.status,401);
+ assert.equal(me.json.error,'Not authenticated');
+ assert.equal(h.sessions.has(hash(token)),true); // Rejected by expires_at query, not deleted by GET.
+});
+
+test('auth rejects oversized payloads and malformed OAuth JSON without creating sessions',async()=>{
+ assert.equal((await send('POST','/auth/login','x'.repeat(8200))).status,413);
+ assert.equal((await send('POST','/auth/google/exchange','x'.repeat(8200))).status,413);
+ assert.equal((await send('POST','/auth/google/exchange','{"loginCode":')).status,400);
+ assert.equal(h.sessions.size,0);
+});
+
+test('expired Google callback state rejects before token exchange',async()=>{
+ const verifier=Buffer.alloc(32,31).toString('base64url');
+ const begin=await send('GET','/auth/google?challenge='+shaBase64(verifier));
+ assert.equal(begin.status,302);
+ const state=new URL(begin.headers.Location).searchParams.get('state');
+ const attempt=[...h.attempts.values()][0];
+ attempt.callbackExpired=true;
+ const callback=await send('GET','/auth/google/callback?state='+state+'&code=mock-code',undefined,{cookie:'onece_v2_google_state='+state});
+ assert.equal(callback.status,302);
+ assert.match(callback.headers.Location,/\/app\?login=error$/);
+ assert.equal(h.googleFetches.length,0);
+ assert.equal(h.sessions.size,0);
+});
+
+test('expired Google exchange authorization cannot create a session',async()=>{
+ const verifier=Buffer.alloc(32,32).toString('base64url');
+ const begin=await send('GET','/auth/google?challenge='+shaBase64(verifier));
+ const state=new URL(begin.headers.Location).searchParams.get('state');
+ const callback=await send('GET','/auth/google/callback?state='+state+'&code=mock-code',undefined,{cookie:'onece_v2_google_state='+state});
+ const loginCode=new URL(callback.headers.Location).searchParams.get('login_code');
+ assert.ok(loginCode);
+ const attempt=[...h.attempts.values()][0];
+ attempt.exchangeExpired=true;
+ assert.equal((await send('POST','/auth/google/exchange',{loginCode,verifier})).status,400);
+ assert.equal(h.sessions.size,0);
+ assert.equal(attempt.exchanged,false);
+});
+
+test('health endpoints are isolated from authentication; DB health is verified through the fixture',async()=>{
+ const health=await send('GET','/health');
+ assert.equal(health.status,200);
+ assert.equal(health.json.ok,true);
+ assert.equal(health.json.service,'1ce-v2-api');
+ assert.equal(health.headers['Cache-Control'],'no-store');
+ const db=await send('GET','/health/db');
+ assert.equal(db.status,200);
+ assert.deepEqual(db.json,{ok:true,database:'connected'});
 });
