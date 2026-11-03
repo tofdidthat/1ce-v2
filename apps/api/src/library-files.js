@@ -155,7 +155,7 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser,{
    const reserved=Number(quota.rows[0]?.reserved_bytes||0);
    if(count>=uploadLimits.maxPending||reserved+size>uploadLimits.maxStoredBytes){
     await db.query('ROLLBACK');
-    send(res,429,{error:'Upload quota exceeded; finish pending uploads or free storage'});return true;
+    send(res,429,{error:'Account upload quota reached'});return true;
    }
    objectKey='staging/users/'+user.id+'/assets/'+kind+'/'+randomUUID()+'.'+ext;
    inserted=await db.query("INSERT INTO library_files(user_id,kind,object_key,original_name,content_type,byte_size,status,sha256) VALUES($1,$2,$3,$4,$5,$6,'pending',$7) RETURNING id",[user.id,kind,objectKey,name,contentType,size,sha256]);
