@@ -217,9 +217,9 @@ export default function EditProfilePanelV2({user,profile,catalog,onClose,onIdent
      <ProfileSocialLinksV2 links={links} onAdd={links.length<6?()=>editLink(-1):undefined} onEdit={editLink}/>
      {linkEditor&&<div className="onece-edit-link-row">
       <div className="onece-edit-link-field"><Link2 size={17}/><input autoFocus aria-label="Profile link URL" type="url" inputMode="url" value={linkEditor.value} placeholder="https://..." onChange={e=>setLinkEditor({...linkEditor,value:e.target.value})} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();confirmLink();}}}/></div>
-      <button type="button" title="Save link" aria-label="Save link" onClick={confirmLink}><Check size={17}/></button>
-      {linkEditor.index>=0&&<button type="button" title="Remove link" aria-label="Remove link" onClick={()=>{setLinks(previous=>previous.filter((_,i)=>i!==linkEditor.index));setLinkEditor(null);}}><Trash2 size={17}/></button>}
       <button type="button" title="Cancel link editing" aria-label="Cancel link editing" onClick={()=>setLinkEditor(null)}><X size={17}/></button>
+      <button type="button" title="Save link" aria-label="Save link" onClick={confirmLink}><Check size={17}/></button>
+      {linkEditor.index>=0&&<button type="button" className="onece-edit-link-delete" title="Remove link" aria-label="Remove link" onClick={()=>{setLinks(previous=>previous.filter((_,i)=>i!==linkEditor.index));setLinkEditor(null);}}><Trash2 size={17}/></button>}
      </div>}
      <p className="onece-edit-help">Add Spotify, YouTube, Instagram or another public URL.</p>
     </section>
