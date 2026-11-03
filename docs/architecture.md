@@ -1,3 +1,19 @@
+## Estado atual S2 / PR #27 — 2026-11-03 (atualização de continuidade)
+
+**DECISÃO APROVADA:** O usuário aceitou **10 GiB por conta como limite técnico provisório** do plano DB `default`, sem cobrança/tiers pagos. Aceitou a limitação temporária de que excluir um projeto não recupera espaço físico até **PR #28 (Settings → Trash + GC de mídias sem referências)**.
+
+**PRODUÇÃO V2 / BANCO — EXECUTADO:** backup e restore de segurança verificados; SQL **010 e 011 aplicadas manualmente à produção v2**, na ordem, com tabelas/índices e `default = 10 GiB` confirmados. **Não aplicar às tabelas da v1.** A afirmação histórica abaixo de que migrations ainda não foram aplicadas está superada.
+
+**R2 / NAVEGADOR — EVIDÊNCIA REPORTADA:** regra de expiração `staging/` após 24 horas salva pelo usuário no bucket v2 de produção (nunca `users/`). Smoke S3 real `PASS` em `onece-s2-smoke-27`: signed PUT, ETag HEAD/CopyObject condicional, ranges e isolamento de objetos finais. CORS do bucket de teste configurado com origem `https://1ce-v2-tofdidthat.vercel.app`, método `PUT` e header `Content-Type`; teste `fetch` no Chrome retornou **`200 PASS`**. CORS do bucket de produção consta configurado por relato do usuário, porém o **fluxo completo S2 de produção ainda não foi testado**. Credenciais da sessão PowerShell foram corrigidas após um 401 por Access Key ID incorreto; não colocar chaves/URLs assinadas no GitHub.
+
+**GITHUB / RAILWAY:** PR [#27](https://github.com/tofdidthat/1ce-v2/pull/27) **permanece draft e não mesclada**; CI antes deste registro no commit `13bc00c5`, [run #41662268751](https://github.com/tofdidthat/1ce-v2/actions/runs/41662268751), 6/6 jobs, 108 API tests. A Railway API v2 S1 e Postgres seguem online conforme leitura. **Nenhum deploy S2 ou merge autorizado/executado**.
+
+**PENDÊNCIAS / GATES:** (1) revisão de segurança **independente** no HEAD final; não há review registrado; (2) CI verde no HEAD final após documentação; (3) verificar plano de rollback e saúde dos deploys; (4) obter autorização explícita específica para merge e deploy da API S2 na Railway; (5) testes end-to-end com conta descartável, mídias reais MP3/WAV/JPEG/PNG/WebP/ZIP, CORS produção, login/isolamento, dedup, quotas, falhas/races e regressão do player; (6) agendar cron v2-only de pruning de rate limits apenas após aprovação, pois script existe mas cron **não**; (7) conferir/limpar somente objeto descartável deixado pelo CORS smoke no bucket de teste. PR #28 recupera quota e implementa Trash; não incluir aqui. **A aprovação dos 10 GiB não autoriza deploy.**
+
+**Handoff detalhado:** [guia de segurança e release S2](release-s2-upload-security.md). As seções históricas deste arquivo descrevem estados anteriores e são superadas por este registro onde houver conflito.
+
+---
+
 ## S2 PR #27 — Follow-up implementation of steps 1 and 3 (2026-11-03)
 
 **DECISION BY USER:** Storage quotas are based on **plans**, not a single per-service quota. Plan names/prices and payments are **not** approved or implemented. The existing tech default remains **10 GiB** until future commercial decisions. Settings → Trash with 30-day recovery and physical deletion of unreferenced R2 assets is planned as **PR #28**, not included here. Do not equate a temporary 24-hour `staging/` R2 expiry with a Trash recovery policy.
