@@ -438,3 +438,19 @@ test('R2 HEAD without ETag fails closed before any server-side copy',async()=>{
  assert.equal(h.commands.some(c=>c.constructor.name==='CopyObjectCommand'),false);
  assert.equal([...h.objects.keys()].some(k=>k.includes('/verified/')),false);
 });
+
+
+test('two simultaneous completions of the same file leave one READY R2 key',async()=>{
+ const h=setup(),start=await h.invoke('/api/library/files/init',uploaded());
+ const file=h.files.get(start.body.id);h.put(file);
+ const [a,b]=await Promise.all([
+  h.invoke('/api/library/files/'+file.id+'/complete'),
+  h.invoke('/api/library/files/'+file.id+'/complete')
+ ]);
+ assert.equal([a.status,b.status].includes(200),true);
+ assert.equal([a.status,b.status].every(status=>status===200||status===409),true);
+ assert.equal(file.status,'ready');
+ const finals=[...h.objects.keys()].filter(key=>key.includes('/verified/'));
+ assert.deepEqual(finals,[file.object_key]);
+ assert.equal(h.objects.get(file.object_key).bytes.equals(sample),true);
+});
