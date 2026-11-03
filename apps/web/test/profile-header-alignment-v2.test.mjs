@@ -55,7 +55,8 @@ test('Follow/Edit/Back/Copy behaviors remain intact; project player is untouched
  assert.match(profile,/onClick=\{\(\)=>void copyProfileLink\(\)\}/);
  assert.match(profile,/setProfileFollowV2\(resolvedTargetId,followData\.viewerFollows\)/);
  assert.match(profile,/navigator\.clipboard\.writeText\(url\)/);
- assert.match(workspace,/onIdentityUpdated=\{setAccount\}/);
+ assert.match(workspace,/onIdentityUpdated=\{updated=>\{/);
+ assert.match(workspace,/setAccount\(updated\)/);
  assert.match(workspace,/onBack=\{\(\)=>\{const index=window\.history\.state\?\.idx/);
  assert.match(workspace,/<LibraryItemsV2 active=\{view==='library'\}/);
  assert.match(workspace,/onPlaybackChange=\{setPlayback\}/);
