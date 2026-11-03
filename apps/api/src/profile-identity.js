@@ -1,6 +1,7 @@
 // 1CE v2 profile identity. Private R2 avatar objects; never reuse v1 account tokens or storage.
 import {randomUUID} from 'node:crypto';
 import {S3Client,PutObjectCommand,GetObjectCommand,DeleteObjectCommand} from '@aws-sdk/client-s3';
+import {ensureProfileLinksV2,normalizeProfileLinksV2,storeProfileLinksV2} from './profile-links.js';
 
 const maxAvatarBytes=5*1024*1024;
 const send=(res,status,data)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data));};
@@ -78,11 +79,31 @@ export async function handleProfileIdentity(req,res,pathname,pool,currentUser,{s
   const bytes=await readBytes(req,8192);
   if(!bytes){send(res,413,{error:'Request too large'});return true;}
   let data;try{data=JSON.parse(bytes.toString('utf8'));}catch{send(res,400,{error:'Invalid JSON'});return true;}
-  const username=normalizeUsername(data?.username);
-  if(!username){send(res,400,{error:'Use 3–24 characters, beginning and ending with a letter or number; no spaces, repeated dots, or numbers-only usernames.'});return true;}
-  try{await pool.query('UPDATE account_users SET username=$1,updated_at=now() WHERE id=$2',[username,user.id]);}
-  catch(error){if(error?.code==='23505'){send(res,409,{error:'This username is already taken.'});return true;}throw error;}
-  send(res,200,{user:await currentUser(req)});return true;
+  const changeUsername=Object.hasOwn(data||{},'username');
+  const changeLinks=Object.hasOwn(data||{},'links');
+  if(!changeUsername&&!changeLinks){send(res,400,{error:'No profile changes were provided.'});return true;}
+  const username=changeUsername?normalizeUsername(data.username):null;
+  if(changeUsername&&!username){
+   send(res,400,{error:'Use 3–24 characters, beginning and ending with a letter or number; no spaces, repeated dots, or numbers-only usernames.'});return true;
+  }
+  const links=changeLinks?normalizeProfileLinksV2(data.links):null;
+  if(changeLinks&&!links){send(res,400,{error:'Use up to 6 unique HTTPS profile links (maximum 500 characters each), without local addresses or credentials.'});return true;}
+  // The existing endpoint owns profile mutations. If both fields are submitted,
+  // keep username and social URLs atomic in the existing v2 database.
+  if(changeLinks)await ensureProfileLinksV2(pool);
+  const transaction=changeUsername&&changeLinks;
+  const db=transaction?await pool.connect():pool;
+  try{
+   if(transaction)await db.query('BEGIN');
+   if(changeUsername)await db.query('UPDATE account_users SET username=$1,updated_at=now() WHERE id=$2',[username,user.id]);
+   if(changeLinks)await storeProfileLinksV2(db,user.id,links);
+   if(transaction)await db.query('COMMIT');
+  }catch(error){
+   if(transaction)try{await db.query('ROLLBACK');}catch{}
+   if(error?.code==='23505'){send(res,409,{error:'This username is already taken.'});return true;}
+   throw error;
+  }finally{if(transaction)db.release();}
+  send(res,200,{user:await currentUser(req),...(changeLinks?{links}: {})});return true;
  }
  if(pathname==='/auth/me/avatar'){
   if(!['POST','DELETE'].includes(req.method)){send(res,405,{error:'Method not allowed'});return true;}
