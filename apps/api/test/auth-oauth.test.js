@@ -148,14 +148,31 @@ test('wrong password, malformed JSON, invalid identity and unverified email neve
  assert.equal(h.sessions.size,0);
 });
 
-test('login rate limiting returns 429 after 20 attempts for the same account across sockets',async()=>{
+test('unknown account login failures share a bounded rate bucket across rotating identities',async()=>{
  for(let i=0;i<20;i++){
-  const res=await send('POST','/auth/login',{email:'bad',password:'x'}, {},i%2?'192.0.2.251':'192.0.2.252');
-  assert.equal(res.status,400);
+  const res=await send('POST','/auth/login',{email:'unknown'+i+'@example.test',password:'wrong'}, {},i%2?'192.0.2.251':'192.0.2.252');
+  assert.equal(res.status,401);
  }
- const blocked=await send('POST','/auth/login',{email:'bad',password:'x'}, {},'192.0.2.251');
+ const blocked=await send('POST','/auth/login',{email:'unknown-last@example.test',password:'wrong'}, {},'192.0.2.251');
  assert.equal(blocked.status,429);
  assert.equal(blocked.json.error,'Too many attempts. Please try later.');
+ assert.equal(h.rates.size,1);
+});
+test('valid credentials work even if an attacker exhausted the known account failure window',async()=>{
+ for(let i=0;i<20;i++){
+  assert.equal((await send('POST','/auth/login',{email:h.user.email,password:'wrong'})).status,401);
+ }
+ const denied=await send('POST','/auth/login',{email:h.user.email,password:'wrong'});
+ assert.equal(denied.status,429);
+ const owner=await send('POST','/auth/login',{email:h.user.email,password:'correct-secret'});
+ assert.equal(owner.status,200);
+ assert.equal(owner.json.user.id,h.user.id);
+ assert.equal(h.sessions.size,1);
+});
+test('malformed login input cannot fill hashed account rate-limit storage',async()=>{
+ for(let i=0;i<25;i++)
+  assert.equal((await send('POST','/auth/login',{email:'bad',password:'x'})).status,400);
+ assert.equal(h.rates.size,0);
 });
 
 test('Google login requires a valid client challenge and binds random state to HttpOnly cookie',async()=>{
