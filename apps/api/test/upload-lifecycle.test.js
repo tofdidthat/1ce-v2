@@ -10,7 +10,7 @@ const uploaded=(bytes=sample)=>({kind:'audio',name:'original.mp3',contentType:'a
 
 function setup(){
  const files=new Map(),objects=new Map(),queries=[],commands=[],signed=[],rates=new Map();
- let onCopy=()=>{};
+ let onCopy=()=>{},onHead=()=>{};
  let nextId=100,forceUniqueCollision=false;
  const pool={async query(sql,args=[]){
   queries.push({sql,args});
@@ -81,7 +81,8 @@ function setup(){
   const key=command.input.Key, object=objects.get(key);
   if(command.constructor.name==='HeadObjectCommand'){
    if(!object){const err=new Error('Not found');err.name='NotFound';throw err;}
-   return {ContentLength:object.bytes.length,ContentType:object.type,ETag:'"'+checksum(object.bytes)+'"'};
+   const head={ContentLength:object.bytes.length,ContentType:object.type,ETag:'"'+checksum(object.bytes)+'"'};
+    onHead(key,objects);return head;
   }
   if(command.constructor.name==='GetObjectCommand'){
    if(!object){const err=new Error('Not found');err.name='NotFound';throw err;}
@@ -129,7 +130,7 @@ function setup(){
   files.set(file.id,file);return file;
  };
  return {files,objects,queries,commands,signed,invoke,put,addReady,
-  onCopy(fn){onCopy=fn;},rates,
+  onCopy(fn){onCopy=fn;},onHead(fn){onHead=fn;},rates,
   setUniqueCollision(value){forceUniqueCollision=value},
   setSigningFailure(){options.signUrl=async()=>{throw Error('signer unavailable');}}
  };
