@@ -28,6 +28,7 @@ function fixture({owner=1,missing=false,badCover=false,members=[]}={}){
    if(sql.includes('SELECT b.id FROM library_packs'))return {rowCount:missing?0:2,rows:missing?[]:[{id:beat},{id:second}]};
    if(sql.startsWith('SELECT beat_id,position FROM library_pack_beats'))return {rowCount:members.length,rows:members};
    if(sql.startsWith('SELECT beat_id FROM library_pack_beats'))return {rowCount:members.length,rows:members};
+   if(sql.includes('SET deleted_at=now()'))return {rowCount:missing?0:1,rows:missing?[]:[{id:args[1]}]};
    if(sql.startsWith('UPDATE library_'))return {rowCount:1,rows:[{id:args[1],title:args[0]??'Original',cover_file_id:args[0]}]};
    return {rowCount:1,rows:[]};
   },connect:async()=>({query:(...args)=>ctx.query(...args),release(){calls.push({sql:'RELEASE'})}})};

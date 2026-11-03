@@ -155,7 +155,7 @@ try{
   throw Error('Unexpected Trash purge result: '+JSON.stringify(purged));
  const survivor=await pool.query('SELECT id FROM library_beats WHERE id=$1',[beatTwo]);
  if(survivor.rowCount!==1)throw Error('Trash purged a live beat');
- const liveMedia=await pool.query('SELECT id FROM library_files WHERE id=ANY($1::bigint[])',[sharedCover,audioTwo]);
+ const liveMedia=await pool.query('SELECT id FROM library_files WHERE id=ANY($1::bigint[])',[[sharedCover,audioTwo]]);
  if(liveMedia.rowCount!==2)throw Error('Trash deleted shared or live asset');
  const deadMedia=await pool.query('SELECT id FROM library_files WHERE id=$1',[audioOne]);
  if(deadMedia.rowCount!==0)throw Error('Unreferenced retired asset still exists in metadata');

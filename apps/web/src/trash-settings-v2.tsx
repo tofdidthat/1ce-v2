@@ -71,7 +71,7 @@ export default function TrashSettingsV2({userId,onBack}:{userId:number;onBack:()
     </ul>}
    {(count>0||data.pendingMedia>0)&&<div className="onece-trash-permanent">
     <h3>Empty Trash</h3>
-    <p>This permanently removes deleted projects. Media is deleted from Cloudflare R2 only when no other project references it. This action cannot be undone.</p>
+    <p>This permanently removes deleted projects. Only unreferenced media is deleted from Cloudflare R2; files still used by another project are preserved. This action cannot be undone.</p>
     {data.pendingMedia>0&&<p className="onece-trash-pending">{data.pendingMedia} R2 deletion(s) pending. You can retry cleanup here.</p>}
     <label>Type <strong>EMPTY TRASH</strong> to confirm
      <input value={confirm} disabled={working} placeholder="EMPTY TRASH" onChange={e=>setConfirm(e.target.value)} autoCapitalize="characters" spellCheck={false}/></label>
