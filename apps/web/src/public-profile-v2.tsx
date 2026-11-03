@@ -5,12 +5,11 @@ import ProjectContextMenuV2 from './project-context-menu-v2';
 import ProjectCardV2 from './project-card-v2';
 import {createProjectShareLinkV2} from './project-requests-v2';
 import ProjectActionDialogV2,{type ContextProject,type ProjectAction,type ChangedProject} from './project-action-dialog-v2';
-import {subscribeV2DataChanges,subscribeV2Resume} from './data-refresh-v2';
+import {subscribeV2DataChanges,subscribeV2Resume,notifyV2DataChanged} from './data-refresh-v2';
 import useProjectFlagsV2 from './project-flags-v2';
 import {profilePictureV2} from './profile-picture-v2';
 import {normalizeProfileProjectsV2,normalizeLibraryProjectsV2,type ProfileProjectV2} from './project-read-v2';
 import {savedProjectKeyV2} from './project-identity-v2';
-import {notifyV2DataChanged} from './data-refresh-v2';
 import {getProfileFollowsV2,setProfileFollowV2,type ProfileFollowsV2} from './profile-follows-v2';
 
 function CatalogLibraryIcon({size=17}:{size?:number}){
@@ -47,12 +46,13 @@ export default function PublicProfileV2({user,onSettings,onBack,onLogin,onOpenPr
  const followKey=requestKey+':'+String(resolvedTargetId??'');
  currentFollowRequest.current=followKey;
  const followStatus=followState.key===followKey?followState.status:'loading';
- const followData=followState.key===followKey&&followState.status==='ready'?followState.data:null;
+ const followData=followState.key===followKey?followState.data:null;
  React.useEffect(()=>subscribeV2DataChanges(['library','saves','publications','shares','identity'],
   ()=>setRefreshRevision(v=>v+1)),[targetId,user?.id]);
  React.useEffect(()=>subscribeV2Resume(()=>setRefreshRevision(v=>v+1)),[targetId,user?.id]);
  React.useEffect(()=>subscribeV2DataChanges(['follows'],()=>setFollowRevision(v=>v+1),user?.id),[targetId,user?.id]);
  React.useEffect(()=>subscribeV2Resume(()=>setFollowRevision(v=>v+1)),[targetId,user?.id]);
+ React.useEffect(()=>{setFollowBusy(false);setCopyStatus('');},[followKey]);
  React.useEffect(()=>{
   if(!api||!targetId){
    setLoadState({key:requestKey,status:'error'});setError('Profile API is not configured');return;
@@ -72,7 +72,7 @@ export default function PublicProfileV2({user,onSettings,onBack,onLogin,onOpenPr
  React.useEffect(()=>{
   if(!resolvedTargetId){setFollowState({key:followKey,status:'loading',data:null});return;}
   const controller=new AbortController();
-  setFollowState({key:followKey,status:'loading',data:null});setFollowError('');
+  setFollowState(previous=>({key:followKey,status:'loading',data:previous.key===followKey?previous.data:null}));setFollowError('');
   void getProfileFollowsV2(resolvedTargetId,controller.signal).then(data=>{
    if(!controller.signal.aborted)setFollowState({key:followKey,status:'ready',data});
   }).catch(caught=>{
@@ -128,7 +128,6 @@ export default function PublicProfileV2({user,onSettings,onBack,onLogin,onOpenPr
    if(currentFollowRequest.current===key){
     setFollowState(previous=>previous.key===key&&previous.data?
      {...previous,data:{...previous.data,viewerFollows:result.viewerFollows,followersCount:result.followersCount}}:previous);
-    setFollowRevision(value=>value+1);
    }
    notifyV2DataChanged(['follows'],Number(user.id));
   }catch(caught){
