@@ -10,7 +10,7 @@ function fixture(){
  const state={username:'original',links:[],id:2},calls=[];
  const query=async(sql,args=[])=>{
   calls.push({sql,args});
-  if(sql.startsWith('CREATE TABLE')||sql==='BEGIN'||sql==='COMMIT'||sql==='ROLLBACK')return {rowCount:0,rows:[]};
+  if(sql.startsWith('CREATE TABLE')||sql.startsWith('CREATE INDEX')||sql==='BEGIN'||sql==='COMMIT'||sql==='ROLLBACK')return {rowCount:0,rows:[]};
   if(sql.startsWith('UPDATE account_users SET username=')){state.username=args[0];return {rowCount:1,rows:[]};}
   if(sql.startsWith('INSERT INTO v2_profile_links')){state.links=JSON.parse(args[1]);return {rowCount:1,rows:[]};}
   if(sql==='SELECT links FROM v2_profile_links WHERE user_id=$1')return {rowCount:state.links.length?1:0,rows:state.links.length?[{links:state.links}]:[]};
