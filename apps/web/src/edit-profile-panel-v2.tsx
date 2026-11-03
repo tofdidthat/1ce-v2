@@ -10,8 +10,8 @@ import './edit-profile-panel-v2.css';
 
 const api=import.meta.env.VITE_API_URL;
 type Project=LibraryBeatV2|LibraryPackV2;
-type LibraryState={status:'idle'|'loading'|'ready'|'error';items:Project[];error:string};
-const emptyLibrary:LibraryState={status:'idle',items:[],error:''};
+type LibraryState={viewerId:number|null;status:'idle'|'loading'|'ready'|'error';items:Project[];error:string};
+const emptyLibrary:LibraryState={viewerId:null,status:'idle',items:[],error:''};
 const projectKey=(p:{kind:'beat'|'pack';id:string})=>p.kind+':'+p.id;
 const validateUsername=(value:string)=>/^[a-z0-9][a-z0-9._]{1,22}[a-z0-9]$/.test(value)&&!value.includes('..')&&!/^\d+$/.test(value);
 
@@ -64,30 +64,46 @@ export default function EditProfilePanelV2({user,profile,catalog,onClose,onIdent
   return()=>window.removeEventListener('keydown',onKey);
  },[picker,linkEditor,editingUsername,savedUsername,saving,usernameSaving,busyKey,onClose]);
  useEffect(()=>{
-  if(!picker||!api||!Number.isSafeInteger(viewer)||viewer<1)return;
+  if(!api||!Number.isSafeInteger(viewer)||viewer<1)return;
   const controller=new AbortController();
-  setLibrary(previous=>({...previous,status:'loading',error:''}));
+  // Prefetch when the editor opens. Subsequent picker openings revalidate in
+  // the background without replacing a verified project list with a spinner.
+  setLibrary(previous=>({viewerId:viewer,
+   status:previous.viewerId===viewer&&previous.status==='ready'?'ready':'loading',
+   items:previous.viewerId===viewer?previous.items:[],error:''}));
   void fetch(api+'/api/library/files/items',{credentials:'include',cache:'no-store',signal:controller.signal})
    .then(async response=>{if(!response.ok)throw Error('Unable to load Home');return response.json()})
    .then(data=>{
     if(controller.signal.aborted)return;
     const normalized=normalizeLibraryProjectsV2(data,viewer);
-    setLibrary({status:'ready',items:[...normalized.packs,...normalized.beats.filter(beat=>beat.library_visible!==false)],error:''});
+    setLibrary({viewerId:viewer,status:'ready',items:[...normalized.packs,...normalized.beats.filter(beat=>beat.library_visible!==false)],error:''});
    }).catch(caught=>{
-    if(!controller.signal.aborted)setLibrary({status:'error',items:[],error:caught instanceof Error?caught.message:'Unable to load Library'});
+    if(!controller.signal.aborted)setLibrary(previous=>({
+     viewerId:viewer,
+     status:previous.viewerId===viewer&&previous.status==='ready'?'ready':'error',
+     items:previous.viewerId===viewer?previous.items:[],
+     error:caught instanceof Error?caught.message:'Unable to load Home'
+    }));
    });
   return()=>controller.abort();
- },[picker,viewer,revision]);
+ },[viewer,revision]);
  const shownItems=useMemo(()=>{
   const term=query.trim().toLowerCase();
-  return library.items.filter(item=>!term||item.title.toLowerCase().includes(term));
- },[library.items,query]);
+  return library.viewerId===viewer?library.items.filter(item=>!term||item.title.toLowerCase().includes(term)):[];
+ },[library.items,library.viewerId,query,viewer]);
  const previewProjects=useMemo(()=>{
   if(flagsStatus!=='ready')return catalog;
-  if(library.status==='ready')return library.items.filter(item=>published.has(projectKey(item)));
+  if(library.status==='ready'&&library.viewerId===viewer)return library.items.filter(item=>published.has(projectKey(item)));
   return catalog.filter(item=>published.has(projectKey(item)));
- },[library,catalog,published,flagsStatus]);
+ },[library,catalog,published,flagsStatus,viewer]);
 
+ function openProjectPicker(){
+  setQuery('');
+  setPicker(true);
+  // Refresh on reopen, but leave already-authorized rows visible until
+  // the server responds. The initial prefetch is started on editor mount.
+  if(library.status==='ready'&&library.viewerId===viewer)setRevision(value=>value+1);
+ }
  function cancelUsernameEdit(){
   setUsername(savedUsername);
   setEditingUsername(false);
@@ -226,10 +242,10 @@ export default function EditProfilePanelV2({user,profile,catalog,onClose,onIdent
     <section className="onece-edit-published" aria-label="Published music">
      <div className="onece-edit-section-heading"><h2>Published</h2><span>{flagsStatus==='ready'?published.size:catalog.length} projects</span></div>
      <div className="onece-edit-published-grid">{slots.map((project,index)=>
-      <button type="button" key={project?projectKey(project):'slot-'+index} className="onece-edit-published-slot" aria-label={project?'Manage '+project.title:'Add published project'} onClick={()=>{setPicker(true);setQuery('');}}>
+      <button type="button" key={project?projectKey(project):'slot-'+index} className="onece-edit-published-slot" aria-label={project?'Manage '+project.title:'Add published project'} onClick={openProjectPicker}>
        {project?<ProjectCoverV2 ownerId={viewer} fileId={project.cover_file_id} title={project.title} className="onece-edit-published-cover"/>:<Plus size={23}/>}
       </button>)}</div>
-     <button type="button" className="onece-edit-view-all" onClick={()=>setPicker(true)}>Manage published projects <ChevronRight size={16}/></button>
+     <button type="button" className="onece-edit-view-all" onClick={openProjectPicker}>Manage published projects <ChevronRight size={16}/></button>
     </section>
    </div>
    {error&&!picker&&<p className="onece-edit-error" role="alert">{error}</p>}
@@ -240,10 +256,10 @@ export default function EditProfilePanelV2({user,profile,catalog,onClose,onIdent
     <div className="onece-edit-picker-search"><Search size={18}/><input aria-label="Search your Home" placeholder="Search your Home" value={query} onChange={e=>setQuery(e.target.value)}/></div>
     <div className="onece-edit-picker-results">
      {flagsStatus!=='ready'&&<div className="onece-edit-picker-state">{flagsStatus==='error'?(flagsError||'Unable to load publications'):'Loading publications…'}{flagsStatus==='error'&&<button type="button" onClick={retryFlags}>Retry</button>}</div>}
-     {library.status==='loading'&&<div className="onece-edit-picker-state">Loading Home…</div>}
-     {library.status==='error'&&<div className="onece-edit-picker-state" role="alert">{library.error} <button type="button" onClick={()=>setRevision(v=>v+1)}>Retry</button></div>}
-     {library.status==='ready'&&shownItems.length===0&&<div className="onece-edit-picker-state">{query?'No projects match your search.':'Your Home is empty.'}</div>}
-     {library.status==='ready'&&shownItems.map(project=>{
+     {(library.viewerId!==viewer||library.status==='loading')&&<div className="onece-edit-picker-state">Loading Home…</div>}
+     {library.error&&<div className="onece-edit-picker-state" role="alert">{library.error} <button type="button" onClick={()=>setRevision(v=>v+1)}>Retry</button></div>}
+     {library.viewerId===viewer&&library.status==='ready'&&shownItems.length===0&&<div className="onece-edit-picker-state">{query?'No projects match your search.':'Your Home is empty.'}</div>}
+     {library.viewerId===viewer&&library.status==='ready'&&shownItems.map(project=>{
       const active=published.has(projectKey(project)),busy=busyKey===projectKey(project);
       return <button type="button" className="onece-edit-picker-project" key={projectKey(project)} onClick={()=>void toggleProject(project)}
        disabled={flagsStatus!=='ready'||!!busyKey} aria-label={(active?'Unpublish ':'Publish ')+project.title} aria-pressed={active}>
