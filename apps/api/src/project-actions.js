@@ -10,10 +10,11 @@ async function parseJson(req){
  let raw='';for await(const part of req){raw+=part;if(raw.length>8192)throw Error('oversized');}
  try{return JSON.parse(raw);}catch{throw Error('invalid');}
 }
-async function transaction(pool,work){
+async function transaction(pool,owner,work){
  const c=await pool.connect();
  try{
   await c.query('BEGIN');
+  await c.query('SELECT pg_advisory_xact_lock($1::bigint)',[owner]);
   const result=await work(c);
   if(result.status>=400){await c.query('ROLLBACK');return result;}
   await c.query('COMMIT');return result;
@@ -64,7 +65,7 @@ export async function handleProjectActions(req,res,pathname,pool,currentUser){
   if(!['beat','pack'].includes(sourceKind)||!uuid.test(sourceId||'')||!title||title.length>180){
    send(res,400,{error:'Invalid new project'});return true;
   }
-  const response=await transaction(pool,async c=>{
+  const response=await transaction(pool,owner,async c=>{
    const beats=await sourceBeats(c,sourceKind,sourceId,owner);
    if(!beats.length)return result(404,{error:'Source project is unavailable or empty'});
    if(beats.length>100)return result(400,{error:'A pack cannot contain more than 100 beats'});
@@ -81,7 +82,7 @@ export async function handleProjectActions(req,res,pathname,pool,currentUser){
   if(!['beat','pack'].includes(sourceKind)||!uuid.test(sourceId||'')){
    send(res,400,{error:'Invalid source'});return true;
   }
-  const response=await transaction(pool,async c=>{
+  const response=await transaction(pool,owner,async c=>{
    if(!await ownerProject(c,'pack',parts[4],owner))return result(404,{error:'Target pack not found'});
    if(sourceKind==='pack'&&sourceId===parts[4])return result(400,{error:'Cannot add a pack to itself'});
    const beats=await sourceBeats(c,sourceKind,sourceId,owner);
@@ -108,7 +109,7 @@ export async function handleProjectActions(req,res,pathname,pool,currentUser){
    (hasCover&&cover!==null&&(!Number.isSafeInteger(cover)||cover<1))){
    send(res,400,{error:'Specify one valid title or coverFileId'});return true;
   }
-  const response=await transaction(pool,async c=>{
+  const response=await transaction(pool,owner,async c=>{
    if(!await ownerProject(c,kind,id,owner))return result(404,{error:'Project not found'});
    if(hasCover&&cover!==null){
     const check=await c.query("SELECT id FROM library_files WHERE id=$1 AND user_id=$2 AND kind='cover' AND status='ready'",[cover,owner]);
@@ -122,7 +123,7 @@ export async function handleProjectActions(req,res,pathname,pool,currentUser){
   send(res,response.status,response.data);return true;
  }
  if(req.method==='DELETE'){
-  const response=await transaction(pool,async c=>{
+  const response=await transaction(pool,owner,async c=>{
    const moved=await moveProjectToTrash(c,{owner,kind,id});
    return moved?result(200,{trashed:true,id,kind,restoreDays:30}):result(404,{error:'Project not found'});
   });
