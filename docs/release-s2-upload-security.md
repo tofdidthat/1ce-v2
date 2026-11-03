@@ -1,5 +1,18 @@
 # 1CE v2 — PR #27 (S2) security release and rollback checklist
 
+## Reconciliação somente leitura de objetos verified/ — PR #27
+
+**OBJETIVO:** localizar candidatos a objetos permanentes órfãos que possam ter sido copiados pelo servidor para verified/ antes de uma interrupção da API ou falha na atualização do banco. Este recurso NÃO limpa arquivos, NÃO recupera quota, NÃO modifica a API em produção e NÃO substitui o Trash / GC da PR #28.
+
+**IMPLEMENTADO NA BRANCH:** apps/api/src/orphan-audit.js e apps/api/scripts/s2-orphan-audit.mjs. O operador opt-in lista metadados do Cloudflare R2 usando ListObjectsV2 (prefixo users/ ou users/<id>/), considera SOMENTE o padrão exato users/<id>/assets/{audio,cover,stems}/verified/<uuid>.<ext>, espera no mínimo **72 horas** desde LastModified, e consulta todas as referências library_files.object_key, independentemente do status do arquivo, em transações PostgreSQL READ ONLY. Objetos ainda referenciados não são marcados como candidatos. Não baixa mídia nem emite DeleteObject.
+
+**LIMITES E PRIVACIDADE:** no máximo 20 páginas de 1000 chaves por execução; mostra somente totais de candidatos, bytes e fingerprints SHA-256 truncados, sem expor chaves brutas nem credenciais. A confirmação do bucket deve corresponder exatamente a R2_BUCKET_NAME. Em resultados incompletos (paginação limitada ou metadados ausentes), reporta status incomplete e nunca afirma ausência definitiva de órfãos. Erros de R2/DB abortam a auditoria. Nenhum scheduler, cron ou execução automática é configurado.
+
+**COMANDO RESERVADO A OPERAÇÃO EXPLICITAMENTE APROVADA (não executar neste PR):** conferir primeiro que DATABASE_URL e as credenciais R2 se referem ao MESMO ambiente isolado v2; definir V2_ORPHAN_AUDIT_ENABLED=true, V2_ORPHAN_AUDIT_CONFIRM_BUCKET=<R2_BUCKET_NAME_REAL>, V2_ORPHAN_AUDIT_PREFIX=users/ (ou users/<ID_NUMERICO>/), e então executar node apps/api/scripts/s2-orphan-audit.mjs. Preferir R2 List/Read e PostgreSQL SELECT-only credentials; a execução com credenciais com permissão de escrita ainda é logicamente somente leitura, mas não substitui política de menor privilégio.
+
+**INTERPRETAÇÃO E RESTANTE:** suspected-orphans são suspeitas, não prova de exclusão segura. R2 e DB não formam snapshot transacional: um resultado exige segunda verificação e investigação antes de qualquer futura limpeza autorizada. A regra de expiração staging/ por 24 horas não cobre verified/. O script ainda NÃO foi executado contra o bucket de produção; teste de integração R2/DB e eventual agendamento/manual run exigem autorização separada. Exclusões físicas e recuperação de quota continuam fora da PR #27.
+
+---
 ## Estado verificado da PR #27 — 2026-11-03 (registro operacional atualizado)
 
 > **Fonte e alcance:** verificações do GitHub/Railway e saídas de PowerShell/Chrome **relatadas pelo usuário** nesta sessão. A configuração do painel Cloudflare foi informada pelo usuário; não foi lida diretamente por API. Esta seção prevalece sobre referências históricas abaixo que dizem que as migrations ainda não foram aplicadas ou que o R2 não foi testado. **A PR continua draft, sem merge e sem deploy do código S2.**
