@@ -4,6 +4,10 @@
 
 > **Mandatory working agreement (2026-11-02).** Whenever the user requests a complete feature, a refactor, several changes, or a production correction, **first read this entire `docs/architecture.md` and the relevant behavior/contract documentation** (notably `docs/refactor-phase-a-inventory.md`, `docs/shared-playback-v2.md`, `docs/reactive-refresh-v2.md`, and related migration/rollout notes). Compare the guide against the live code, the current branch, tests and deployment state; update this document when a decision or phase status changes **before implementing the feature**. Do not rely on historical chat descriptions or stale snapshots to declare work complete.
 
+## Follow icon on other users' public profiles (2026-11-03, same draft PR #19)
+
+**User reference:** replace the text-based `Follow` action in the top-right header of **another user's** public profile with the Lucide `UserRoundPlus` silhouette (person outline with plus, matching screenshot). Maintain the existing header button shape, size, and placement alongside Copy Link; keep the user's own profile `Pencil` icon untouched. For a followed profile, use `UserRoundCheck` to distinguish the active state without reintroducing a text label; preserve aria-label Follow/Unfollow, aria-pressed, disabled/busy state, and existing `setProfileFollowV2` persistence and error behavior. No API/DB/route/player or first Library tab icon changes. Implement in the same **unmerged draft PR #19**, with regression tests and CI, no merge/deploy without approval.
+
 ## Generic social link icon parity + alignment (2026-11-03, UI-only branch)
 
 **User visual references:** Both links circled in the first screenshot (under the public profile username and in the Edit Profile Links row) must use the **same diagonally angled chain glyph as the second screenshot**, i.e. the existing shared `CopyLinkIconV2` wrapping Lucide `Link`; do not introduce a new image, library, or icon route. Currently `ProfileLinkIconV2` falls back to `Link2` (horizontal chain), which is inconsistent. Keep Spotify/YouTube/Instagram icons unchanged and classify only non-social HTTPS URLs as the generic link icon.
