@@ -9,10 +9,32 @@ const sample=Buffer.from([0x49,0x44,0x33,0x04,0,0,0,0,0,0,0xff,0xfb,0x90,0x64]);
 const uploaded=(bytes=sample)=>({kind:'audio',name:'original.mp3',contentType:'audio/mpeg',size:bytes.length,sha256:checksum(bytes)});
 
 function setup(){
- const files=new Map(),objects=new Map(),queries=[],commands=[],signed=[];
+ const files=new Map(),objects=new Map(),queries=[],commands=[],signed=[],rates=new Map();
+ let onCopy=()=>{};
  let nextId=100,forceUniqueCollision=false;
  const pool={async query(sql,args=[]){
   queries.push({sql,args});
+  if(['BEGIN','COMMIT','ROLLBACK'].includes(sql)||sql.startsWith('SELECT pg_advisory_xact_lock'))return {rows:[],rowCount:0};
+  if(sql.startsWith('INSERT INTO v2_api_rate_limits')){
+   const key=args[0]+':'+args[1],hits=(rates.get(key)||0)+1;
+   rates.set(key,hits);return {rows:[{hits}],rowCount:1};
+  }
+  if(sql.startsWith('SELECT\n    count(*) FILTER')){
+   const owned=[...files.values()].filter(f=>f.user_id===args[0]);
+   const pending=owned.filter(f=>f.status==='pending'&&f.pendingValid!==false);
+   const reserved=owned.filter(f=>f.status==='ready'||f.status==='pending'&&f.pendingValid!==false).reduce((sum,f)=>sum+f.byte_size,0);
+   return {rows:[{pending_count:pending.length,reserved_bytes:String(reserved)}],rowCount:1};
+  }
+  if(sql.startsWith("SELECT created_at>now()-interval '30 minutes'")){
+   const file=files.get(Number(args[0]));
+   return {rows:file&&file.user_id===args[1]?[{valid:file.pendingValid!==false}]:[],rowCount:file?1:0};
+  }
+  if(sql.startsWith('SELECT object_key,status FROM library_files')){
+   const file=files.get(Number(args[0]));return {rows:file?[{object_key:file.object_key,status:file.status}]:[],rowCount:file?1:0};
+  }
+  if(sql.startsWith('SELECT id,status FROM library_files')){
+   const file=files.get(Number(args[0]));return {rows:file?[{id:file.id,status:file.status}]:[],rowCount:file?1:0};
+  }
   if(sql.startsWith('SELECT id FROM library_files WHERE user_id=$1 AND kind=$2 AND sha256=$3')){
    const row=[...files.values()].find(file=>file.user_id===args[0]&&file.kind===args[1]&&file.sha256===args[2]&&file.status==='ready');
    return {rows:row?[{id:row.id}]:[],rowCount:row?1:0};
