@@ -23,7 +23,7 @@ const matches=(bytes,offset,signature)=>bytes.length>=offset+signature.length&&
 async function readObject(s3,bucket,key,{range,maxBytes,timeoutMs,onChunk}){
  const controller=new AbortController();
  const timer=setTimeout(()=>controller.abort(new Error('R2 verification deadline exceeded')),timeoutMs);
- timer.unref?.();
+ // Keep the deadline referenced so stalled streams cannot outlive the verifier.
  let body;
  try{
   const object=await s3.send(new GetObjectCommand({Bucket:bucket,Key:key,...(range?{Range:range}: {})}),{abortSignal:controller.signal});
