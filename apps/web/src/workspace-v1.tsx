@@ -243,13 +243,13 @@ function HeaderV2({view,user,onNavigate,externalProfile}){
   .onece-workspace-header .library-settings, .onece-nav-reveal { transition: none; }
 }
 `}</style>
- <header className="onece-workspace-header" aria-label="Workspace header">
+ {view==='profile'?null:<header className="onece-workspace-header" aria-label="Workspace header">
  <div className="onece-workspace-brand"><img src="/1ce-logo.png" alt="1CE"/></div>
  <div className="onece-workspace-actions">
  <button type="button" className="library-settings library-profile-trigger" title={view==='profile'&&!externalProfile?'Edit Profile':'My Profile'} aria-label={view==='profile'&&!externalProfile?'Edit Profile':'My Profile'} onClick={()=>onNavigate(view==='profile'&&!externalProfile?'edit-profile':'profile')}>
  {view==='profile'&&!externalProfile ? <EditProfileMark/> : picture ? <img src={picture} alt="" referrerPolicy="no-referrer"/> : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="7" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2Z"/></svg>}
  </button>
- <CompactWorkspaceNav view={view} disabled={false} onNavigate={onNavigate}/></div></header></>;
+ <CompactWorkspaceNav view={view} disabled={false} onNavigate={onNavigate}/></div></header>}</>;
 }
 function EmptyLibrary({onUpload}){
  return <section className="beat-profile library-page onece-v2-library">
@@ -300,7 +300,7 @@ export default function WorkspaceV2({user,profileId}:{user:any;profileId?:string
  useEffect(()=>{document.title=({library:'Library',discover:'Discover',upload:'Upload',account:'Settings',profile:'Profile','edit-profile':'Edit Profile'}[view]||'Library')+' — 1CE'},[view]);
  return <ProjectCoverCacheProviderV2 viewerId={Number(account?.id)||null}><ProjectFlagsProviderV2 viewerId={Number(account?.id)||null}><div className={'onece-workspace-shell'+(view==='library'?' onece-library-view':'')}>
  <style>{`.onece-library-inactive{position:static!important;padding:0!important;margin:0!important;min-height:0!important;height:0!important;overflow:visible!important}.onece-library-inactive>.beat-profile-content{display:none!important}`}</style>
- {view==='profile'?null:<HeaderV2 view={view} user={account} externalProfile={Boolean(profileId)} onNavigate={onNavigate}/>}
+ <HeaderV2 view={view} user={account} externalProfile={Boolean(profileId)} onNavigate={onNavigate}/>
  <main className="onece-v2-workspace-main">
  <LibraryItemsV2 active={view==='library'} playRequest={playRequest} userId={account?.id} onUpload={()=>onNavigate('upload')} onPlayerVisibility={setPlayerVisible} onPlaybackChange={setPlayback}/>
  {view==='library'?null:
