@@ -17,7 +17,7 @@ test('profile navbar replaces normal header, preserves back and own pencil to re
  assert.match(profile,/<ArrowLeft size=\{19\}\/>/);
  assert.match(profile,/<Pencil size=\{19\}\/>/);
  assert.match(profile,/isOwner\?/);
- assert.match(profile,/Boolean\(visibleProfileUser/); // verified profile data is used when computing identity
+ assert.match(profile,/String\(visibleProfileUser\?\.id\)/); // verified target identity, not URL guess
 });
 test('other profiles expose real Follow/Unfollow; no follow mutation available for own or anonymous',()=>{
  assert.match(profile,/changeFollow=async/);
