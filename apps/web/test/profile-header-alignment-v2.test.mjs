@@ -7,6 +7,8 @@ const profile=read('public-profile-v2.tsx');
 const workspace=read('workspace-v1.tsx');
 const profileCss=read('public-profile-v2.css');
 const menu=read('project-context-menu-v2.tsx');
+const copyIcon=read('copy-link-icon-v2.tsx');
+const library=read('library-items-v2.tsx');
 
 test('profile and other screens use exactly the same HeaderV2 geometry and subdued button styles',()=>{
  assert.match(workspace,/<HeaderV2 view=\{view\} user=\{account\}/);
@@ -37,11 +39,14 @@ test('profile and other screens use exactly the same HeaderV2 geometry and subdu
 });
 
 test('Back is aligned with right buttons, and Copy link is the exact icon from context menu',()=>{
- assert.match(profile,/<ArrowLeft size=\{22\}\/>/);
+ assert.match(profile,/<ChevronLeft size=\{20\}\/>/);
+ assert.match(library,/<ChevronLeft size=\{20\}\/>/);
  assert.match(profile,/<Pencil size=\{22\}\/>/);
- assert.match(menu,/item\('Copy link',<Link2 size=\{17\}\/>/);
+ assert.match(menu,/item\('Copy link',<CopyLinkIconV2 size=\{17\}\/>/);
+ assert.match(copyIcon,/import \{Link\} from 'lucide-react'/);
+ assert.match(copyIcon,/return <Link size=\{size\}\/>/);
  assert.match(profile,/aria-label="Copy profile link"/);
- assert.match(profile,/<Link2 size=\{22\}\/><\/button>/);
+ assert.match(profile,/<CopyLinkIconV2 size=\{22\}\/><\/button>/);
  assert.doesNotMatch(profile,/<Copy size=/);
  assert.match(profile,/className="onece-workspace-actions onece-profile-nav-actions"/);
  assert.match(profile,/className="onece-workspace-brand"/);
