@@ -214,7 +214,7 @@ export default function EditProfilePanelV2({user,profile,catalog,onClose,onIdent
       return <button type="button" className="onece-edit-picker-project" key={projectKey(project)} onClick={()=>void toggleProject(project)}
        disabled={flagsStatus!=='ready'||!!busyKey} aria-label={(active?'Unpublish ':'Publish ')+project.title} aria-pressed={active}>
        <ProjectCoverV2 ownerId={viewer} fileId={project.cover_file_id} title={project.title} className="onece-edit-picker-cover"/>
-       <span className="onece-edit-picker-description"><strong>{project.title}</strong><small>{project.kind==='pack'?project.track_count+' tracks':'Beat'}</small></span>
+       <span className="onece-edit-picker-description"><strong>{project.title}</strong><small>{project.kind==='pack'?('track_count' in project?project.track_count:0)+' tracks':'Beat'}</small></span>
        <span className={'onece-edit-picker-check'+(active?' is-published':'')} aria-hidden="true">{busy?'…':active?<Check size={17}/>:<Plus size={17}/>}</span>
       </button>;
      })}
