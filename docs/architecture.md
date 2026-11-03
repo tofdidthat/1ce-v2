@@ -4,6 +4,13 @@
 
 > **Mandatory working agreement (2026-11-02).** Whenever the user requests a complete feature, a refactor, several changes, or a production correction, **first read this entire `docs/architecture.md` and the relevant behavior/contract documentation** (notably `docs/refactor-phase-a-inventory.md`, `docs/shared-playback-v2.md`, `docs/reactive-refresh-v2.md`, and related migration/rollout notes). Compare the guide against the live code, the current branch, tests and deployment state; update this document when a decision or phase status changes **before implementing the feature**. Do not rely on historical chat descriptions or stale snapshots to declare work complete.
 
+## Parallel workstreams — naming confirmed 2026-11-02
+
+- **PLANO PRINCIPAL (main plan):** the already-defined Phase C3+C4 batch — typed project read models/selectors, consistent loading/error/revalidation, cross-view refresh and regression coverage. Then C5 live multi-account acceptance and C6 Phase C sign-off. **Planned, not started**. Keep it separate from mobile fixes and do not mix its data-layer changes into a mobile PR.
+- **CORREÇÕES MOBILE (parallel):** small, isolated responsive usability fixes while the user tests from a phone. One narrowly scoped branch/PR per coherent batch, no preview deploys, no merge/deploy without explicit authorization. Avoid modifying the player, media access, database, R2, or v1.
+- **Current mobile batch — navbar tap/focus:** in `apps/web/src/workspace-v1.tsx`, the compact navigation hides its focused trigger via `visibility:hidden` when opening. On touch devices this can blur the trigger with `relatedTarget === null` and cause the nav's `onBlur` handler to immediately close the menu. Keep the trigger in the focus tree while visually hiding it under the expanded menu (opacity/pointer-events rather than visibility), and do not treat a null blur destination as definite departure from the nav. Preserve mouse hover, Escape, keyboard arrows, outside tap dismissal, routes, desktop layout and player. Add regression checks; **real-device testing remains necessary**.
+- **Mobile acceptance:** on a narrow touchscreen, tap the compact nav icon to open Home/Discover/Upload/Settings; tap each to navigate; tap again to close; tap outside to dismiss; verify the profile button still navigates; no accidental double tap, clipped menu, lost focus, or desktop regression. Confirm after deployment on the actual phone. This work does not count as C3/C4 completion.
+
 ## Batch / deployment protocol
 
 1. **Inventory and behavior:** identify user-visible acceptance criteria and affected UI, API, auth, SQL schema, R2, player, Saves/Catalog and permissions; inspect current existing methods before adding routes, tables or state. Document changes to behavior and architecture, including expected deletion and optional-asset behavior.
@@ -59,7 +66,7 @@
 - Do **not** introduce a parallel React Query/Zustand store or global persistence solely for this increment. Avoid exposing R2 keys or credentials. If a shared query cache is introduced later, document invalidation, TTL, ownership, permission revocation, and which view owns the request.
 - `ProjectCoverV2` owns image fetch/abort/blob revocation; `ProjectCardV2` owns card play affordance; the view supplies the playback callback and on-context-menu callback. The player itself remains mounted in Library temporarily.
 
-### Next coherent batch — Phase C3+C4 (approved plan, implementation NOT started)
+### PLANO PRINCIPAL — next coherent batch Phase C3+C4 (defined, implementation NOT started)
 
 **Objective:** finish the reusable typed project *read* contract and consistent asynchronous UI behavior for Library, Catalog and Saves, without moving the player. This is the next single-branch, single-PR batch. This plan is **not authorization to merge or deploy**.
 

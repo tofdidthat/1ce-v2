@@ -97,7 +97,10 @@ function CompactWorkspaceNav({ view, disabled, onNavigate }) {
         }
       }}
       onBlur={event => {
-        if (!event.currentTarget.contains(event.relatedTarget) && !pointerInside.current) setOpen(false)
+        // Mobile browsers may blur a trigger with a null relatedTarget when
+        // its expanded menu takes focus. Outside pointerdown handles touch
+        // dismissal; only a known outside focus target closes on blur.
+        if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget) && !pointerInside.current) setOpen(false)
       }}
     >
       <button
@@ -220,7 +223,9 @@ function HeaderV2({view,user,onNavigate,externalProfile}){
 .onece-workspace-header .library-settings svg { display: block; width: 22px; height: 22px; flex-shrink: 0; }
 .onece-workspace-header .library-profile-trigger > img { display: block; flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; object-fit: cover; }
 .onece-compact-nav { position: relative; flex: 0 0 44px; width: 44px; height: 44px; }
-.onece-compact-nav.is-open > .onece-nav-trigger { visibility: hidden; pointer-events: none; }
+/* Keep the focused trigger in the focus tree while the expanded menu covers it.
+   visibility:hidden would blur it on touch and immediately collapse the nav. */
+.onece-compact-nav.is-open > .onece-nav-trigger { opacity: 0; pointer-events: none; }
 .onece-nav-reveal { position: absolute; inset: 0 auto auto 0; width: 44px; display: grid; grid-template-rows: 0fr; opacity: 0; visibility: hidden; border-radius: 14px; background: #09080e; transition: grid-template-rows 220ms ease, opacity 160ms ease, visibility 220ms; }
 .onece-compact-nav.is-open .onece-nav-reveal { grid-template-rows: 1fr; opacity: 1; visibility: visible; }
 .onece-nav-list { min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 12px; }
