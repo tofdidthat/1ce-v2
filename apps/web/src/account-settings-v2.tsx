@@ -17,6 +17,7 @@ function isValidUsername(value:string){
 }
 export default function AccountSettingsV2({user,onUserChange,onViewProfile,onLogout}:{user:AccountUser;onUserChange:(user:AccountUser)=>void;onViewProfile:()=>void;onLogout:()=>Promise<void>}){
  const [editing,setEditing]=useState(false);
+ useEffect(()=>{if(new URLSearchParams(window.location.search).get('edit')==='profile')setEditing(true);},[]);
  const [draft,setDraft]=useState(user.username||'');
  const [file,setFile]=useState<File|null>(null);
  const [removePhoto,setRemovePhoto]=useState(false);
