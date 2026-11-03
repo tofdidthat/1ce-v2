@@ -16,7 +16,7 @@ const sample=Buffer.concat([
 const uploaded=(bytes=sample)=>({kind:'audio',name:'original.mp3',contentType:'audio/mpeg',size:bytes.length,sha256:checksum(bytes)});
 
 function setup(){
- const files=new Map(),objects=new Map(),queries=[],commands=[],signed=[],rates=new Map(),planBytes=new Map();
+ const files=new Map(),objects=new Map(),queries=[],commands=[],signed=[],rates=new Map(),planBytes=new Map(),leases=new Map();
  let onCopy=()=>{},onHead=()=>{};
  let nextId=100,forceUniqueCollision=false;
  const pool={async query(sql,args=[]){
@@ -25,6 +25,22 @@ function setup(){
   if(sql.startsWith('INSERT INTO v2_api_rate_limits')){
    const key=args[0]+':'+args[1],hits=(rates.get(key)||0)+1;
    rates.set(key,hits);return {rows:[{hits}],rowCount:1};
+  }
+  if(sql.startsWith('INSERT INTO v2_upload_completion_leases')){
+   const [id,token,owner]=args,file=files.get(Number(id)),current=leases.get(Number(id));
+   if(!file||file.user_id!==owner||file.status!=='pending'||current&&!current.expired)
+    return {rows:[],rowCount:0};
+   leases.set(Number(id),{token,expired:false});
+   return {rows:[{lease_token:token}],rowCount:1};
+  }
+  if(sql.startsWith('DELETE FROM v2_upload_completion_leases')){
+   const current=leases.get(Number(args[0]));
+   if(current?.token===args[1])leases.delete(Number(args[0]));
+   return {rows:[],rowCount:1};
+  }
+  if(sql.startsWith('SELECT status FROM library_files')){
+   const file=files.get(Number(args[0]));
+   return {rows:file&&file.user_id===args[1]?[{status:file.status}]:[],rowCount:file?1:0};
   }
   if(sql.startsWith('SELECT storage_limit_bytes')){
    return {rows:[{storage_limit_bytes:String(planBytes.get(args[0])??10*1024*1024*1024)}],rowCount:1};
@@ -75,7 +91,7 @@ function setup(){
     other.sha256===file.sha256&&other.status==='ready')){
     const err=new Error('duplicate ready sha');err.code='23505';throw err;
    }
-   const updated=file&&file.user_id===args[1]&&file.status==='pending';
+   const updated=file&&file.user_id===args[1]&&file.status==='pending'&&leases.get(Number(args[0]))?.token===args[3];
    if(updated){file.status='ready';file.object_key=args[2];}
    return {rowCount:updated?1:0,rows:[]};
   }
@@ -140,7 +156,7 @@ function setup(){
   files.set(file.id,file);return file;
  };
  return {files,objects,queries,commands,signed,invoke,put,addReady,
-  onCopy(fn){onCopy=fn;},onHead(fn){onHead=fn;},rates,planBytes,
+  onCopy(fn){onCopy=fn;},onHead(fn){onHead=fn;},rates,planBytes,leases,
   setUniqueCollision(value){forceUniqueCollision=value},
   setSigningFailure(){options.signUrl=async()=>{throw Error('signer unavailable');}}
  };
@@ -461,11 +477,15 @@ test('two simultaneous completions of the same file leave one READY R2 key',asyn
 
 test('per-account storage plan quota changes without modifying other account entitlements',async()=>{
  const h=setup(),body=uploaded();
- h.planBytes.set(42,body.size-1);
+ // Each account has an existing 1 MiB READY asset (distinct SHA).
+ const prior={...body,size:1024*1024,sha256:checksum(Buffer.from('prior media'))};
+ h.addReady(prior,42);
+ h.addReady(prior,99);
+ h.planBytes.set(42,1024*1024);
  assert.equal((await h.invoke('/api/library/files/init',body)).status,429);
- h.planBytes.set(42,body.size*2);
+ h.planBytes.set(42,2*1024*1024);
  assert.equal((await h.invoke('/api/library/files/init',body)).status,200);
- h.planBytes.set(99,body.size-1);
+ h.planBytes.set(99,1024*1024);
  assert.equal((await h.invoke('/api/library/files/init',body,{id:99})).status,429);
- assert.equal(h.files.size,1);
+ assert.equal(h.files.size,3);
 });
