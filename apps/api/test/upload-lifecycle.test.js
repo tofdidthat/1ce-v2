@@ -169,7 +169,7 @@ test('valid init scopes object key to owner, signs 300-second URL and only dedup
  const first=await h.invoke('/api/library/files/init',body);
  assert.equal(first.status,200);assert.equal(first.body.expiresIn,300);
  const file=h.files.get(first.body.id);
- assert.ok(file.object_key.startsWith('users/42/assets/audio/'));
+ assert.ok(file.object_key.startsWith('staging/users/42/assets/audio/'));
  assert.ok(file.object_key.endsWith('.mp3'));
  assert.equal(file.status,'pending');
  assert.equal(h.signed[0].settings.expiresIn,300);
