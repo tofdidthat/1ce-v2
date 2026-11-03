@@ -114,7 +114,7 @@ export default function ProjectActionDialogV2({
     {action==='delete'&&<p className="v2-project-dialog-warning">
      {project.kind==='beat'
       ?'Move this beat to Trash? It will disappear from Home, Catalog, Saves, and playback. Other beats in its packs remain available.'
-      :'Move this pack to Trash? Its beats remain in Home and other packs.'}
+      :'Move this pack to Trash? Beats that exist only inside this pack move to Trash with it. Beats visible individually or used by other active packs are preserved.'}
      {' '}You can restore it in Settings → Trash for 30 days. Empty Trash permanently removes deleted projects and unreferenced media. Publishing and sharing are revoked.
     </p>}
     {error&&<p className="v2-project-dialog-error" role="alert">{error}</p>}
