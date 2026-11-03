@@ -1,5 +1,24 @@
 # 1CE v2 PR #28 — Trash / R2 permanent deletion release gates
 
+## Verified v2 production database backup — 2026-11-03
+
+**COMPLETED (archive + remote integrity):** An isolated, ephemeral Railway one-shot service `1ce-v2-private-db-backup-once` ran `pg_dump --format=custom --no-owner --no-acl` against **v2 production PostgreSQL only** in Railway project `courteous-spontaneity`. It uploaded the archive to the private R2 bucket under `db-backups/1ce-v2/20261103T215852Z/postgres-custom.dump` (57,413 bytes, SHA-256 `83dcaa6dc51e580fb4e54d21741b0d24ae488da590f15740b177eb4ead07e0fb`). Deployment `ab27fb87-4e14-467d-8bbe-bd6dedbcdedc` logs confirmed:
+
+```text
+BACKUP_PHASE pg_dump
+BACKUP_PHASE upload_to_private_R2
+BACKUP_PHASE verify_remote_integrity
+BACKUP_VERIFIED_KEY db-backups/1ce-v2/20261103T215852Z/postgres-custom.dump
+BACKUP_VERIFIED_SIZE_BYTES 57413
+BACKUP_VERIFIED_SHA256 83dcaa6dc51e580fb4e54d21741b0d24ae488da590f15740b177eb4ead07e0fb
+BACKUP_ARCHIVE_SUCCESS
+```
+
+The one-shot job **downloaded the archive back from R2, compared it byte-for-byte** with the original dump and verified that `pg_restore --list` can read the remote copy's archive structure. The temporary service was then deleted. Final Railway inventory showed only the original `Postgres` and `1ce-v2` services, both with `SUCCESS` deployments and no staged changes; the original PostgreSQL volume remained attached, and neither the main branch nor API/frontend was redeployed.
+
+**Boundary:** A complete `pg_restore` into a separate disposable PostgreSQL instance has **not** been run during this backup. Archive integrity is verified, but full restore-readiness is not independently established. Before an irreversible R2 purge release, complete independent R2 safety review, controlled canary and any additional recovery rehearsal required by the release owner. **No PR #28 merge, app deploy or permanent R2 delete was performed.**
+
+
 Branch: `feature/v2-trash-r2-safe-purge`. No main merge or deploy until separately authorized.
 
 1. Back up and verify v2 production PostgreSQL; preserve v1.
