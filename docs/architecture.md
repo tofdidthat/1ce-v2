@@ -1,3 +1,15 @@
+## S2 — PR #27 upload security hardening (2026-11-03; branch only)
+
+**DECISION / user authorization:** Implement the next security batch as a separate, reviewable PR after successful S1/PR #26 release. Do not merge, deploy, change production PostgreSQL/R2 configuration, or test live accounts without a separate release authorization. Use the remote-first GitHub/CI workflow and preserve web/player behavior, v1 and existing ready assets. Write descriptive commits and PR notes for a second AI reviewer.
+
+**Baseline:** `main` merge `020ed337fa1d8f4c683de92b6e1c7521306eadb7`; Railway S1 pnpm install, API startup and health/database probes verified. This branch must not touch the production infrastructure or replace stored ready object keys.
+
+**Scope:** (1) bounded, abortable R2 verification with exact streamed length/SHA and content sniffing; inspect ZIP central directory and enforce anti-bomb/path/encryption limits; (2) signed PUT URL targets a disposable staging object, which is promoted by server-only copy to a different, never-signed immutable ready key, then verified before DB READY transition; (3) cross-instance database-backed auth and upload request throttling plus per-account upload quotas and bounded pending reservations; (4) deterministic negative-path and concurrency tests, migration and explicit rollout/rollback checklist. No frontend redesign. Avoid breaking the existing direct PUT API contract. R2 and DB operations remain owner-scoped.
+
+**Safety gates:** CI green on the final PR head; independent review of the security and concurrency invariants; deploy migration before API code only with approval, verify production R2 copy compatibility using an authorized disposable test object, then verify real browser upload/stream, auth and rollback. Tests with mocks are not a substitute for R2 integration, ZIP parser audit, or penetration testing. If a new database migration is needed, keep it additive and do not execute it automatically.
+
+---
+
 ## S1 extension — dependency audit, negative-path tests and release runbook (2026-11-03)
 
 **DECISION / authorized by user:** Extend **draft PR #26**, do not create another release branch. This is a remote-first workflow (ChatGPT GitHub connector + GitHub Actions + Railway/Vercel connectors); no local workstation is necessary. Do not merge, deploy, accept Railway staged configuration or mutate live databases/buckets/credentials.
