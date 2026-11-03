@@ -1,10 +1,10 @@
 // Lightweight client-side refresh notifications for the 1CE v2 workspace.
 // No polling, global state store, extra dependency, project copies or v1 data.
-export type V2DataScope='library'|'saves'|'publications'|'shares'|'identity';
+export type V2DataScope='library'|'saves'|'publications'|'shares'|'identity'|'follows';
 export type V2DataChange={scopes:V2DataScope[];actorId:number|null};
 const EVENT='1ce:v2:data-change';
 const CHANNEL='1ce:v2:data-change:tabs';
-const knownScopes=new Set<V2DataScope>(['library','saves','publications','shares','identity']);
+const knownScopes=new Set<V2DataScope>(['library','saves','publications','shares','identity','follows']);
 let sharedChannel:BroadcastChannel|null|undefined;
 
 function channel(){
