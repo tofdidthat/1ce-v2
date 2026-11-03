@@ -193,9 +193,8 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
   <div className="onece-profile-top">
    <div className="onece-profile-avatar">{picture?<img src={picture} alt="" referrerPolicy="no-referrer"/>:<span>{name.slice(0,1).toUpperCase()}</span>}</div>
    <div className="onece-profile-name">
-    <h1>{handle?'@'+handle.replace(/^@/,''):name}</h1>
+    <h1>{handle?handle.replace(/^@/,''):name}</h1>
    </div>
-   {handle&&name.toLowerCase()!==handle.toLowerCase()&&<p className="onece-profile-display-name">{name}</p>}
    <ProfileSocialLinksV2 compact links={Array.isArray(shownUser?.links)?shownUser.links:[]}/>
   </div>
   <nav className="onece-profile-tabs" role="tablist" aria-label="Profile sections">
