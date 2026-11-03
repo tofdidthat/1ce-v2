@@ -112,3 +112,41 @@ test('a spoofed ID3 tag and one valid frame is not accepted as audio',async()=>{
   s3:storage(bytes),bucket:'mock',key:'audio.mp3',file:forged
  }),/consecutive compatible Layer III frames/);
 });
+
+
+test('structural signature fixtures cover WAV, PNG, JPEG and WebP upload paths',async()=>{
+ const wav=Buffer.alloc(44);
+ wav.write('RIFF',0);wav.writeUInt32LE(36,4);wav.write('WAVE',8);
+ wav.write('fmt ',12);wav.writeUInt32LE(16,16);wav.writeUInt16LE(1,20);
+ wav.writeUInt16LE(1,22);wav.writeUInt32LE(8000,24);wav.writeUInt32LE(16000,28);
+ wav.writeUInt16LE(2,32);wav.writeUInt16LE(16,34);
+ wav.write('data',36);wav.writeUInt32LE(0,40);
+ const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/3Y4AAAAASUVORK5CYII=','base64');
+ // JPEG and WebP samples below exercise header/trailer validation only;
+ // they are not a substitute for decoding representative creator assets.
+ const jpeg=Buffer.from([0xff,0xd8,0xff,0xe0,0,0,0xff,0xd9]);
+ const webp=Buffer.alloc(24);
+ webp.write('RIFF',0);webp.writeUInt32LE(16,4);
+ webp.write('WEBP',8);webp.write('VP8L',12);webp.writeUInt32LE(4,16);
+ const fixtures=[
+  [wav,'audio','audio/wav'],
+  [png,'cover','image/png'],
+  [jpeg,'cover','image/jpeg'],
+  [webp,'cover','image/webp']
+ ];
+ for(const [bytes,kind,contentType] of fixtures){
+  await assert.doesNotReject(()=>verifyUploadedObject({
+   s3:storage(bytes),bucket:'mock',key:'fixture',file:file(bytes,kind,contentType)
+  }),kind+'/'+contentType);
+ }
+});
+
+test('matching SHA does not make a forged PNG or WAV signature acceptable',async()=>{
+ const png=Buffer.alloc(60,0);
+ const wav=Buffer.from('RIFFnot-really-a-WAVE-file');
+ for(const [bytes,kind,mime] of [[png,'cover','image/png'],[wav,'audio','audio/wav']]){
+  await assert.rejects(()=>verifyUploadedObject({
+   s3:storage(bytes),bucket:'mock',key:'forged',file:file(bytes,kind,mime)
+  }),InvalidMedia);
+ }
+});
