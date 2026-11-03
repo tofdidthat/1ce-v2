@@ -8,50 +8,58 @@ import ProjectActionDialogV2,{type ContextProject,type ProjectAction,type Change
 import {subscribeV2DataChanges,subscribeV2Resume} from './data-refresh-v2';
 import useProjectFlagsV2 from './project-flags-v2';
 import {profilePictureV2} from './profile-picture-v2';
+import {normalizeProfileProjectsV2,normalizeLibraryProjectsV2,type ProfileProjectV2} from './project-read-v2';
+import {savedProjectKeyV2} from './project-identity-v2';
 
 function CatalogLibraryIcon({size=17}:{size?:number}){
  // Same SVG paths and styling as the Library navigation HomeMark.
  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 4v16M9 4v16M14 4l4 16"/></svg>;
 }
 const api=import.meta.env.VITE_API_URL;
-type PublicProject={id:string;kind:'beat'|'pack';owner_id:number;title:string;cover_file_id:number|null;track_count:number|null;published_at:string};
+type PublicProject=ProfileProjectV2;
 type ProfileTab='catalog'|'saves'|'following';
 export default function PublicProfileV2({user,onSettings,profileId,onPlayProject,playback}:{user:any;onSettings:()=>void;profileId?:string;onPlayProject?:(ownerId:number,kind:'beat'|'pack',id:string)=>void;playback?:{ownerId:number;kind:'beat'|'pack';id:string;playing:boolean}|null}){
  const [tab,setTab]=useState<ProfileTab>('catalog');
  const [projects,setProjects]=useState<{catalog:PublicProject[];saves:PublicProject[]}>({catalog:[],saves:[]});
- const {saved,published,toggleSaved,togglePublished}=useProjectFlagsV2();
+ const {saved,published,status:flagsStatus,error:flagsError,refresh:retryFlags,toggleSaved,togglePublished}=useProjectFlagsV2();
  const [menu,setMenu]=useState<{project:PublicProject;x:number;y:number}|null>(null);
  const [actionDialog,setActionDialog]=useState<{project:ContextProject;action:ProjectAction}|null>(null);
  const [ownerPacks,setOwnerPacks]=useState<{id:string;title:string;track_count:number}[]>([]);
  const [profileUser,setProfileUser]=useState<any>(null);
- const [loading,setLoading]=useState(true);
+ const [loadState,setLoadState]=useState<{key:string;status:'loading'|'ready'|'error'}>({key:'',status:'loading'});
  const [error,setError]=useState('');
  const [refreshRevision,setRefreshRevision]=useState(0);
  const targetId=profileId||String(user?.id||'');
- const isOwner=!profileId||String(user?.id)===String(profileUser?.id)||Boolean(user?.username&&user.username===profileId);
+ const requestKey=String(user?.id||'anonymous')+':'+targetId;
+ const profileStatus=loadState.key===requestKey?loadState.status:'loading';
+ const visibleProjects=profileStatus==='ready'?projects:{catalog:[],saves:[]};
+ const visibleProfileUser=profileStatus==='ready'?profileUser:null;
+ const isOwner=!profileId||String(user?.id)===String(visibleProfileUser?.id)||Boolean(user?.username&&user.username===profileId);
  React.useEffect(()=>subscribeV2DataChanges(['library','saves','publications','shares','identity'],
   ()=>setRefreshRevision(v=>v+1)),[targetId,user?.id]);
  React.useEffect(()=>subscribeV2Resume(()=>setRefreshRevision(v=>v+1)),[targetId,user?.id]);
  React.useEffect(()=>{
-  if(!api||!targetId){setLoading(false);return;}
+  if(!api||!targetId){
+   setLoadState({key:requestKey,status:'error'});setError('Profile API is not configured');return;
+  }
   const controller=new AbortController();
-  setLoading(true);setError('');
+  setLoadState({key:requestKey,status:'loading'});setError('');
   fetch(api+'/api/public/profile/'+targetId,{credentials:'include',signal:controller.signal,cache:'no-store'})
     .then(async response=>{if(!response.ok)throw Error('Unable to load profile');return response.json()})
     .then(result=>{
      if(controller.signal.aborted)return;
-     setProjects({catalog:result.catalog||[],saves:result.saves||[]});
+     setProjects(normalizeProfileProjectsV2(result));
      setProfileUser(result.profile||null);
-    }).catch(e=>{if(e.name!=='AbortError')setError(e.message||'Unable to load profile')})
-    .finally(()=>{if(!controller.signal.aborted)setLoading(false)});
+     setLoadState({key:requestKey,status:'ready'});
+    }).catch(e=>{if(!controller.signal.aborted){setError(e instanceof Error?e.message:'Unable to load profile');setLoadState({key:requestKey,status:'error'});}});
    return()=>controller.abort();
- },[targetId,user?.id,refreshRevision]);
+ },[requestKey,refreshRevision]);
  const toggleSave=async(project:PublicProject)=>{
-  const key=project.owner_id+':'+project.kind+':'+project.id;
+  const key=savedProjectKeyV2(project.owner_id,project.kind,project.id);
   const already=saved.has(key);
   try{
    await toggleSaved(project.owner_id,project.kind,project.id);
-   if(isOwner)setProjects(prev=>({...prev,saves:already?prev.saves.filter(p=>p.owner_id+':'+p.kind+':'+p.id!==key):[project,...prev.saves.filter(p=>p.owner_id+':'+p.kind+':'+p.id!==key)]}));
+   if(isOwner)setProjects(prev=>({...prev,saves:already?prev.saves.filter(p=>savedProjectKeyV2(p.owner_id,p.kind,p.id)!==key):[project,...prev.saves.filter(p=>savedProjectKeyV2(p.owner_id,p.kind,p.id)!==key)]}));
   }catch(e){setError(e instanceof Error?e.message:'Unable to save')}
  };
 
@@ -60,7 +68,7 @@ export default function PublicProfileV2({user,onSettings,profileId,onPlayProject
   if(!ownerOf(project))return;
   setMenu(null);
   setActionDialog({action,project:{kind:project.kind,id:project.id,title:project.title,cover_file_id:project.cover_file_id}});
-  if(action==='add')void fetch(api+'/api/library/files/items',{credentials:'include'}).then(r=>{if(!r.ok)throw Error('Unable to load packs');return r.json()}).then(data=>setOwnerPacks(data.packs||[])).catch(e=>setError(e instanceof Error?e.message:'Unable to load packs'));
+  if(action==='add')void fetch(api+'/api/library/files/items',{credentials:'include'}).then(r=>{if(!r.ok)throw Error('Unable to load packs');return r.json()}).then(data=>setOwnerPacks(normalizeLibraryProjectsV2(data,Number(user?.id)).packs)).catch(e=>setError(e instanceof Error?e.message:'Unable to load packs'));
  };
  const onProjectChanged=(change:ChangedProject)=>{
   setActionDialog(null);
@@ -96,7 +104,7 @@ export default function PublicProfileV2({user,onSettings,profileId,onPlayProject
   window.addEventListener('keydown',dismiss);
   return()=>{window.removeEventListener('pointerdown',dismiss);window.removeEventListener('scroll',dismiss,true);window.removeEventListener('keydown',dismiss)};
  },[menu]);
- const shownUser=profileId?profileUser:user;
+ const shownUser=profileId?visibleProfileUser:user;
  const name=String(shownUser?.displayName||shownUser?.name||shownUser?.username||'Profile');
  const handle=String(shownUser?.username||shownUser?.handle||'');
  const picture=profilePictureV2(shownUser);
@@ -120,12 +128,14 @@ export default function PublicProfileV2({user,onSettings,profileId,onPlayProject
    {tabs.map(t=><button key={t.id} id={'onece-tab-'+t.id} type="button" role="tab" aria-selected={tab===t.id} aria-controls="onece-profile-tab-panel" className={tab===t.id?'is-active':''} onClick={()=>setTab(t.id)} aria-label={t.label} title={t.label}>{t.icon}</button>)}
   </nav>
   <div className="onece-profile-panel" id="onece-profile-tab-panel" role="tabpanel" aria-labelledby={'onece-tab-'+tab}>
-   {error&&<p role="alert" className="onece-profile-status">{error}</p>}
-   {loading?<p className="onece-profile-status">Loading profile…</p>:tab==='following'?
+   {error&&<p role="alert" className="onece-profile-status">{error}{profileStatus==='error'&&<button type="button" onClick={()=>setRefreshRevision(v=>v+1)}>Retry</button>}</p>}
+   {flagsStatus==='loading'&&<p className="onece-profile-status">Loading Save and Publish actions…</p>}
+   {flagsStatus==='error'&&<p role="alert" className="onece-profile-status">{flagsError}<button type="button" onClick={retryFlags}>Retry</button></p>}
+   {profileStatus==='loading'?<p className="onece-profile-status">Loading profile…</p>:profileStatus==='error'?null:tab==='following'?
     <div className="onece-profile-empty"><Users size={27}/><h2>Not following anyone yet</h2><p>Artists you follow will appear here once following is available.</p></div>:
-    (tab==='catalog'?projects.catalog:projects.saves).length?
-    <div className="onece-profile-projects">{(tab==='catalog'?projects.catalog:projects.saves).map(project=>{
-     const key=project.owner_id+':'+project.kind+':'+project.id;
+    (tab==='catalog'?visibleProjects.catalog:visibleProjects.saves).length?
+    <div className="onece-profile-projects">{(tab==='catalog'?visibleProjects.catalog:visibleProjects.saves).map(project=>{
+     const key=savedProjectKeyV2(project.owner_id,project.kind,project.id);
      const isPlaying=!!playback&&playback.ownerId===project.owner_id&&playback.kind===project.kind&&playback.id===project.id&&playback.playing;
      return <ProjectCardV2 key={key} variant="profile" project={project} ownerId={project.owner_id}
        secondary={project.kind==='pack'?(project.track_count||0)+' beats':'Beat'} playing={isPlaying}
@@ -136,7 +146,7 @@ export default function PublicProfileV2({user,onSettings,profileId,onPlayProject
     <div className="onece-profile-empty"><Bookmark size={27}/><h2>No saves yet</h2><p>Saved projects will appear here.</p></div>}
   </div>
   {menu&&<ProjectContextMenuV2 project={menu.project} x={menu.x} y={menu.y} owner={ownerOf(menu.project)} published={published.has(menu.project.kind+':'+menu.project.id)} saved={saved.has(menu.project.owner_id+':'+menu.project.kind+':'+menu.project.id)}
-   onPublish={()=>void publishProject(menu.project)} onSave={()=>{const project=menu.project;setMenu(null);void toggleSave(project)}} onShare={()=>void copyProjectLink(menu.project)} onAction={action=>showProjectAction(action,menu.project)}/>}
+   onPublish={flagsStatus==='ready'?()=>void publishProject(menu.project):undefined} onSave={flagsStatus==='ready'?()=>{const project=menu.project;setMenu(null);void toggleSave(project)}:undefined} onShare={()=>void copyProjectLink(menu.project)} onAction={action=>showProjectAction(action,menu.project)}/>}
   {actionDialog&&<ProjectActionDialogV2 key={actionDialog.action+':'+actionDialog.project.id} project={actionDialog.project} action={actionDialog.action} packs={ownerPacks} userId={user?.id} onClose={()=>setActionDialog(null)} onChanged={onProjectChanged}/>}
   </section>
 }

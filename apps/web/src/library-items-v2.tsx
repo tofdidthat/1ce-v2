@@ -7,12 +7,13 @@ import useProjectFlagsV2 from './project-flags-v2';
 import ProjectContextMenuV2 from './project-context-menu-v2';
 import ProjectCoverV2 from './project-cover-v2';
 import ProjectCardV2 from './project-card-v2';
+import {normalizeLibraryProjectsV2,normalizePackTracksV2,type LibraryBeatV2,type LibraryPackV2,type LibraryProjectsV2} from './project-read-v2';
 import {createProjectShareLinkV2} from './project-requests-v2';
 import ProjectActionDialogV2,{type ContextProject,type ProjectAction,type ChangedProject} from './project-action-dialog-v2';
 const api=import.meta.env.VITE_API_URL;
-type BeatItem = {published?:boolean;owner_id?:number;id:string;title:string;audio_file_id:number;cover_file_id:number|null;stems_file_id:number|null;pack_count:number;created_at:string;library_visible:boolean};
-type PackItem = {published?:boolean;id:string;title:string;cover_file_id:number|null;track_count:number;created_at:string};
-type LibraryData = {beats:BeatItem[];packs:PackItem[]};
+type BeatItem = LibraryBeatV2;
+type PackItem = LibraryPackV2;
+type LibraryData = LibraryProjectsV2;
 // Private, per-page waveform cache. Start decoding before playback when possible.
 const waveCache=new Map<string,number[]>();
 const wavePending=new Map<string,Promise<number[]>>();
@@ -65,6 +66,7 @@ function useWaveform(fileId:number|null,ownerId:number|null){
 }
 export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackChange,userId,active=true,playRequest}:{onUpload:()=>void;onPlayerVisibility?:(visible:boolean)=>void;onPlaybackChange?:(state:{ownerId:number;kind:'beat'|'pack';id:string;playing:boolean}|null)=>void;userId?:number;active?:boolean;playRequest?:{ownerId:number;kind:'beat'|'pack';id:string;nonce:number}|null}){
  const [data,setData]=useState<LibraryData>({beats:[],packs:[]});
+ const [loadedViewerId,setLoadedViewerId]=useState<number|null>(null);
  const [libraryRevision,setLibraryRevision]=useState(0);
  const lastLibraryFetch=useRef(0);
  const wasActive=useRef(active);
@@ -87,10 +89,18 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
  const [openedTracks,setOpenedTracks]=useState<BeatItem[]>([]);
  const [packLoading,setPackLoading]=useState(false);
  const [packError,setPackError]=useState('');
+ const packRequest=useRef<AbortController|null>(null);
+ useEffect(()=>()=>packRequest.current?.abort(),[]);
  const [openedBeat,setOpenedBeat]=useState<BeatItem|null>(null);
  const [contextBeat,setContextBeat]=useState<{beat:BeatItem;x:number;y:number}|null>(null);
  const [contextPack,setContextPack]=useState<{pack:PackItem;x:number;y:number}|null>(null);
  const [actionDialog,setActionDialog]=useState<{project:ContextProject;action:ProjectAction}|null>(null);
+ // A hidden, persistent Library must not retain another viewer's open metadata panels.
+ useEffect(()=>{
+  packRequest.current?.abort();
+  setOpenedPack(null);setOpenedTracks([]);setOpenedBeat(null);
+  setContextBeat(null);setContextPack(null);setActionDialog(null);
+ },[userId]);
  const showProjectAction=(action:ProjectAction,project:ContextProject)=>{
   setContextBeat(null);setContextPack(null);setActionDialog({action,project});
  };
@@ -150,7 +160,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
   return()=>{document.removeEventListener('pointerdown',dismiss);document.removeEventListener('keydown',key);window.removeEventListener('scroll',dismiss,true);window.removeEventListener('resize',dismiss)};
  },[contextBeat,contextPack]);
 
- const {published,saved,toggleSaved,togglePublished}=useProjectFlagsV2();
+ const {published,saved,status:flagsStatus,error:flagsError,refresh:retryFlags,toggleSaved,togglePublished}=useProjectFlagsV2();
  const savedBeatIds=useMemo(()=>new Set([...saved].filter(key=>key.startsWith(userId+':beat:')).map(key=>key.slice((userId+':beat:').length))),[saved,userId]);
  const savedPackIds=useMemo(()=>new Set([...saved].filter(key=>key.startsWith(userId+':pack:')).map(key=>key.slice((userId+':pack:').length))),[saved,userId]);
  const [actionError,setActionError]=useState('');
@@ -174,14 +184,17 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
   catch(error){setActionError(error instanceof Error?error.message:'Unable to save')}
  };
  const openPack=async(pack:PackItem)=>{
+  packRequest.current?.abort();
+  const controller=new AbortController();
+  packRequest.current=controller;
   setOpenedPack(pack);setOpenedTracks([]);setPackError('');setPackLoading(true);
   try{
-   const response=await fetch(api+'/api/library/files/pack-tracks/'+pack.id,{credentials:'include'});
+   const response=await fetch(api+'/api/library/files/pack-tracks/'+pack.id,{credentials:'include',signal:controller.signal});
    if(!response.ok)throw Error('Unable to load pack');
    const result=await response.json();
-   setOpenedTracks((result.beats as BeatItem[]).map(beat=>({...beat,cover_file_id:beat.cover_file_id??pack.cover_file_id})));
-  }catch(e){setPackError(e instanceof Error?e.message:'Unable to load pack')}
-  finally{setPackLoading(false)}
+   if(!controller.signal.aborted)setOpenedTracks(normalizePackTracksV2(result,pack));
+  }catch(e){if(!controller.signal.aborted)setPackError(e instanceof Error?e.message:'Unable to load pack')}
+  finally{if(!controller.signal.aborted)setPackLoading(false)}
  };
  useEffect(()=>{if(!openedBeat)return;const close=(event:KeyboardEvent)=>{if(event.key==='Escape')setOpenedBeat(null)};document.addEventListener('keydown',close);return()=>document.removeEventListener('keydown',close)},[openedBeat]);
 
@@ -232,7 +245,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
  };
  const next=()=>{if(!current)return;if(repeat==='one'){if(audioRef.current){audioRef.current.currentTime=0;audioRef.current.play().catch(()=>{})}return;}const index=queue.findIndex(b=>b.id===current.id&&b.owner_id===current.owner_id);const target=shuffle&&queue.length>1?queue.filter(b=>b.id!==current.id||b.owner_id!==current.owner_id)[Math.floor(Math.random()*(queue.length-1))]:queue[index+1]||(repeat==='all'?queue[0]:null);if(target){setCurrent(target);setElapsed(0)}else{setPlaying(false)}};
  const previous=()=>{if(!current)return;const index=queue.findIndex(b=>b.id===current.id&&b.owner_id===current.owner_id);if(index>0){setCurrent(queue[index-1]);setElapsed(0)}else if(audioRef.current)audioRef.current.currentTime=0};
- const playPack=async(p:PackItem)=>{if(activePackId===p.id&&current){toggle();return;}try{setPlayerError('');const response=await fetch(api+'/api/library/files/pack-tracks/'+p.id,{credentials:'include'});if(!response.ok)throw Error('Unable to load pack');const result=await response.json();const beats=(result.beats as BeatItem[]).map(beat=>({...beat,cover_file_id:beat.cover_file_id??p.cover_file_id}));if(beats[0])void loadWaveform(beats[0].audio_file_id,userId!).catch(()=>{});if(!beats.length)throw Error('Pack has no playable beats');choose(beats[0],beats,p.id)}catch(e){setPlayerError(e instanceof Error?e.message:'Unable to load pack')}};
+ const playPack=async(p:PackItem)=>{if(activePackId===p.id&&current){toggle();return;}try{setPlayerError('');const response=await fetch(api+'/api/library/files/pack-tracks/'+p.id,{credentials:'include'});if(!response.ok)throw Error('Unable to load pack');const result=await response.json();const beats=normalizePackTracksV2(result,p);if(beats[0])void loadWaveform(beats[0].audio_file_id,userId!).catch(()=>{});if(!beats.length)throw Error('Pack has no playable beats');choose(beats[0],beats,p.id)}catch(e){setPlayerError(e instanceof Error?e.message:'Unable to load pack')}};
 
  // A Profile/Catalog/Saves play request resolves the original owner's project.
  // The owner-only Library list must never be used for cross-user playback.
@@ -250,9 +263,8 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
     const result=await response.json().catch(()=>({}));
     if(!response.ok)throw Error(result.error||'Project unavailable for playback');
     const project=result.project;
-    const tracks=((project?.tracks||[]) as BeatItem[]).map(beat=>({
-     ...beat,owner_id:ownerId,cover_file_id:beat.cover_file_id??project.cover_file_id,
-     pack_count:0,created_at:'',library_visible:true
+    const tracks=normalizeLibraryProjectsV2({beats:project?.tracks},ownerId).beats.map(beat=>({
+     ...beat,cover_file_id:beat.cover_file_id??project.cover_file_id??null
     }));
     if(!tracks.length)throw Error('Project has no playable audio');
     if(!controller.signal.aborted)choose(tracks[0],tracks,kind==='pack'?id:null);
@@ -268,51 +280,54 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
  const [error,setError]=useState('');
  useEffect(()=>{
   const controller=new AbortController();
-  if(!userId){setData({beats:[],packs:[]});setLoading(false);return;}
+  if(!userId){setData({beats:[],packs:[]});setLoadedViewerId(null);setLoading(false);return;}
   if(!api){setError('Library API is not configured');setLoading(false);return;}
   setError('');setLoading(true);
   lastLibraryFetch.current=Date.now();
   fetch(api+'/api/library/files/items',{credentials:'include',cache:'no-store',signal:controller.signal})
    .then(async r=>{const body=await r.json().catch(()=>({}));if(!r.ok)throw Error(body.error||'Unable to load Library');return body})
-   .then(body=>{if(!controller.signal.aborted)setData({beats:body.beats||[],packs:body.packs||[]})})
+   .then(body=>{if(!controller.signal.aborted){setData(normalizeLibraryProjectsV2(body,Number(userId)));setLoadedViewerId(Number(userId));}})
    .catch(e=>{if(e.name!=='AbortError')setError(e.message||'Unable to load Library')})
    .finally(()=>{if(!controller.signal.aborted)setLoading(false)});
   return ()=>controller.abort();
  },[userId,libraryRevision]);
- const standaloneBeats=data.beats.filter(b=>b.library_visible!==false);
+ const visibleData=loadedViewerId===Number(userId)?data:{beats:[],packs:[]};
+ const standaloneBeats=visibleData.beats.filter(b=>b.library_visible!==false);
  // Warm the first standalone waveform while the user browses the Library.
- useEffect(()=>{const first=data.beats.find(b=>b.library_visible!==false);if(first&&userId)void loadWaveform(first.audio_file_id,userId).catch(()=>{})},[data.beats]);
- const empty=!standaloneBeats.length&&!data.packs.length;
+ useEffect(()=>{const first=visibleData.beats.find(b=>b.library_visible!==false);if(first&&userId)void loadWaveform(first.audio_file_id,userId).catch(()=>{})},[data.beats,loadedViewerId,userId]);
+ const empty=!standaloneBeats.length&&!visibleData.packs.length;
  return <section className={"beat-profile library-page onece-v2-library"+(!active?" onece-library-inactive":"")}><div className="beat-profile-content"><div className="library-items">
   {actionError&&<p role="alert" className="v2-library-status">{actionError}</p>}
-  {loading?<p className="v2-library-status">Loading your Library…</p>:
-   error?<div className="v2-library-status" role="alert">{error}<button onClick={()=>window.location.reload()}>Retry</button></div>:
+  {flagsStatus==='loading'&&active&&<p className="v2-library-status">Loading Save and Publish actions…</p>}
+  {flagsStatus==='error'&&active&&<div className="v2-library-status" role="alert">{flagsError}<button type="button" onClick={retryFlags}>Retry</button></div>}
+  {error?<div className="v2-library-status" role="alert">{error}<button type="button" onClick={()=>setLibraryRevision(v=>v+1)}>Retry</button></div>:
+   loading||loadedViewerId!==Number(userId)?<p className="v2-library-status">Loading your Library…</p>:
    empty?<div className="library-empty"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M4 4v16M9 4v16M14 4l4 16"/></svg><h2>Your Library is Empty</h2><button type="button" className="library-add-audio" onClick={onUpload}>Add Audio</button></div>:
    <div className="v2-library-contents">
     {openedPack?<div className="library-pack-detail v2-pack-detail">
-      <button type="button" className="library-pack-back" aria-label="Back to library" onClick={()=>setOpenedPack(null)}><ChevronLeft size={20}/></button>
+      <button type="button" className="library-pack-back" aria-label="Back to library" onClick={()=>{packRequest.current?.abort();setOpenedPack(null)}}><ChevronLeft size={20}/></button>
       <div className="library-pack-cover beat-art-0"><ProjectCoverV2 ownerId={userId} fileId={openedPack.cover_file_id} title={openedPack.title} className="v2-item-cover"/></div>
       <header className="library-pack-info"><div className="library-pack-title-row"><div className="library-pack-title-block"><h2>{openedPack.title}</h2><p>{openedTracks.length} {openedTracks.length===1?'beat':'beats'}</p></div><div className="library-pack-play-controls"><button type="button" className="library-pack-shuffle" aria-label="Shuffle pack" onClick={()=>{if(openedTracks.length){const mixed=[...openedTracks].sort(()=>Math.random()-.5);choose(mixed[0],mixed,openedPack.id)}}}><Shuffle size={19}/></button><button type="button" className="library-pack-play" aria-label={(activePackId===openedPack.id&&playing?'Pause ':'Play ')+openedPack.title} onClick={()=>playPack(openedPack)}>{activePackId===openedPack.id&&playing?<Pause/>:<Play/>}</button></div></div><button type="button" className="library-pack-add" disabled title="Add tracks is not yet available in v2"><span>+</span><span>Add tracks</span></button></header>
       {packLoading?<p className="v2-library-status">Loading beats…</p>:packError?<p role="alert">{packError}</p>:<ol className="beat-track-list">{openedTracks.map((beat,index)=><li key={beat.id} onContextMenu={e=>showBeatMenu(e,beat)} className={current?.id===beat.id?'beat-track-active':''}><button type="button" className="beat-track-play" onClick={()=>choose(beat,openedTracks,openedPack.id)} aria-label={(current?.id===beat.id&&playing?'Pause ':'Play ')+beat.title}><span className="beat-track-number">{current?.id===beat.id&&playing?'▥':index+1}</span><span><strong>{beat.title}</strong></span></button><div className="beat-track-menu"><button type="button" aria-label={'Open '+beat.title} onClick={()=>setOpenedBeat(beat)}>•••</button></div></li>)}</ol>}
      </div>:<div className="beat-pack-grid">
-     {data.packs.map((p,index)=><ProjectCardV2 key={'pack-'+p.id} variant="library" project={{...p,kind:'pack'}} ownerId={userId} tone={index%3} secondary={p.track_count+' beats'} playing={activePackId===p.id&&playing}
+     {visibleData.packs.map((p,index)=><ProjectCardV2 key={'pack-'+p.id} variant="library" project={{...p,kind:'pack'}} ownerId={userId} tone={index%3} secondary={p.track_count+' beats'} playing={activePackId===p.id&&playing}
        onContextMenu={e=>showPackMenu(e,p)} onOpen={()=>openPack(p)} onPlay={()=>playPack(p)}/>)}
-     {standaloneBeats.map((b,index)=><ProjectCardV2 key={'beat-'+b.id} variant="library" className="beat-single-card" project={{...b,kind:'beat'}} ownerId={userId} tone={(data.packs.length+index)%3} secondary={b.created_at?new Date(b.created_at).toLocaleDateString('en-US',{month:'short',day:'2-digit'}):'Beat'} playing={current?.id===b.id&&playing}
+     {standaloneBeats.map((b,index)=><ProjectCardV2 key={'beat-'+b.id} variant="library" className="beat-single-card" project={{...b,kind:'beat'}} ownerId={userId} tone={(visibleData.packs.length+index)%3} secondary={b.created_at?new Date(b.created_at).toLocaleDateString('en-US',{month:'short',day:'2-digit'}):'Beat'} playing={current?.id===b.id&&playing}
        onContextMenu={e=>showBeatMenu(e,b)} onOpen={()=>setOpenedBeat(b)} onPlay={()=>choose(b,[b])}
        onPointerEnter={()=>{if(userId)void loadWaveform(b.audio_file_id,userId).catch(()=>{})}}
        onFocusCapture={()=>{if(userId)void loadWaveform(b.audio_file_id,userId).catch(()=>{})}}/>)}
     </div>}
    </div>}
  </div></div>
- {contextPack&&<ProjectContextMenuV2 project={{...contextPack.pack,kind:'pack'}} x={contextPack.x} y={contextPack.y} owner published={published.has(publicationKey('pack',contextPack.pack.id))} saved={savedPackIds.has(contextPack.pack.id)} onPublish={()=>void togglePublish('pack',contextPack.pack.id)} onSave={()=>{const id=contextPack.pack.id;setContextPack(null);void toggleSavedProject('pack',id)}} onShare={()=>void copyProjectLink('pack',contextPack.pack.id)} onQueue={()=>{const pack=contextPack.pack;setContextPack(null);void (async()=>{try{const response=await fetch(api+'/api/library/files/pack-tracks/'+pack.id,{credentials:'include'});if(!response.ok)throw Error('Unable to load pack tracks');const result=await response.json();const tracks=(result.beats as BeatItem[]).map(beat=>({...beat,cover_file_id:beat.cover_file_id??pack.cover_file_id}));if(!tracks.length)return;if(!current)choose(tracks[0],tracks,pack.id);else setQueue(previous=>[...previous,...tracks.map(beat=>({...beat,owner_id:userId}))])}catch(error){setPlayerError(error instanceof Error?error.message:'Unable to add pack to queue')}})()}} onAction={action=>showProjectAction(action,{...contextPack.pack,kind:'pack'})}/>}
- {contextBeat&&<ProjectContextMenuV2 project={{...contextBeat.beat,kind:'beat'}} x={contextBeat.x} y={contextBeat.y} owner published={published.has(publicationKey('beat',contextBeat.beat.id))} saved={savedBeatIds.has(contextBeat.beat.id)} onPublish={()=>void togglePublish('beat',contextBeat.beat.id)} onSave={()=>{const id=contextBeat.beat.id;setContextBeat(null);void toggleSavedProject('beat',id)}} onShare={()=>void copyProjectLink('beat',contextBeat.beat.id)} onQueue={()=>addToQueue(contextBeat.beat)} onAction={action=>showProjectAction(action,{...contextBeat.beat,kind:'beat'})}/>}
+ {contextPack&&<ProjectContextMenuV2 project={{...contextPack.pack,kind:'pack'}} x={contextPack.x} y={contextPack.y} owner published={published.has(publicationKey('pack',contextPack.pack.id))} saved={savedPackIds.has(contextPack.pack.id)} onPublish={flagsStatus==='ready'?()=>void togglePublish('pack',contextPack.pack.id):undefined} onSave={flagsStatus==='ready'?()=>{const id=contextPack.pack.id;setContextPack(null);void toggleSavedProject('pack',id)}:undefined} onShare={()=>void copyProjectLink('pack',contextPack.pack.id)} onQueue={()=>{const pack=contextPack.pack;setContextPack(null);void (async()=>{try{const response=await fetch(api+'/api/library/files/pack-tracks/'+pack.id,{credentials:'include'});if(!response.ok)throw Error('Unable to load pack tracks');const result=await response.json();const tracks=normalizePackTracksV2(result,pack);if(!tracks.length)return;if(!current)choose(tracks[0],tracks,pack.id);else setQueue(previous=>[...previous,...tracks])}catch(error){setPlayerError(error instanceof Error?error.message:'Unable to add pack to queue')}})()}} onAction={action=>showProjectAction(action,{...contextPack.pack,kind:'pack'})}/>}
+ {contextBeat&&<ProjectContextMenuV2 project={{...contextBeat.beat,kind:'beat'}} x={contextBeat.x} y={contextBeat.y} owner published={published.has(publicationKey('beat',contextBeat.beat.id))} saved={savedBeatIds.has(contextBeat.beat.id)} onPublish={flagsStatus==='ready'?()=>void togglePublish('beat',contextBeat.beat.id):undefined} onSave={flagsStatus==='ready'?()=>{const id=contextBeat.beat.id;setContextBeat(null);void toggleSavedProject('beat',id)}:undefined} onShare={()=>void copyProjectLink('beat',contextBeat.beat.id)} onQueue={()=>addToQueue(contextBeat.beat)} onAction={action=>showProjectAction(action,{...contextBeat.beat,kind:'beat'})}/>}
  {actionDialog&&<ProjectActionDialogV2
   key={actionDialog.action+':'+actionDialog.project.kind+':'+actionDialog.project.id}
-  project={actionDialog.project} action={actionDialog.action} packs={data.packs} userId={userId}
+  project={actionDialog.project} action={actionDialog.action} packs={visibleData.packs} userId={userId}
   onClose={()=>setActionDialog(null)} onChanged={onProjectChanged}/>}
  {openedBeat&&<div className="beat-player-overlay v2-beat-overlay" role="dialog" aria-modal="true" aria-label={openedBeat.title} onClick={()=>setOpenedBeat(null)}>
   <div className="beat-player-widget v2-beat-widget" onClick={e=>e.stopPropagation()}>
-   <button type="button" className={'v2-beat-save'+(savedBeatIds.has(openedBeat.id)?' is-saved':'')} aria-label={savedBeatIds.has(openedBeat.id)?'Unsave beat':'Save beat'} aria-pressed={savedBeatIds.has(openedBeat.id)} onClick={()=>void toggleSavedProject('beat',openedBeat.id)}><Bookmark size={18} fill={savedBeatIds.has(openedBeat.id)?'currentColor':'none'}/></button>
+   <button type="button" className={'v2-beat-save'+(savedBeatIds.has(openedBeat.id)?' is-saved':'')} aria-label={savedBeatIds.has(openedBeat.id)?'Unsave beat':'Save beat'} aria-pressed={savedBeatIds.has(openedBeat.id)} disabled={flagsStatus!=='ready'} onClick={()=>void toggleSavedProject('beat',openedBeat.id)}><Bookmark size={18} fill={savedBeatIds.has(openedBeat.id)?'currentColor':'none'}/></button>
    <button type="button" className="beat-player-close v2-beat-close" aria-label="Close player" onClick={()=>setOpenedBeat(null)}><X size={16} strokeWidth={1.8}/></button>
    <div className="card v2-music-card">
     <div className={'mask'+(playing&&current?.id===openedBeat.id?' is-playing':'')}><div className="spin"><ProjectCoverV2 ownerId={userId} fileId={openedBeat.cover_file_id} title={openedBeat.title} className="v2-item-cover"/></div><div className="hole"><div className="hole-inner"/></div></div>
