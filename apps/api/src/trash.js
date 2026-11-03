@@ -36,11 +36,33 @@ export async function moveProjectToTrash(db,{owner,kind,id}){
  await db.query('SELECT pg_advisory_xact_lock($1::bigint)',[owner]);
  const moved=await db.query('UPDATE '+table+' SET deleted_at=now() WHERE user_id=$1 AND id=$2 AND deleted_at IS NULL RETURNING id',[owner,id]);
  if(!moved.rowCount)return false;
- // Revocation matches the former hard-delete behavior; restore stays private.
- for(const [table,column] of [
+ // Pack-only beats have no standalone Home listing and must move with their
+ // last active pack. Keep standalone beats and beats used by any other live pack.
+ // Use the pack's exact deletion timestamp as the cascade marker so restore
+ // can tell these apart from beats the owner deleted manually earlier.
+ let cascadeIds=[];
+ if(kind==='pack'){
+  const cascaded=await db.query(`UPDATE library_beats b SET deleted_at=p.deleted_at
+   FROM library_packs p JOIN library_pack_beats pb ON pb.pack_id=p.id
+   WHERE p.id=$2 AND p.user_id=$1 AND pb.beat_id=b.id AND b.user_id=$1
+     AND b.deleted_at IS NULL AND b.library_visible=FALSE
+     AND NOT EXISTS(
+      SELECT 1 FROM library_pack_beats shared
+      JOIN library_packs other ON other.id=shared.pack_id
+      WHERE shared.beat_id=b.id AND other.user_id=$1 AND other.deleted_at IS NULL
+     )
+   RETURNING b.id`,[owner,id]);
+  cascadeIds=cascaded.rows.map(row=>row.id);
+ }
+ // Revoke every public, saved and shared edge for the pack AND its
+ // automatically trashed members, atomically with the tombstones.
+ for(const [edgeTable,column] of [
   ['v2_public_projects','user_id'],['v2_public_saves','owner_id'],
   ['v2_project_access','owner_id'],['v2_project_share_links','owner_id']
- ])await db.query('DELETE FROM '+table+' WHERE '+column+'=$1 AND kind=$2 AND project_id=$3',[owner,kind,id]);
+ ]){
+  await db.query('DELETE FROM '+edgeTable+' WHERE '+column+'=$1 AND kind=$2 AND project_id=$3',[owner,kind,id]);
+  if(cascadeIds.length)await db.query('DELETE FROM '+edgeTable+" WHERE "+column+"=$1 AND kind='beat' AND project_id=ANY($2::uuid[])",[owner,cascadeIds]);
+ }
  return true;
 }
 
@@ -100,7 +122,14 @@ export async function handleTrash(req,res,pathname,pool,currentUser,{storageFact
  if(!Number.isSafeInteger(owner)||owner<1){respond(res,401,{error:'Not authenticated'});return true;}
  if(req.method==='GET'&&parts.length===3){
   const [beats,packs,pending]=await Promise.all([
-   pool.query('SELECT id,title,deleted_at FROM library_beats WHERE user_id=$1 AND deleted_at IS NOT NULL ORDER BY deleted_at DESC LIMIT 200',[owner]),
+   pool.query(`SELECT b.id,b.title,b.deleted_at FROM library_beats b
+    WHERE b.user_id=$1 AND b.deleted_at IS NOT NULL
+      AND NOT (b.library_visible=FALSE AND EXISTS(
+       SELECT 1 FROM library_pack_beats pb
+       JOIN library_packs p ON p.id=pb.pack_id AND p.user_id=b.user_id
+       WHERE pb.beat_id=b.id AND p.deleted_at=b.deleted_at
+      ))
+    ORDER BY b.deleted_at DESC LIMIT 200`,[owner]),
    pool.query('SELECT id,title,deleted_at FROM library_packs WHERE user_id=$1 AND deleted_at IS NOT NULL ORDER BY deleted_at DESC LIMIT 100',[owner]),
    pool.query('SELECT count(*)::int AS pending FROM v2_r2_delete_jobs WHERE user_id=$1 AND completed_at IS NULL',[owner])
   ]);
@@ -112,6 +141,23 @@ export async function handleTrash(req,res,pathname,pool,currentUser,{storageFact
   const kind=parts[3],id=parts[4];
   const found=await tx(pool,async db=>{
    await db.query('SELECT pg_advisory_xact_lock($1::bigint)',[owner]);
+   if(kind==='pack'){
+    // First verify that the parent is eligible. The cascade-marker comparison
+    // must happen before the parent tombstone is cleared.
+    const parent=await db.query("SELECT id FROM library_packs WHERE user_id=$1 AND id=$2 AND deleted_at>=now()-interval '30 days' FOR UPDATE",[owner,id]);
+    if(!parent.rowCount)return false;
+    // Restoring any pack revives only hidden beats automatically trashed when
+    // their last live pack was deleted, never individually deleted beats.
+    // This also handles a beat originally shared by two now-trashed packs.
+    await db.query(`UPDATE library_beats b SET deleted_at=NULL
+     WHERE b.user_id=$1 AND b.deleted_at IS NOT NULL AND b.library_visible=FALSE
+       AND EXISTS(SELECT 1 FROM library_pack_beats pb WHERE pb.pack_id=$2 AND pb.beat_id=b.id)
+       AND EXISTS(
+        SELECT 1 FROM library_pack_beats source_pb
+        JOIN library_packs source_p ON source_p.id=source_pb.pack_id AND source_p.user_id=$1
+        WHERE source_pb.beat_id=b.id AND source_p.deleted_at=b.deleted_at
+       )`,[owner,id]);
+   }
    const q=await db.query('UPDATE '+tableFor(kind)+" SET deleted_at=NULL WHERE user_id=$1 AND id=$2 AND deleted_at>=now()-interval '30 days' RETURNING id",[owner,id]);
    return q.rowCount>0;
   });
