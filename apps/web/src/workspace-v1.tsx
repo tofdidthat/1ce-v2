@@ -262,6 +262,7 @@ function EmptyLibrary({onUpload}){
   </div>
  </section>;
 }
+function viewIsProfileFromLocation(pathname:string,profileId?:string){return Boolean(profileId)||pathname==='/app/profile';}
 export default function WorkspaceV2({user,profileId}:{user:any;profileId?:string}){
  const navigate=useNavigate();const location=useLocation();
  const [account,setAccount]=useState(user);
@@ -294,6 +295,10 @@ export default function WorkspaceV2({user,profileId}:{user:any;profileId?:string
  },[account?.id]);
  const logout=async()=>{const api=import.meta.env.VITE_API_URL;if(!api)throw Error('API is not configured');const response=await fetch(api+'/auth/logout',{method:'POST',credentials:'include'});if(!response.ok)throw Error('Could not log out');window.location.assign('/login');};
  const [playerVisible,setPlayerVisible]=useState(false);
+ // Keep a visited /app profile mounted so navigation does not recreate its cards.
+ // This does not move the player or change the separate /u/:id route lifecycle.
+ const [visitedProfile,setVisitedProfile]=useState(viewIsProfileFromLocation(location.pathname,profileId));
+ useEffect(()=>{if(viewIsProfileFromLocation(location.pathname,profileId))setVisitedProfile(true)},[location.pathname,profileId]);
  const [playRequest,setPlayRequest]=useState<{ownerId:number;kind:'beat'|'pack';id:string;nonce:number}|null>(null);
  const [queueRequest,setQueueRequest]=useState<{ownerId:number;kind:'beat'|'pack';id:string;nonce:number}|null>(null);
  const [playback,setPlayback]=useState<{ownerId:number;kind:'beat'|'pack';id:string;playing:boolean}|null>(null);
@@ -307,16 +312,10 @@ export default function WorkspaceV2({user,profileId}:{user:any;profileId?:string
  <HeaderV2 view={view} user={account} externalProfile={Boolean(profileId)} onNavigate={onNavigate}/>
  <main className="onece-v2-workspace-main">
  <LibraryItemsV2 active={view==='library'} playRequest={playRequest} queueRequest={queueRequest} userId={account?.id} onUpload={()=>onNavigate('upload')} onPlayerVisibility={setPlayerVisible} onPlaybackChange={setPlayback}/>
- {view==='library'?null:
- view==='discover'?<WorldV2 userId={account?.id} onOpenProfile={identifier=>navigate('/u/'+encodeURIComponent(identifier))}/>:
- view==='upload'?<LibraryUploadV2 userId={account?.id}/>:
- view==='account'?<AccountSettingsV2 user={account} onUserChange={setAccount} onViewProfile={()=>onNavigate('profile')} onLogout={logout}/>:
- view==='profile'?<PublicProfileV2 user={account} profileId={profileId} playback={playback} onPlayProject={requestPlayback} onQueueProject={requestQueue}
+ {(view==='profile'||visitedProfile)&&<PublicProfileV2 active={view==='profile'} user={account} profileId={profileId} playback={playback} onPlayProject={requestPlayback} onQueueProject={requestQueue}
   onIdentityUpdated={updated=>{
     const oldHandle=String(account?.username||'').toLowerCase();
     setAccount(updated);
-    // A renamed own /u/:username URL is no longer valid: keep profile in the
-    // editor's current context by replacing just that owned route, not replaying the player.
     if(profileId&&oldHandle&&profileId.toLowerCase()===oldHandle&&updated?.username&&
        String(updated.username).toLowerCase()!==oldHandle){
       navigate('/u/'+encodeURIComponent(updated.username),{replace:true});
@@ -324,7 +323,12 @@ export default function WorkspaceV2({user,profileId}:{user:any;profileId?:string
    }}
   onBack={()=>{const index=window.history.state?.idx;if(typeof index==='number'&&index>0)navigate(-1);else navigate(account?.id?'/app/library':'/');}}
   onLogin={()=>navigate('/login')}
-  onOpenProfile={identifier=>navigate('/u/'+encodeURIComponent(identifier))}/>: view==='edit-profile'?<section className="onece-workspace-placeholder"><h1>Edit Profile</h1><p>Profile editing is not yet available in v2.</p></section>:
+  onOpenProfile={identifier=>navigate('/u/'+encodeURIComponent(identifier))}/>}
+ {view==='library'||view==='profile'?null:
+ view==='discover'?<WorldV2 userId={account?.id} onOpenProfile={identifier=>navigate('/u/'+encodeURIComponent(identifier))}/>:
+ view==='upload'?<LibraryUploadV2 userId={account?.id}/>:
+ view==='account'?<AccountSettingsV2 user={account} onUserChange={setAccount} onViewProfile={()=>onNavigate('profile')} onLogout={logout}/>:
+view==='edit-profile'?<section className="onece-workspace-placeholder"><h1>Edit Profile</h1><p>Profile editing is not yet available in v2.</p></section>:
  <section className="onece-workspace-placeholder"><h1>{view==='account'?'Settings':view==='profile'?'Public Profile':'World'}</h1><p>{view==='profile'?'Public profile publishing is not yet enabled in v2.':view==='account'?'Account settings are not yet available in v2.':'World feed is not yet available in v2.'}</p></section>}
  </main>
  {view==='library'&&!playerVisible&&<div className="onece-player-dock" aria-label="Add audio"><button type="button" className="onece-global-player" style={{display:'flex',justifyContent:'center',gap:10,width:'fit-content',maxWidth:'100%',marginInline:'auto',padding:'7px 26px',color:'inherit',font:'inherit',fontSize:13,cursor:'pointer'}} onClick={()=>onNavigate('upload')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>Add file</span></button></div>}
