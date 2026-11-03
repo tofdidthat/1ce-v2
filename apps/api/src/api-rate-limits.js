@@ -22,7 +22,7 @@ export async function rateLimitExceeded(pool,scope,subject,limit,windowMinutes){
 export const uploadLimits=Object.freeze({
  maxPending:10,
  maxStoredBytes:10*1024*1024*1024, // 10 GiB per account; includes recent pending reservations
- initPerHour:80,
- completePerHour:120,
+ initPerHour:240,
+ completePerHour:360,
  pendingMinutes:30
 });
