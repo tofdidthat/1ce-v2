@@ -32,7 +32,7 @@ test('C5 profile uses prior verified data only for the same viewer and target, w
  assert.match(profile,/lastVerifiedProfileKey\.current===requestKey/);
  assert.match(profile,/profileStatus==='loading'&&!sameVerifiedProfile/);
  assert.match(profile,/profileStatus==='error'&&!sameVerifiedProfile/);
- assert.match(profile,/if\(active&&!previouslyActive\.current\)setRefreshRevision/);
+ assert.match(profile,/if\(active&&!previouslyActive\.current\)\{setRefreshRevision/);
  assert.match(profile,/if\(!active\)return;[\s\S]*?subscribeV2DataChanges\(\['library','saves','publications','shares','identity'\]/);
  assert.match(profile,/fetch\(api\+'\/api\/public\/profile\/'\+targetId,\{credentials:'include',signal:controller\.signal,cache:'no-store'\}\)/);
  assert.match(profile,/controller\.signal\.aborted/);
