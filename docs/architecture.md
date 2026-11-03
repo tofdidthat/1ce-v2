@@ -12,6 +12,8 @@
 
 **Execution:** isolated branch `feat/v2-home-world-navigation-tabs` from production main after user-approved PR #20. Update docs before code, implement a responsive WorldV2 component and CSS, substitute visible naming only in frontend, add source/UI contract tests. GitHub Actions API tests, web tests, TypeScript/Vite required; real browser visual verification pending. **Draft PR, no merge/deploy until explicit approval**, Vercel previews stay disabled to conserve quota.
 
+**Implementation ledger (2026-11-03):** PR [#21](https://github.com/tofdidthat/1ce-v2/pull/21), draft and unmerged, includes WorldV2 and branded CSS, real following user profiles via existing GET, unchanged internal keys/routes, house nav icon, user-visible Home/World strings and regression tests. GitHub Actions **#121 SUCCESS** at feature head `165bf094215ee971aacd557831d7ed06b87bf505`: API tests, web source contract tests, TypeScript and Vite build. Manual desktop/mobile screenshot review and two-account Following testing remain **unverified**. No preview or production deployment, API/DB/R2 or v1 changes. A doc-only follow-up commit requires final CI at the resulting PR head. Release approval required.
+
 ## Cross-account public profile context actions — batch 1 (2026-11-03, isolated draft)
 
 **User-confirmed order (other person's project card, right-click):** Save/Unsave, Copy link, Add to queue, Download MP3. Keep existing owner menus and first Library tab unchanged. The later **Add to...** workflow (existing pack/new project/Library) is **explicitly a separate phase**, not implemented or published here. Preserve v1, player controls and underlying media references, never copy R2 objects.
