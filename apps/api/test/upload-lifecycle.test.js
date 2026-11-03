@@ -93,7 +93,16 @@ function setup(){
    }
    return {Body:Readable.from([object.streamBytes||object.bytes]),ContentLength:object.bytes.length};
   }
-  if(command.constructor.name==='DeleteObjectCommand'){objects.delete(key);return {};}
+  if(command.constructor.name==='CopyObjectCommand'){
+    const source=command.input.CopySource.split('/').slice(1).join('/'),src=objects.get(source);
+    if(!src){const err=Error('Not found');err.name='NotFound';throw err;}
+    if(command.input.CopySourceIfMatch&&command.input.CopySourceIfMatch!=='"'+checksum(src.bytes)+'"'){
+     const err=Error('Source changed');err.$metadata={httpStatusCode:412};throw err;
+    }
+    objects.set(key,{bytes:Buffer.from(src.bytes),type:src.type});onCopy(source,key,objects);
+    return {};
+   }
+   if(command.constructor.name==='DeleteObjectCommand'){objects.delete(key);return {};}
   throw new Error('Unexpected storage command: '+command.constructor.name);
  }};
  const options={
@@ -120,6 +129,7 @@ function setup(){
   files.set(file.id,file);return file;
  };
  return {files,objects,queries,commands,signed,invoke,put,addReady,
+  onCopy(fn){onCopy=fn;},rates,
   setUniqueCollision(value){forceUniqueCollision=value},
   setSigningFailure(){options.signUrl=async()=>{throw Error('signer unavailable');}}
  };
