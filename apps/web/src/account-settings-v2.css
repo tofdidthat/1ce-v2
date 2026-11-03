@@ -27,7 +27,7 @@
 .onece-account-view:hover{background:#ffffff10}
 .onece-account-links-card{padding:0;overflow:hidden}
 .onece-account-links-card a,.onece-account-links-card button{display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;min-height:52px;padding:16px 20px;border:0;border-radius:0;background:transparent;color:#e4dff0;font-size:12px;text-align:left;text-decoration:none;cursor:pointer}
-.onece-account-links-card a+a,.onece-account-links-card a+button{border-top:1px solid #ffffff0a}
+.onece-account-links-card > * + *{border-top:1px solid #ffffff0a}
 .onece-account-links-card a:hover,.onece-account-links-card button:hover:not(:disabled){background:#ffffff05}
 .onece-account-links-card .onece-account-logout{color:#f2b0b7}
 .onece-account-settings button:focus-visible,.onece-account-settings a:focus-visible,.onece-account-settings input:focus-visible{outline:2px solid #a78bfa;outline-offset:3px}

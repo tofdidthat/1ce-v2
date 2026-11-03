@@ -2,6 +2,7 @@ import React,{useEffect,useRef,useState} from 'react';
 import {profilePictureV2} from './profile-picture-v2';
 import './account-settings-v2.css';
 import {notifyV2DataChanged} from './data-refresh-v2';
+import TrashSettingsV2 from './trash-settings-v2';
 
 const api=import.meta.env.VITE_API_URL;
 type AccountUser={id:number;username?:string|null;picture?:string|null;has_avatar?:boolean;avatar_updated_at?:string|null;email?:string;[key:string]:unknown};
@@ -17,6 +18,7 @@ function isValidUsername(value:string){
 }
 export default function AccountSettingsV2({user,onUserChange,onViewProfile,onLogout}:{user:AccountUser;onUserChange:(user:AccountUser)=>void;onViewProfile:()=>void;onLogout:()=>Promise<void>}){
  const [editing,setEditing]=useState(false);
+ const [trashOpen,setTrashOpen]=useState(false);
  useEffect(()=>{if(new URLSearchParams(window.location.search).get('edit')==='profile')setEditing(true);},[]);
  const [draft,setDraft]=useState(user.username||'');
  const [file,setFile]=useState<File|null>(null);
@@ -101,11 +103,13 @@ export default function AccountSettingsV2({user,onUserChange,onViewProfile,onLog
      <div><h2>Profile</h2><p>View your profile</p></div>
      <button type="button" className="onece-account-view" onClick={onViewProfile}>View <span aria-hidden="true">↗</span></button>
     </section>
+    {trashOpen?<TrashSettingsV2 userId={user.id} onBack={()=>setTrashOpen(false)}/>:
     <section className="onece-account-card onece-account-links-card" aria-label="Account options">
+     <button type="button" className="onece-account-trash-link" onClick={()=>setTrashOpen(true)}>Trash <span aria-hidden="true">↗</span></button>
      <a href="/terms">Terms of Service <span aria-hidden="true">↗</span></a>
      <a href="/privacy">Privacy Policy <span aria-hidden="true">↗</span></a>
      <button type="button" className="onece-account-logout" disabled={loggingOut} onClick={()=>void logout()}><span>{loggingOut?'Logging out…':'Log out'}</span><span aria-hidden="true">↗</span></button>
-    </section>
+    </section>}
    </div>
   </div>
  </section>;

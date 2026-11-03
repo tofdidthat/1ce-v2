@@ -2,6 +2,7 @@
 // Existing projects and private R2 file references are never cloned or deleted.
 // All writes are owner-scoped and transactional where multiple rows change.
 import {randomUUID} from 'node:crypto';
+import {moveProjectToTrash} from './trash.js';
 
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const send=(res,status,payload)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(payload));};
@@ -22,16 +23,16 @@ async function transaction(pool,work){
 const result=(status,data)=>({status,data});
 async function ownerProject(c,kind,id,owner){
  const table=kind==='beat'?'library_beats':'library_packs';
- return (await c.query('SELECT id,title,cover_file_id FROM '+table+' WHERE id=$1 AND user_id=$2 FOR UPDATE',[id,owner])).rows[0]||null;
+ return (await c.query('SELECT id,title,cover_file_id FROM '+table+' WHERE id=$1 AND user_id=$2 AND deleted_at IS NULL FOR UPDATE',[id,owner])).rows[0]||null;
 }
 async function sourceBeats(c,kind,id,owner){
  if(kind==='beat'){
-  const r=await c.query('SELECT id FROM library_beats WHERE id=$1 AND user_id=$2',[id,owner]);
+  const r=await c.query('SELECT id FROM library_beats WHERE id=$1 AND user_id=$2 AND deleted_at IS NULL',[id,owner]);
   return r.rows.map(x=>x.id);
  }
  const r=await c.query(`SELECT b.id FROM library_packs p JOIN library_pack_beats pb ON pb.pack_id=p.id
   JOIN library_beats b ON b.id=pb.beat_id AND b.user_id=$2
-  WHERE p.id=$1 AND p.user_id=$2 ORDER BY pb.position ASC`,[id,owner]);
+  WHERE p.id=$1 AND p.user_id=$2 AND p.deleted_at IS NULL AND b.deleted_at IS NULL ORDER BY pb.position ASC`,[id,owner]);
  return r.rows.map(x=>x.id);
 }
 async function attach(c,targetId,beatIds){
@@ -122,21 +123,8 @@ export async function handleProjectActions(req,res,pathname,pool,currentUser){
  }
  if(req.method==='DELETE'){
   const response=await transaction(pool,async c=>{
-   if(!await ownerProject(c,kind,id,owner))return result(404,{error:'Project not found'});
-   // These generic UUID relationships intentionally have no FK to beats/packs.
-   // Remove them before deleting metadata so no stale public/granted/save edges survive.
-   await c.query('DELETE FROM v2_public_projects WHERE user_id=$1 AND kind=$2 AND project_id=$3',[owner,kind,id]);
-   await c.query('DELETE FROM v2_public_saves WHERE owner_id=$1 AND kind=$2 AND project_id=$3',[owner,kind,id]);
-   await c.query('DELETE FROM v2_project_access WHERE owner_id=$1 AND kind=$2 AND project_id=$3',[owner,kind,id]);
-   await c.query('DELETE FROM v2_project_share_links WHERE owner_id=$1 AND kind=$2 AND project_id=$3',[owner,kind,id]);
-   if(kind==='beat'){
-    // Pack member rows reference beats with ON DELETE RESTRICT.
-    // Explicitly detach only this beat, retaining all other pack beats.
-    await c.query('DELETE FROM library_pack_beats WHERE beat_id=$1',[id]);
-   }
-   // Pack member rows are ON DELETE CASCADE. Neither deletion deletes R2.
-   await c.query('DELETE FROM '+table+' WHERE id=$1 AND user_id=$2',[id,owner]);
-   return result(200,{deleted:true,id,kind,mediaRetained:true});
+   const moved=await moveProjectToTrash(c,{owner,kind,id});
+   return moved?result(200,{trashed:true,id,kind,restoreDays:30}):result(404,{error:'Project not found'});
   });
   send(res,response.status,response.data);return true;
  }

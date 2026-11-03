@@ -7,6 +7,7 @@ import pg from 'pg';
 import {rateLimitExceeded,pruneExpiredRateLimits} from '../src/api-rate-limits.js';
 import {accountStorageQuota,GIB} from '../src/storage-plans.js';
 import {acquireCompletionLease,failPendingWithLease,discardPendingWithLease,promoteReadyWithLease} from '../src/upload-leases.js';
+import {purgeTrashMetadata} from '../src/trash.js';
 
 const connectionString=process.env.S2_TEST_DATABASE_URL;
 if(!connectionString)throw new Error('S2_TEST_DATABASE_URL is required');
@@ -18,6 +19,8 @@ const dir=resolve(dirname(fileURLToPath(import.meta.url)),'../../../history/data
 const migration=async name=>readFile(resolve(dir,name),'utf8');
 const authSql=await migration('001_auth_initial_schema.sql');
 const fileSql=await migration('003_library_files_r2.sql');
+const collectionsSql=await migration('004_library_collections.sql');
+const trashSql=await migration('012_trash_and_r2_delete_outbox.sql');
 const sql=await migration('010_api_rate_limits.sql');
 const plansSql=await migration('011_storage_plans_completion_leases.sql');
 const pool=new pg.Pool({connectionString,max:8,connectionTimeoutMillis:5000});
@@ -25,11 +28,14 @@ try{
  // Base schema is created ONLY in this disposable local PostgreSQL database.
  await pool.query(authSql);
  await pool.query(fileSql);
+ await pool.query(collectionsSql);
  // Reapplying both additive S2 migrations must be harmless.
  await pool.query(sql);
  await pool.query(sql);
  await pool.query(plansSql);
  await pool.query(plansSql);
+ await pool.query(trashSql);
+ await pool.query(trashSql);
  const table=await pool.query("SELECT to_regclass('public.v2_api_rate_limits')::text AS name");
  if(table.rows[0]?.name!=='v2_api_rate_limits')throw Error('Throttle table missing');
  const index=await pool.query("SELECT to_regclass('public.v2_api_rate_limits_window_idx')::text AS name");
@@ -108,7 +114,60 @@ try{
  const remaining=await pool.query("SELECT scope FROM v2_api_rate_limits WHERE scope IN ('s2-old','s2-new')");
  if(remaining.rows.length!==1||remaining.rows[0].scope!=='s2-new')
   throw Error('Rate-limit cleanup removed an active row or kept stale one');
- console.log('S2 isolated PostgreSQL migration: PASS (010+011 idempotent DDL, plan isolation, per-file lease fencing, atomic shared rate limits)');
+
+ // PR #28: Trash metadata purge and media retirement on disposable DB only.
+ const uid=id,sharedOwner=id;
+ const beatOne='10000000-0000-4000-8000-000000000001';
+ const beatTwo='10000000-0000-4000-8000-000000000002';
+ const packId='10000000-0000-4000-8000-000000000003';
+ const makeFile=async(objectKey,kind)=>{
+  const q=await pool.query("INSERT INTO library_files(user_id,kind,object_key,original_name,content_type,byte_size,status) VALUES($1,$2,$3,'ci.mp3',$4,100,'ready') RETURNING id",[uid,kind,objectKey,kind==='cover'?'image/png':'audio/mpeg']);
+  return q.rows[0].id;
+ };
+ const sharedCover=await makeFile('users/'+uid+'/assets/cover/verified/10000000-0000-4000-8000-000000000010.png','cover');
+ const audioOne=await makeFile('users/'+uid+'/assets/audio/verified/10000000-0000-4000-8000-000000000011.mp3','audio');
+ const audioTwo=await makeFile('users/'+uid+'/assets/audio/verified/10000000-0000-4000-8000-000000000012.mp3','audio');
+ await pool.query('INSERT INTO library_beats(id,user_id,title,audio_file_id,cover_file_id) VALUES($1,$2,\'first\',$3,$4),($5,$2,\'second\',$6,$4)',[beatOne,uid,audioOne,sharedCover,beatTwo,audioTwo]);
+ await pool.query("INSERT INTO library_packs(id,user_id,title) VALUES($1,$2,'pack')",[packId,uid]);
+ await pool.query('INSERT INTO library_pack_beats(pack_id,beat_id,position) VALUES($1,$2,0),($1,$3,1)',[packId,beatOne,beatTwo]);
+ const conn=await pool.connect();
+ try{
+  await conn.query('BEGIN');
+  const moved=await conn.query('UPDATE library_beats SET deleted_at=now() WHERE id=$1 AND user_id=$2 RETURNING id',[beatOne,uid]);
+  if(moved.rowCount!==1)throw Error('Trash move failed');
+  await conn.query('COMMIT');
+ }catch(e){await conn.query('ROLLBACK');throw e}finally{conn.release()}
+ let trashed=await pool.query('SELECT deleted_at FROM library_beats WHERE id=$1',[beatOne]);
+ if(!trashed.rows[0]?.deleted_at)throw Error('Trash tombstone absent');
+ // Test valid restore, followed by second move and permanent purge.
+ await pool.query('UPDATE library_beats SET deleted_at=NULL WHERE id=$1 AND user_id=$2',[beatOne,uid]);
+ if((await pool.query('SELECT deleted_at FROM library_beats WHERE id=$1',[beatOne])).rows[0].deleted_at)
+  throw Error('Trash restore failed');
+ const c=await pool.connect();
+ let purged;
+ try{
+  await c.query('BEGIN');
+  await c.query('UPDATE library_beats SET deleted_at=now() WHERE id=$1 AND user_id=$2',[beatOne,uid]);
+  purged=await purgeTrashMetadata(c,uid);
+  await c.query('COMMIT');
+ }catch(e){await c.query('ROLLBACK');throw e}finally{c.release()}
+ if(purged.removedProjects!==1||purged.queuedMedia!==1)
+  throw Error('Unexpected Trash purge result: '+JSON.stringify(purged));
+ const survivor=await pool.query('SELECT id FROM library_beats WHERE id=$1',[beatTwo]);
+ if(survivor.rowCount!==1)throw Error('Trash purged a live beat');
+ const liveMedia=await pool.query('SELECT id FROM library_files WHERE id=ANY($1::bigint[])',[sharedCover,audioTwo]);
+ if(liveMedia.rowCount!==2)throw Error('Trash deleted shared or live asset');
+ const deadMedia=await pool.query('SELECT id FROM library_files WHERE id=$1',[audioOne]);
+ if(deadMedia.rowCount!==0)throw Error('Unreferenced retired asset still exists in metadata');
+ const jobs=await pool.query('SELECT object_key,completed_at FROM v2_r2_delete_jobs WHERE user_id=$1',[uid]);
+ if(jobs.rowCount!==1||jobs.rows[0].completed_at!==null||
+  jobs.rows[0].object_key!=='users/'+uid+'/assets/audio/verified/10000000-0000-4000-8000-000000000011.mp3')
+  throw Error('Durable R2 delete job mismatch');
+ const packMembers=await pool.query('SELECT beat_id FROM library_pack_beats WHERE pack_id=$1',[packId]);
+ if(packMembers.rowCount!==1||String(packMembers.rows[0].beat_id)!==beatTwo)
+  throw Error('Trash damaged remaining pack member');
+ console.log('S2 isolated PostgreSQL migration: PASS (010+011+012, owner leases, Trash safe metadata purge and R2 outbox)');
+
 }finally{
  await pool.end();
 }

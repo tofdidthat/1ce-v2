@@ -54,8 +54,11 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser,{
   const q=await pool.query("SELECT id,kind FROM library_files WHERE user_id=$1 AND status='ready' AND id=ANY($2::bigint[])",[user.id,ids]);
   const valid=new Map(q.rows.map(x=>[Number(x.id),x.kind]));
   if(valid.get(data.audioFileId)!=='audio'||data.coverFileId!=null&&valid.get(data.coverFileId)!=='cover'||data.stemsFileId!=null&&valid.get(data.stemsFileId)!=='stems'){send(res,400,{error:'Assets must be owned by you and ready'});return true;}
-  const existing=await pool.query("SELECT id FROM library_beats WHERE user_id=$1 AND audio_file_id=$2",[user.id,data.audioFileId]);
-  if(existing.rows[0]){send(res,200,{id:existing.rows[0].id,reused:true});return true;}
+  const existing=await pool.query("SELECT id,deleted_at FROM library_beats WHERE user_id=$1 AND audio_file_id=$2",[user.id,data.audioFileId]);
+  if(existing.rows[0]){
+   if(existing.rows[0].deleted_at){send(res,409,{error:'Beat is in Trash. Restore it first.'});return true;}
+   send(res,200,{id:existing.rows[0].id,reused:true});return true;
+  }
   const id=randomUUID();
   await pool.query("INSERT INTO library_beats(id,user_id,title,audio_file_id,cover_file_id,stems_file_id) VALUES($1,$2,$3,$4,$5,$6)",[id,user.id,title,data.audioFileId,data.coverFileId||null,data.stemsFileId||null]);
   send(res,201,{id});return true;
@@ -71,7 +74,7 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser,{
   const client=await pool.connect();
   try{
    await client.query('BEGIN');
-   const owned=await client.query('SELECT id FROM library_beats WHERE user_id=$1 AND id=ANY($2::uuid[])',[user.id,beatIds]);
+   const owned=await client.query('SELECT id FROM library_beats WHERE user_id=$1 AND deleted_at IS NULL AND id=ANY($2::uuid[])',[user.id,beatIds]);
    if(owned.rowCount!==beatIds.length){await client.query('ROLLBACK');send(res,403,{error:'Beat not owned by you'});return true;}
    if(data.coverFileId!=null){
     const cover=await client.query("SELECT id FROM library_files WHERE id=$1 AND user_id=$2 AND kind='cover' AND status='ready'",[data.coverFileId,user.id]);
@@ -95,20 +98,20 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser,{
    FROM library_packs p JOIN library_pack_beats pb ON pb.pack_id=p.id
    JOIN library_beats b ON b.id=pb.beat_id AND b.user_id=p.user_id
    JOIN library_files f ON f.id=b.audio_file_id AND f.status='ready'
-   WHERE p.id=$1 AND p.user_id=$2 ORDER BY pb.position ASC`,[segments[4],user.id]);
+   WHERE p.id=$1 AND p.user_id=$2 AND p.deleted_at IS NULL AND b.deleted_at IS NULL ORDER BY pb.position ASC`,[segments[4],user.id]);
   send(res,200,{beats:q.rows});return true;
  }
  if(req.method==='GET'&&segments.length===4&&segments[3]==='items'){
   const [beats,packs]=await Promise.all([
    pool.query(`SELECT b.id,b.title,b.created_at,b.audio_file_id,b.cover_file_id,b.stems_file_id,b.library_visible,
      a.original_name AS audio_name,a.byte_size AS audio_size,
-     (SELECT count(*)::int FROM library_pack_beats pb WHERE pb.beat_id=b.id) AS pack_count
+     (SELECT count(*)::int FROM library_pack_beats pb JOIN library_packs p2 ON p2.id=pb.pack_id AND p2.deleted_at IS NULL WHERE pb.beat_id=b.id) AS pack_count
      FROM library_beats b JOIN library_files a ON a.id=b.audio_file_id AND a.status='ready'
-     WHERE b.user_id=$1 ORDER BY b.created_at DESC LIMIT 200`,[user.id]),
+     WHERE b.user_id=$1 AND b.deleted_at IS NULL ORDER BY b.created_at DESC LIMIT 200`,[user.id]),
    pool.query(`SELECT p.id,p.title,p.created_at,p.cover_file_id,
-     COUNT(pb.beat_id)::int AS track_count
-     FROM library_packs p LEFT JOIN library_pack_beats pb ON pb.pack_id=p.id
-     WHERE p.user_id=$1 GROUP BY p.id ORDER BY p.created_at DESC LIMIT 100`,[user.id])
+     COUNT(bactive.id)::int AS track_count
+     FROM library_packs p LEFT JOIN library_pack_beats pb ON pb.pack_id=p.id LEFT JOIN library_beats bactive ON bactive.id=pb.beat_id AND bactive.deleted_at IS NULL
+     WHERE p.user_id=$1 AND p.deleted_at IS NULL GROUP BY p.id ORDER BY p.created_at DESC LIMIT 100`,[user.id])
   ]);
   send(res,200,{beats:beats.rows,packs:packs.rows});return true;
  }

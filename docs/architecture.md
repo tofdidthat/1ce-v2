@@ -1,3 +1,17 @@
+## PR #28 — Trash em Settings, restauração e limpeza R2 segura (2026-11-03)
+
+**DECISÃO DO USUÁRIO:** Adicionar **Trash** às opções de Settings, **acima de Terms of Service**. O usuário deve poder esvaziar a lixeira, excluindo os objetos órfãos do Cloudflare R2 permanentemente. Manter o projeto de áudio/música sem duplicar mídias quando beats, packs e capas são compartilhados.
+
+**IMPLEMENTAÇÃO EM BRANCH, NÃO PUBLICADA:** `feature/v2-trash-r2-safe-purge`. `Delete` do menu contextual passa a mover beat/pack para Trash com `deleted_at`, retirando-o de Home, perfil público e reprodução e revogando publicações, saves, links e grants. Recuperação por 30 dias em Settings → Trash, **privada** ao titular e sem restabelecer automaticamente publicação/compartilhamento. Um beat excluído permanece associado aos packs até restaurar ou esvaziar; os demais beats permanecem.
+
+**ESVAZIAR TRASH:** exige confirmação textual `EMPTY TRASH`. Backend deleta metadados dos projetos descartados em transação e só retira de `library_files` os arquivos READY sem referência por outros beats ou packs. As FKs `ON DELETE RESTRICT` previnem limpeza concorrente de um arquivo que recebe nova referência. A mesma transação registra os objetos `verified/` elegíveis em `v2_r2_delete_jobs`; após COMMIT a API tenta removê-los do R2, em lote limitado, registrando sucesso ou pendência para retry. Nunca apagar `users/` inteiro, arquivos de outra conta, `staging/` ou objetos ainda referenciados. O usuário vê se o R2 ainda tem tarefas pendentes. Restos por falha de R2 podem ficar temporariamente em fila; `done` só é retornado quando não houver pendências. Não há cron automático nesta fase. Quota de arquivos efetivamente retirados de `library_files` poderá ser recuperada; objetos ainda referenciados continuam consumindo quota.
+
+**MIGRATION NOVA:** `history/database/012_trash_and_r2_delete_outbox.sql`, **somente no PostgreSQL isolado da v2**. Ela deve ser aplicada e validada **antes do deploy desta funcionalidade**. Como a migração adiciona colunas e uma tabela sem apagar dados, o código S2 atual pode continuar rodando durante sua preparação. Não executar na v1.
+
+**GATES AINDA PENDENTES:** revisão de SQL de descarte/fencing, testes com PostgreSQL descartável e R2 isolado, CI do HEAD, backup de produção v2, aplicação autorizada da 012, checagem manual de Home, player, shares, packs e dedup, rollback da API/UI se houver falha. **Sem merge/deploy/mutation do banco de produção autorizados por este pedido.** O botão `Empty Trash` é destrutivo e precisa de conferência explícita pelo próprio titular no frontend. A limpeza de dados históricos ainda órfãos, sem outbox, é separada do fluxo de Trash e exige auditoria.
+
+---
+
 ## Estado atual S2 / PR #27 — 2026-11-03 (atualização de continuidade)
 
 **DECISÃO APROVADA:** O usuário aceitou **10 GiB por conta como limite técnico provisório** do plano DB `default`, sem cobrança/tiers pagos. Aceitou a limitação temporária de que excluir um projeto não recupera espaço físico até **PR #28 (Settings → Trash + GC de mídias sem referências)**.

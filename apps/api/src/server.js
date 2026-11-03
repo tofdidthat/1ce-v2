@@ -7,6 +7,7 @@ import { handleLibraryFiles } from './library-files.js';
 import {rateLimitExceeded} from './api-rate-limits.js';
 import {passwordWorkLimiter,passwordWorkPolicy} from './login-admission.js';
 import {handleProjectActions} from './project-actions.js';
+import {handleTrash} from './trash.js';
 import { handlePublicProfiles } from './public-profiles.js';
 import { handleProfileFollows } from './profile-follows.js';
 import { handleProfileIdentity } from './profile-identity.js';
@@ -93,6 +94,7 @@ const server=createServer(async(req,res)=>{
   if(await handleProfileIdentity(req,res,pathname,pool,currentUser))return;
   if(await handleProfileFollows(req,res,pathname,pool,currentUser))return;
   if(await handlePublicProfiles(req,res,pathname,pool,currentUser))return;
+  if(await handleTrash(req,res,pathname,pool,currentUser))return;
   if(await handleProjectActions(req,res,pathname,pool,currentUser))return;
   if(await handleLibraryFiles(req,res,pathname,pool,currentUser))return;
 
