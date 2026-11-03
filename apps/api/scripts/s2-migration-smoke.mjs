@@ -4,10 +4,11 @@ import {readFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {resolve,dirname} from 'node:path';
 import pg from 'pg';
+import {Readable} from 'node:stream';
 import {rateLimitExceeded,pruneExpiredRateLimits} from '../src/api-rate-limits.js';
 import {accountStorageQuota,GIB} from '../src/storage-plans.js';
 import {acquireCompletionLease,failPendingWithLease,discardPendingWithLease,promoteReadyWithLease} from '../src/upload-leases.js';
-import {purgeTrashMetadata} from '../src/trash.js';
+import {moveProjectToTrash,purgeTrashMetadata,handleTrash} from '../src/trash.js';
 
 const connectionString=process.env.S2_TEST_DATABASE_URL;
 if(!connectionString)throw new Error('S2_TEST_DATABASE_URL is required');
@@ -20,6 +21,9 @@ const migration=async name=>readFile(resolve(dir,name),'utf8');
 const authSql=await migration('001_auth_initial_schema.sql');
 const fileSql=await migration('003_library_files_r2.sql');
 const collectionsSql=await migration('004_library_collections.sql');
+const publicSql=await migration('004_public_profiles.sql');
+const dedupSql=await migration('005_library_asset_dedup.sql');
+const visibilitySql=await migration('006_library_standalone_visibility.sql');
 const trashSql=await migration('012_trash_and_r2_delete_outbox.sql');
 const sql=await migration('010_api_rate_limits.sql');
 const plansSql=await migration('011_storage_plans_completion_leases.sql');
@@ -29,6 +33,9 @@ try{
  await pool.query(authSql);
  await pool.query(fileSql);
  await pool.query(collectionsSql);
+ await pool.query(publicSql);
+ await pool.query(dedupSql);
+ await pool.query(visibilitySql);
  // Reapplying both additive S2 migrations must be harmless.
  await pool.query(sql);
  await pool.query(sql);
@@ -166,6 +173,82 @@ try{
  const packMembers=await pool.query('SELECT beat_id FROM library_pack_beats WHERE pack_id=$1',[packId]);
  if(packMembers.rowCount!==1||String(packMembers.rows[0].beat_id)!==beatTwo)
   throw Error('Trash damaged remaining pack member');
+
+ // Pack-only tracks must be trashed *with* their pack; a standalone track
+ // and a track in another live pack must survive. Restoration must not revive
+ // a track the owner manually deleted before deleting the pack.
+ const cascadePack='10000000-0000-4000-8000-000000000030';
+ const otherPack='10000000-0000-4000-8000-000000000031';
+ const onlyBeat='10000000-0000-4000-8000-000000000032';
+ const sharedBeat='10000000-0000-4000-8000-000000000033';
+ const manualBeat='10000000-0000-4000-8000-000000000034';
+ const ownFile=await makeFile('users/'+uid+'/assets/audio/verified/10000000-0000-4000-8000-000000000050.mp3','audio');
+ const multiFile=await makeFile('users/'+uid+'/assets/audio/verified/10000000-0000-4000-8000-000000000051.mp3','audio');
+ const manuallyDeletedFile=await makeFile('users/'+uid+'/assets/audio/verified/10000000-0000-4000-8000-000000000052.mp3','audio');
+ await pool.query("INSERT INTO library_beats(id,user_id,title,audio_file_id,cover_file_id,library_visible) VALUES($1,$4,'pack only',$5,$8,FALSE),($2,$4,'other pack too',$6,$8,FALSE),($3,$4,'manually deleted',$7,$8,FALSE)",
+  [onlyBeat,sharedBeat,manualBeat,uid,ownFile,multiFile,manuallyDeletedFile,sharedCover]);
+ await pool.query("INSERT INTO library_packs(id,user_id,title,cover_file_id) VALUES($1,$3,'cascade pack',$4),($2,$3,'another pack',$4)",[cascadePack,otherPack,uid,sharedCover]);
+ await pool.query('INSERT INTO library_pack_beats(pack_id,beat_id,position) VALUES($1,$3,0),($1,$4,1),($1,$5,2),($1,$6,3),($2,$4,0)',[cascadePack,otherPack,onlyBeat,sharedBeat,manualBeat,beatTwo]);
+ await pool.query("UPDATE library_beats SET deleted_at=now()-interval '1 day' WHERE id=$1",[manualBeat]);
+ const moveCascade=async()=>{
+  const client=await pool.connect();
+  try{
+   await client.query('BEGIN');
+   const ok=await moveProjectToTrash(client,{owner:uid,kind:'pack',id:cascadePack});
+   if(!ok)throw Error('Pack move to Trash failed');
+   await client.query('COMMIT');
+  }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
+ };
+ await pool.query("INSERT INTO v2_public_projects(user_id,kind,project_id) VALUES($1,'beat',$2),($1,'pack',$3)",[uid,onlyBeat,cascadePack]);
+ await moveCascade();
+ const tombstones=await pool.query("SELECT id,deleted_at FROM library_beats WHERE id=ANY($1::uuid[])",[[onlyBeat,sharedBeat,manualBeat,beatTwo]]);
+ const byId=new Map(tombstones.rows.map(x=>[x.id,x.deleted_at]));
+ const deletedPack=await pool.query('SELECT deleted_at FROM library_packs WHERE id=$1',[cascadePack]);
+ if(!byId.get(onlyBeat)||String(byId.get(onlyBeat))!==String(deletedPack.rows[0].deleted_at))
+  throw Error('Pack-only track did not cascade with pack timestamp');
+ if(byId.get(sharedBeat)!==null||byId.get(beatTwo)!==null)
+  throw Error('Pack deletion damaged live shared or standalone tracks');
+ if(!byId.get(manualBeat)||String(byId.get(manualBeat))===String(deletedPack.rows[0].deleted_at))
+  throw Error('Manually trashed member was overwritten by pack delete');
+ const revoked=await pool.query('SELECT 1 FROM v2_public_projects WHERE user_id=$1 AND project_id=ANY($2::uuid[])',[uid,[onlyBeat,cascadePack]]);
+ if(revoked.rowCount)throw Error('Pack deletion kept published edges');
+ const listed=await pool.query(`SELECT b.id FROM library_beats b WHERE b.user_id=$1 AND b.deleted_at IS NOT NULL
+  AND NOT (b.library_visible=FALSE AND EXISTS(
+   SELECT 1 FROM library_pack_beats pb JOIN library_packs p ON p.id=pb.pack_id AND p.user_id=b.user_id
+   WHERE pb.beat_id=b.id AND p.deleted_at=b.deleted_at))`,[uid]);
+ if(listed.rows.some(x=>x.id===onlyBeat)||!listed.rows.some(x=>x.id===manualBeat))
+  throw Error('Auto-deleted pack member leaked as duplicate Trash item');
+ const req=Readable.from([]);
+ req.method='POST';
+ const response={status:0,body:null,writeHead(status){this.status=status;},end(raw){this.body=JSON.parse(raw);}};
+ const handled=await handleTrash(req,response,'/api/library/trash/pack/'+cascadePack+'/restore',pool,async()=>({id:uid}),{storageFactory:()=>{throw Error('Restore must not touch R2')}});
+ if(!handled||response.status!==200)throw Error('Pack restore API failed '+JSON.stringify(response));
+ const restored=await pool.query('SELECT id,deleted_at FROM library_beats WHERE id=ANY($1::uuid[])',[[onlyBeat,sharedBeat,manualBeat]]);
+ const restoredMap=new Map(restored.rows.map(x=>[x.id,x.deleted_at]));
+ if(restoredMap.get(onlyBeat)!==null||restoredMap.get(sharedBeat)!==null||!restoredMap.get(manualBeat))
+  throw Error('Pack restore lost exclusive track or revived manually deleted member');
+ const parentRestored=await pool.query('SELECT deleted_at FROM library_packs WHERE id=$1',[cascadePack]);
+ if(parentRestored.rows[0].deleted_at!==null)throw Error('Parent pack not restored');
+ await moveCascade();
+ const c2=await pool.connect();
+ let cascadePurge;
+ try{
+  await c2.query('BEGIN');
+  cascadePurge=await purgeTrashMetadata(c2,uid);
+  await c2.query('COMMIT');
+ }catch(e){await c2.query('ROLLBACK');throw e;}finally{c2.release();}
+ if(cascadePurge.removedProjects!==3)throw Error('Pack purge did not retire its two exclusive members and pack: '+JSON.stringify(cascadePurge));
+ const protectedProjects=await pool.query('SELECT id FROM library_beats WHERE id=ANY($1::uuid[])',[[sharedBeat,beatTwo]]);
+ if(protectedProjects.rowCount!==2||!(await pool.query('SELECT id FROM library_packs WHERE id=$1',[otherPack])).rowCount)
+  throw Error('Pack purge damaged other active pack or shared beat');
+ const retiredFiles=await pool.query('SELECT id FROM library_files WHERE id=ANY($1::bigint[])',[[ownFile,manuallyDeletedFile,multiFile]]);
+ if(retiredFiles.rowCount!==1||String(retiredFiles.rows[0].id)!==String(multiFile))
+  throw Error('Pack-only audio retirement damaged live shared file or retained unreferenced files');
+ const newJobs=await pool.query('SELECT object_key FROM v2_r2_delete_jobs WHERE user_id=$1 AND object_key LIKE $2',[uid,'users/'+uid+'/assets/audio/verified/%']);
+ if(!newJobs.rows.some(x=>x.object_key.endsWith('000000000050.mp3'))||
+    !newJobs.rows.some(x=>x.object_key.endsWith('000000000052.mp3'))||
+     newJobs.rows.some(x=>x.object_key.endsWith('000000000051.mp3')))
+  throw Error('Pack cascade R2 outbox did not protect live shared audio');
  console.log('S2 isolated PostgreSQL migration: PASS (010+011+012, owner leases, Trash safe metadata purge and R2 outbox)');
 
 }finally{
