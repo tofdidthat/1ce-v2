@@ -66,7 +66,7 @@
 - Do **not** introduce a parallel React Query/Zustand store or global persistence solely for this increment. Avoid exposing R2 keys or credentials. If a shared query cache is introduced later, document invalidation, TTL, ownership, permission revocation, and which view owns the request.
 - `ProjectCoverV2` owns image fetch/abort/blob revocation; `ProjectCardV2` owns card play affordance; the view supplies the playback callback and on-context-menu callback. The player itself remains mounted in Library temporarily.
 
-### Next coherent batch — Phase C3+C4 (approved plan, implementation NOT started)
+### Main Plan active batch — Phase C3+C4 (implementation in separate branch; not merged)
 
 **Objective:** finish the reusable typed project *read* contract and consistent asynchronous UI behavior for Library, Catalog and Saves, without moving the player. This is the next single-branch, single-PR batch. This plan is **not authorization to merge or deploy**.
 
@@ -79,7 +79,7 @@
 
 **Boundaries:** C5 real-environment acceptance and C6 Phase C exit/sign-off remain open after the code batch unless independently verified. Phase D player extraction and Phase B/E media cleanup are expressly excluded. **Revocation of share links is deferred**; current v2 has no revoke endpoint, and the user has not decided how future revocation should interact with existing personal Saves.
 
-**Next agent handoff:** begin by checking current `main`, PR #7 merge and Vercel/Railway readiness; open one new Phase C branch; update this plan with precise affected files and confirmed UI behavior; implement as one reviewed PR; keep Vercel previews disabled; ask the user only if an actual product behavior choice is needed. No merge/deploy without explicit authorization.
+**2026-11-02 implementation branch:** `refactor/v2-phase-c3-c4-project-reads` from `main` after merged mobile PR #9; user confirmed the mobile menu works on their phone. Implement canonical pure adapters for Library items / Profile Catalog+Saves / ordered pack tracks; improve viewer-scoped flags loading/error and retries; replace F5-based retry with in-view revalidation; ensure profile account-switch/target-switch cannot show stale cards. Validate CI and record results, then request merge/deploy permission. The PR must stay draft until approval. No change to the persistent player controller, Download, Stems or v1.
 
 ### Phase C ordered checklist and exit gates
 
