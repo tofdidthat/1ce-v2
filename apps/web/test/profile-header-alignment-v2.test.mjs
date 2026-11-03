@@ -40,7 +40,8 @@ test('Back is aligned with right buttons, and Copy link is the exact icon from c
  assert.match(profile,/<ArrowLeft size=\{22\}\/>/);
  assert.match(profile,/<Pencil size=\{22\}\/>/);
  assert.match(menu,/item\('Copy link',<Link2 size=\{17\}\/>/);
- assert.match(profile,/aria-label="Copy profile link"[^>]*><Link2 size=\{22\}\/>/);
+ assert.match(profile,/aria-label="Copy profile link"/);
+ assert.match(profile,/<Link2 size=\{22\}\/><\/button>/);
  assert.doesNotMatch(profile,/<Copy size=/);
  assert.match(profile,/className="onece-workspace-actions onece-profile-nav-actions"/);
  assert.match(profile,/className="onece-workspace-brand"/);
