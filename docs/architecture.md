@@ -1,3 +1,7 @@
+## Public profile project grid — responsive layout correction (2026-11-03)
+
+**User requirement:** Catalog and Saves currently show only two project cards per row. Show **up to six columns on desktop** and **three columns on mobile**; never collapse the mobile layout to two. Preserve square covers, existing card Play/context menu behavior, responsive spacing, profile header/tabs, and all privacy/media rules. This is a CSS-only frontend change: widen only the project panel (keep Following and the tab bar at their original widths) and replace the old fixed 172px flex card layout with a six-column CSS grid and a three-column mobile breakpoint. Avoid horizontal overflow on narrow phones by using `minmax(0,1fr)` and reduced gaps. Add regression checks. Work in a separate draft PR with CI, no merge or deployment without user approval. C5 browser acceptance and C6 signoff remain pending.
+
 # Protocol for complete change batches — read before changing 1CE v2
 
 > **START HERE — SINGLE SOURCE OF TRUTH:** This document is both the permanent architecture guide AND the full Phase C AI handoff. Read the **"Phase C — zero-memory AI continuation guide"** section below for the current code/module map, implementation ledger, product decisions and exit checklist. **Complete Phase C before D/E.** Verify GitHub and deployments; no prior chat history should be required.
