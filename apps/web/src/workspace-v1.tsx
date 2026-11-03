@@ -206,6 +206,8 @@ function HeaderV2({view,user,onNavigate,externalProfile}){
 }
 .onece-workspace-brand { display: flex; align-items: center; width: 140px; height: 48px; min-width: 0; flex: 0 1 140px; transform: translateY(6px); }
 .onece-workspace-brand img { display: block; width: 140px; height: 48px; max-width: 100%; object-fit: contain; object-position: left center; }
+.onece-workspace-logo-home { display: flex; align-items: center; justify-content: flex-start; width: 100%; height: 100%; padding: 0; margin: 0; border: 0; background: transparent; color: inherit; cursor: pointer; }
+.onece-workspace-logo-home:focus-visible { outline: 2px solid #a78bfa; outline-offset: 4px; border-radius: 4px; }
 .onece-workspace-actions { display: flex; align-items: center; flex: 0 0 auto; gap: 12px; height: 48px; transform: translateY(6px); }
 .onece-workspace-header .library-settings {
   box-sizing: border-box;
@@ -246,7 +248,7 @@ function HeaderV2({view,user,onNavigate,externalProfile}){
 }
 `}</style>
  {view==='profile'?null:<header className="onece-workspace-header" aria-label="Workspace header">
- <div className="onece-workspace-brand"><img src="/1ce-logo.png" alt="1CE"/></div>
+ <div className="onece-workspace-brand"><button type="button" className="onece-workspace-logo-home" aria-label="Go to Home" title="Home" onClick={()=>onNavigate('library')}><img src="/1ce-logo.png" alt="1CE"/></button></div>
  <div className="onece-workspace-actions">
  <button type="button" className="library-settings library-profile-trigger" title={view==='profile'&&!externalProfile?'Edit Profile':'My Profile'} aria-label={view==='profile'&&!externalProfile?'Edit Profile':'My Profile'} onClick={()=>onNavigate(view==='profile'&&!externalProfile?'edit-profile':'profile')}>
  {view==='profile'&&!externalProfile ? <EditProfileMark/> : picture ? <img src={picture} alt="" referrerPolicy="no-referrer"/> : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="7" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2Z"/></svg>}
