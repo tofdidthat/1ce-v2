@@ -31,8 +31,8 @@ test('names are user-facing; old route keys and persistent player stay unchanged
  assert.match(workspace,/document\.title=\(\{library:'Home',discover:'World'/);
  assert.match(workspace,/view==='discover'\?<WorldV2/);
  assert.match(workspace,/<LibraryItemsV2 active=\{view==='library'\}/);
- assert.match(main,/<Route path="\/app\/library" element=\{<ProtectedLibrary\/>\}/);
- assert.match(main,/<Route path="\/app\/discover" element=\{<ProtectedLibrary\/>\}/);
+ assert.match(main,/<Route path="\/app\/library" element=\{<WorkspaceRoute\/>\}/);
+ assert.match(main,/<Route path="\/app\/discover" element=\{<WorkspaceRoute\/>\}/);
 });
 test('all user-facing Library text becomes Home while API paths and selectors remain intact',()=>{
  assert.match(items,/Loading your Home…/);

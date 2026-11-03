@@ -18,10 +18,10 @@ test('C5 Home preserves the last viewer-verified cards during in-flight revalida
 });
 
 test('C5 own profile remains mounted after first visit, hidden outside Profile without moving player',()=>{
- assert.match(workspace,/const \[visitedProfile,setVisitedProfile\]=useState/);
- assert.match(workspace,/viewIsProfileFromLocation\(location\.pathname,profileId\)/);
- assert.match(workspace,/\(view==='profile'\|\|visitedProfile\)&&<PublicProfileV2 active=\{view==='profile'\}/);
- assert.match(profile,/style=\{active\?undefined:\{display:'none'\}\}/);
+ assert.match(workspace,/const \[recentProfiles,setRecentProfiles\]=useState/);
+ assert.match(workspace,/const activeProfileKey=view==='profile'\?/);
+ assert.match(workspace,/visibleProfileKeys\.map\(profileKey=><PublicProfileV2 key=/);
+ assert.match(profile,/if\(!active\)return null;/);
  assert.match(workspace,/<LibraryItemsV2 active=\{view==='library'\}/);
  assert.match(workspace,/<ProjectCoverCacheProviderV2 viewerId=\{Number\(account\?\.id\)\|\|null\}/);
  assert.match(workspace,/<ProjectFlagsProviderV2 viewerId=\{Number\(account\?\.id\)\|\|null\}/);
