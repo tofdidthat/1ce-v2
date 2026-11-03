@@ -78,6 +78,8 @@ test('views share adapters, scoped invalidations and no F5 to retry',()=>{
  assert.match(library,/controller\.abort\(\)/);
  assert.match(profile,/controller\.abort\(\)/);
  assert.match(library,/packRequest\.current\?\.abort\(\)/);
+ assert.match(library,/setOpenedPack\(null\);setOpenedTracks\(\[\]\);setOpenedBeat\(null\)/);
+ assert.match(library,/onClick=\{\(\)=>\{packRequest\.current\?\.abort\(\);setOpenedPack\(null\)\}\}/);
 });
 
 test('Save and Publish remain disabled before a verified viewer-scoped flags read',()=>{
