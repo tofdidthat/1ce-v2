@@ -1,5 +1,5 @@
 import React,{useState} from 'react';
-import {Bookmark,Users,ArrowLeft,Link2,Eye,EyeOff,Link2,ListPlus,FolderPlus,Pencil,Image as ImageIcon,Download,Layers,Trash2,ChevronRight,Play,Pause} from 'lucide-react';
+import {Bookmark,Users,ArrowLeft,Eye,EyeOff,Link2,ListPlus,FolderPlus,Pencil,Image as ImageIcon,Download,Layers,Trash2,ChevronRight,Play,Pause} from 'lucide-react';
 import './public-profile-v2.css';
 import ProjectContextMenuV2 from './project-context-menu-v2';
 import ProjectCardV2 from './project-card-v2';
