@@ -5,14 +5,63 @@ import {Readable} from 'node:stream';
 import {handleLibraryFiles} from '../src/library-files.js';
 
 const checksum=bytes=>createHash('sha256').update(bytes).digest('hex');
-const sample=Buffer.from([0x49,0x44,0x33,0x04,0,0,0,0,0,0,0xff,0xfb,0x90,0x64]);
+const mp3Frame=()=>{
+ const frame=Buffer.alloc(417,0);
+ Buffer.from([0xff,0xfb,0x90,0x64]).copy(frame,0); // MPEG-1 Layer III, 128k/44.1k
+ return frame;
+};
+const sample=Buffer.concat([
+ Buffer.from([0x49,0x44,0x33,0x04,0,0,0,0,0,0]),mp3Frame(),mp3Frame()
+]);
 const uploaded=(bytes=sample)=>({kind:'audio',name:'original.mp3',contentType:'audio/mpeg',size:bytes.length,sha256:checksum(bytes)});
 
 function setup(){
- const files=new Map(),objects=new Map(),queries=[],commands=[],signed=[];
+ const files=new Map(),objects=new Map(),queries=[],commands=[],signed=[],rates=new Map(),planBytes=new Map(),leases=new Map();
+ const ownsLease=(id,token)=>{const lease=leases.get(Number(id));return lease?.token===token&&!lease.expired;};
+ let onCopy=()=>{},onHead=()=>{};
  let nextId=100,forceUniqueCollision=false;
  const pool={async query(sql,args=[]){
   queries.push({sql,args});
+  if(['BEGIN','COMMIT','ROLLBACK'].includes(sql)||sql.startsWith('SELECT pg_advisory_xact_lock'))return {rows:[],rowCount:0};
+  if(sql.startsWith('INSERT INTO v2_api_rate_limits')){
+   const key=args[0]+':'+args[1],hits=(rates.get(key)||0)+1;
+   rates.set(key,hits);return {rows:[{hits}],rowCount:1};
+  }
+  if(sql.startsWith('INSERT INTO v2_upload_completion_leases')){
+   const [id,token,owner]=args,file=files.get(Number(id)),current=leases.get(Number(id));
+   if(!file||file.user_id!==owner||file.status!=='pending'||current&&!current.expired)
+    return {rows:[],rowCount:0};
+   leases.set(Number(id),{token,expired:false});
+   return {rows:[{lease_token:token}],rowCount:1};
+  }
+  if(sql.startsWith('DELETE FROM v2_upload_completion_leases')){
+   const current=leases.get(Number(args[0]));
+   if(current?.token===args[1])leases.delete(Number(args[0]));
+   return {rows:[],rowCount:1};
+  }
+  if(sql.startsWith('SELECT status FROM library_files')){
+   const file=files.get(Number(args[0]));
+   return {rows:file&&file.user_id===args[1]?[{status:file.status}]:[],rowCount:file?1:0};
+  }
+  if(sql.startsWith('SELECT storage_limit_bytes')){
+   return {rows:[{storage_limit_bytes:String(planBytes.get(args[0])??10*1024*1024*1024)}],rowCount:1};
+  }
+  if(sql.startsWith('SELECT\n    count(*) FILTER')){
+   const owned=[...files.values()].filter(f=>f.user_id===args[0]);
+   const pending=owned.filter(f=>f.status==='pending'&&f.pendingValid!==false);
+   const reserved=owned.filter(f=>f.status==='ready'||f.status==='pending'&&f.pendingValid!==false).reduce((sum,f)=>sum+f.byte_size,0);
+   return {rows:[{pending_count:pending.length,reserved_bytes:String(reserved)}],rowCount:1};
+  }
+  if(sql.startsWith("SELECT created_at>now()-interval '30 minutes'")){
+   const file=files.get(Number(args[0]));
+   return {rows:file&&file.user_id===args[1]?[{valid:file.pendingValid!==false}]:[],rowCount:file?1:0};
+  }
+  if(sql.startsWith('SELECT object_key,status FROM library_files')){
+   const file=files.get(Number(args[0]));return {rows:file?[{object_key:file.object_key,status:file.status}]:[],rowCount:file?1:0};
+  }
+  if(sql.startsWith('SELECT id,status FROM library_files')){
+   const file=files.get(Number(args[0]));return {rows:file?[{id:file.id,status:file.status}]:[],rowCount:file?1:0};
+  }
   if(sql.startsWith('SELECT id FROM library_files WHERE user_id=$1 AND kind=$2 AND sha256=$3')){
    const row=[...files.values()].find(file=>file.user_id===args[0]&&file.kind===args[1]&&file.sha256===args[2]&&file.status==='ready');
    return {rows:row?[{id:row.id}]:[],rowCount:row?1:0};
@@ -28,23 +77,31 @@ function setup(){
    const rows=file&&file.user_id===args[1]?[file]:[];
    return {rows,rowCount:rows.length};
   }
-  if(sql.startsWith("UPDATE library_files SET status='failed'")){
+  if(sql.includes("UPDATE library_files SET status='failed'")){
    const file=files.get(Number(args[0]));
-   if(file&&file.user_id===args[1])file.status='failed';
-   return {rowCount:file?1:0,rows:[]};
+   const allowed=file&&file.user_id===args[1]&&file.status==='pending'&&ownsLease(args[0],args[2]);
+   if(allowed)file.status='failed';
+   return {rowCount:allowed?1:0,rows:[]};
   }
-  if(sql.startsWith("UPDATE library_files SET status='ready'")){
-   if(forceUniqueCollision){const err=new Error('duplicate ready sha');err.code='23505';throw err;}
+  if(sql.includes("UPDATE library_files SET object_key=$3,status='ready'")){
    const file=files.get(Number(args[0]));
-   // Simulate the real DB unique constraint on READY owner/kind/SHA,
-   // including when two completions overlap in independent handlers.
-   if(file&&[...files.values()].some(other=>other.id!==file.id&&
+   const updated=file&&file.user_id===args[1]&&file.status==='pending'&&ownsLease(args[0],args[3]);
+   if(!updated)return {rowCount:0,rows:[]};
+   if(forceUniqueCollision){const err=new Error('duplicate ready sha');err.code='23505';throw err;}
+   // Simulate the DB unique constraint only for rows actually promoted.
+   if([...files.values()].some(other=>other.id!==file.id&&
     other.user_id===file.user_id&&other.kind===file.kind&&
     other.sha256===file.sha256&&other.status==='ready')){
     const err=new Error('duplicate ready sha');err.code='23505';throw err;
    }
-   if(file&&file.user_id===args[1]&&file.status==='pending')file.status='ready';
-   return {rowCount:file?1:0,rows:[]};
+   file.status='ready';file.object_key=args[2];
+   return {rowCount:1,rows:[]};
+  }
+  if(sql.includes("DELETE FROM library_files")&&sql.includes("active_lease")){
+   const file=files.get(Number(args[0]));
+   const allowed=file&&file.user_id===args[1]&&file.status==='pending'&&ownsLease(args[0],args[2]);
+   if(allowed){files.delete(file.id);leases.delete(file.id);}
+   return {rowCount:allowed?1:0,rows:[]};
   }
   if(sql.startsWith("DELETE FROM library_files WHERE id=$1 AND user_id=$2 AND status='pending'")){
    const file=files.get(Number(args[0]));
@@ -52,19 +109,35 @@ function setup(){
    return {rowCount:1,rows:[]};
   }
   throw new Error('Unexpected query: '+sql);
- }};
+ },async connect(){return {query:(...args)=>this.query(...args),release(){}};}};
  const s3={async send(command){
   commands.push(command);
   const key=command.input.Key, object=objects.get(key);
   if(command.constructor.name==='HeadObjectCommand'){
    if(!object){const err=new Error('Not found');err.name='NotFound';throw err;}
-   return {ContentLength:object.bytes.length,ContentType:object.type};
+   const head={ContentLength:object.bytes.length,ContentType:object.type,ETag:'"'+checksum(object.bytes)+'"'};
+    await onHead(key,objects,head);return head;
   }
   if(command.constructor.name==='GetObjectCommand'){
    if(!object){const err=new Error('Not found');err.name='NotFound';throw err;}
-   return {Body:Readable.from([object.bytes])};
+   const range=command.input.Range;
+   if(range){
+    const m=/^bytes=(\d+)-(\d+)$/.exec(range);if(!m)throw Error('Invalid mock range');
+    const start=Number(m[1]),end=Number(m[2]),bytes=object.bytes.subarray(start,end+1);
+    return {Body:Readable.from([bytes]),ContentLength:bytes.length,ContentRange:'bytes '+start+'-'+end+'/'+object.bytes.length};
+   }
+   return {Body:Readable.from([object.streamBytes||object.bytes]),ContentLength:object.bytes.length};
   }
-  if(command.constructor.name==='DeleteObjectCommand'){objects.delete(key);return {};}
+  if(command.constructor.name==='CopyObjectCommand'){
+    const source=command.input.CopySource.split('/').slice(1).join('/'),src=objects.get(source);
+    if(!src){const err=Error('Not found');err.name='NotFound';throw err;}
+    if(command.input.CopySourceIfMatch&&command.input.CopySourceIfMatch!=='"'+checksum(src.bytes)+'"'){
+     const err=Error('Source changed');err.$metadata={httpStatusCode:412};throw err;
+    }
+    objects.set(key,{bytes:Buffer.from(src.bytes),type:src.type});await onCopy(source,key,objects);
+    return {};
+   }
+   if(command.constructor.name==='DeleteObjectCommand'){objects.delete(key);return {};}
   throw new Error('Unexpected storage command: '+command.constructor.name);
  }};
  const options={
@@ -91,6 +164,7 @@ function setup(){
   files.set(file.id,file);return file;
  };
  return {files,objects,queries,commands,signed,invoke,put,addReady,
+  onCopy(fn){onCopy=fn;},onHead(fn){onHead=fn;},rates,planBytes,leases,
   setUniqueCollision(value){forceUniqueCollision=value},
   setSigningFailure(){options.signUrl=async()=>{throw Error('signer unavailable');}}
  };
@@ -129,7 +203,7 @@ test('valid init scopes object key to owner, signs 300-second URL and only dedup
  const first=await h.invoke('/api/library/files/init',body);
  assert.equal(first.status,200);assert.equal(first.body.expiresIn,300);
  const file=h.files.get(first.body.id);
- assert.ok(file.object_key.startsWith('users/42/assets/audio/'));
+ assert.ok(file.object_key.startsWith('staging/users/42/assets/audio/'));
  assert.ok(file.object_key.endsWith('.mp3'));
  assert.equal(file.status,'pending');
  assert.equal(h.signed[0].settings.expiresIn,300);
@@ -192,7 +266,7 @@ test('complete rejects mismatched R2 content metadata and SHA, deletes unsafe ob
  assert.equal(h.objects.size,0);
 });
 
-test('complete resolves a concurrent same-owner ready duplicate without copying its R2 object',async()=>{
+test('complete resolves a concurrent same-owner ready duplicate and removes its promoted copy',async()=>{
  const h=setup(),body=uploaded(),start=await h.invoke('/api/library/files/init',body);
  const pending=h.files.get(start.body.id);h.put(pending);
  const ready=h.addReady(body);
@@ -257,6 +331,249 @@ test('invalid complete IDs and failed uploads do not expose other users assets',
 
 // Deliberately unresolved P0 controls, tracked as TODO rather than false
 // positive tests. These need a separate behavior-changing security batch.
-test.todo('P0: reject spoofed MP3/image/ZIP payloads by parsing real file bytes');
-test.todo('P0: prevent post-verification object overwrites while the signed PUT URL is live');
-test.todo('P0: enforce bounded R2 verification time and streamed byte count');
+
+
+
+test('well-formed ID3 tag plus arbitrary non-audio payload fails closed',async()=>{
+ const h=setup(),bytes=Buffer.concat([sample.subarray(0,10),Buffer.alloc(sample.length-10,0x61)]);
+ const start=await h.invoke('/api/library/files/init',uploaded(bytes));
+ const file=h.files.get(start.body.id);h.put(file,bytes);
+ const done=await h.invoke('/api/library/files/'+file.id+'/complete');
+ assert.equal(done.status,422);
+ assert.match(done.body.error,/MP3 first audio frame/);
+ assert.equal(file.status,'failed');
+ assert.equal(h.objects.size,0);
+});
+
+test('spoofed MP3 bytes with a matching declared SHA never become READY',async()=>{
+ const h=setup(),bytes=Buffer.alloc(sample.length,0x61);
+ const start=await h.invoke('/api/library/files/init',uploaded(bytes));
+ assert.equal(start.status,200);
+ const file=h.files.get(start.body.id);h.put(file,bytes);
+ const response=await h.invoke('/api/library/files/'+file.id+'/complete');
+ assert.equal(response.status,422);
+ assert.match(response.body.error,/MP3 signature/);
+ assert.equal(file.status,'failed');
+ assert.equal(h.objects.size,0);
+});
+
+test('signed PUT can overwrite staging after copy but cannot modify immutable READY media',async()=>{
+ const h=setup(),start=await h.invoke('/api/library/files/init',uploaded());
+ const file=h.files.get(start.body.id),staging=file.object_key;
+ h.put(file);
+ h.onCopy((source,key,objects)=>{
+  assert.equal(source,staging);
+  objects.set(source,{bytes:Buffer.alloc(sample.length,0x42),type:'audio/mpeg'});
+ });
+ const done=await h.invoke('/api/library/files/'+file.id+'/complete');
+ assert.equal(done.status,200);
+ assert.notEqual(file.object_key,staging);
+ assert.match(file.object_key,/\/verified\//);
+ assert.equal(h.objects.get(file.object_key).bytes.equals(sample),true);
+ // A leaked still-valid PUT only recreates disposable staging.
+ h.objects.set(staging,{bytes:Buffer.alloc(sample.length,0x43),type:'audio/mpeg'});
+ assert.equal(h.objects.get(file.object_key).bytes.equals(sample),true);
+});
+
+test('R2 stream exceeding declared byte size is rejected without buffering it into READY',async()=>{
+ const h=setup(),start=await h.invoke('/api/library/files/init',uploaded());
+ const file=h.files.get(start.body.id);h.put(file);
+ h.onCopy((source,key,objects)=>{
+  objects.get(key).streamBytes=Buffer.concat([sample,Buffer.from([0])]);
+ });
+ const response=await h.invoke('/api/library/files/'+file.id+'/complete');
+ assert.equal(response.status,422);
+ assert.match(response.body.error,/more bytes/);
+ assert.equal(file.status,'failed');
+ assert.equal(h.objects.size,0);
+});
+
+test('quota is owner-scoped and prevents the eleventh concurrent pending upload',async()=>{
+ const h=setup();
+ for(let i=0;i<10;i++){
+  const bytes=Buffer.from(sample);bytes[bytes.length-1]=i;
+  assert.equal((await h.invoke('/api/library/files/init',uploaded(bytes))).status,200);
+ }
+ assert.equal((await h.invoke('/api/library/files/init',uploaded())).status,429);
+ assert.equal((await h.invoke('/api/library/files/init',uploaded(),{id:99})).status,200);
+ assert.equal(h.files.size,11);
+});
+
+test('expired pending reservations cannot become READY',async()=>{
+ const h=setup(),start=await h.invoke('/api/library/files/init',uploaded());
+ const file=h.files.get(start.body.id);file.pendingValid=false;h.put(file);
+ const response=await h.invoke('/api/library/files/'+file.id+'/complete');
+ assert.equal(response.status,410);
+ assert.equal(file.status,'pending');
+ assert.equal(h.commands.some(c=>c.constructor.name==='CopyObjectCommand'),false);
+});
+
+
+test('shared upload init throttle rejects the 241st request without signing',async()=>{
+ const h=setup(),body=uploaded();
+ for(let i=0;i<240;i++)await h.invoke('/api/library/files/init',body);
+ const before=h.signed.length;
+ const denied=await h.invoke('/api/library/files/init',body);
+ assert.equal(denied.status,429);
+ assert.equal(denied.body.error,'Upload rate limit reached');
+ assert.equal(h.signed.length,before);
+});
+
+test('shared completion throttle caps repeated R2 checks per owner',async()=>{
+ const h=setup(),start=await h.invoke('/api/library/files/init',uploaded());
+ for(let i=0;i<360;i++)
+  assert.equal((await h.invoke('/api/library/files/'+start.body.id+'/complete')).status,409);
+ const before=h.commands.length;
+ const denied=await h.invoke('/api/library/files/'+start.body.id+'/complete');
+ assert.equal(denied.status,429);
+ assert.equal(h.commands.length,before);
+});
+
+test('per-account stored byte quota includes existing READY assets',async()=>{
+ const h=setup(),ready=uploaded();
+ h.addReady({...ready,sha256:checksum(Buffer.from('different existing asset')),size:10*1024*1024*1024});
+ const denied=await h.invoke('/api/library/files/init',ready);
+ assert.equal(denied.status,429);
+ assert.match(denied.body.error,/quota/i);
+});
+
+
+test('conditional CopyObject rejects staging replaced between HEAD and promotion',async()=>{
+ const h=setup(),start=await h.invoke('/api/library/files/init',uploaded());
+ const file=h.files.get(start.body.id);h.put(file);
+ h.onHead((key,objects)=>{
+  const changed=Buffer.from(sample);changed[changed.length-1]^=0x01;
+  objects.set(key,{bytes:changed,type:'audio/mpeg'});
+ });
+ const response=await h.invoke('/api/library/files/'+file.id+'/complete');
+ assert.equal(response.status,409);
+ assert.match(response.body.error,/changed during verification/);
+ assert.equal(file.status,'pending');
+ assert.equal(h.objects.has(file.object_key),true);
+ assert.equal([...h.objects.keys()].some(k=>k.includes('/verified/')),false);
+});
+
+
+test('R2 HEAD without ETag fails closed before any server-side copy',async()=>{
+ const h=setup(),start=await h.invoke('/api/library/files/init',uploaded());
+ const file=h.files.get(start.body.id);h.put(file);
+ h.onHead((key,objects,head)=>{delete head.ETag;});
+ const response=await h.invoke('/api/library/files/'+file.id+'/complete');
+ assert.equal(response.status,503);
+ assert.match(response.body.error,/verification unavailable/i);
+ assert.equal(file.status,'pending');
+ assert.equal(h.commands.some(c=>c.constructor.name==='CopyObjectCommand'),false);
+ assert.equal([...h.objects.keys()].some(k=>k.includes('/verified/')),false);
+});
+
+
+test('two simultaneous completions of the same file leave one READY R2 key',async()=>{
+ const h=setup(),start=await h.invoke('/api/library/files/init',uploaded());
+ const file=h.files.get(start.body.id);h.put(file);
+ const [a,b]=await Promise.all([
+  h.invoke('/api/library/files/'+file.id+'/complete'),
+  h.invoke('/api/library/files/'+file.id+'/complete')
+ ]);
+ assert.equal([a.status,b.status].includes(200),true);
+ assert.equal([a.status,b.status].every(status=>status===200||status===409),true);
+ assert.equal(file.status,'ready');
+ const finals=[...h.objects.keys()].filter(key=>key.includes('/verified/'));
+ assert.deepEqual(finals,[file.object_key]);
+ assert.equal(h.objects.get(file.object_key).bytes.equals(sample),true);
+});
+
+
+
+const barrier=()=>{
+ let release;
+ const promise=new Promise(resolve=>{release=resolve;});
+ return {promise,release};
+};
+
+test('stale HEAD failure cannot mark another lease owner failed or delete its staging upload',async()=>{
+ const h=setup(),start=await h.invoke('/api/library/files/init',uploaded());
+ const file=h.files.get(start.body.id);h.put(file);
+ const firstAtHead=barrier(),resumeFirst=barrier(),secondAtHead=barrier(),resumeSecond=barrier();
+ let seen=0;
+ h.onHead(async (_key,_objects,head)=>{
+  if(++seen===1){
+   head.ContentType='image/png'; // Only the first worker sees stale bad metadata.
+   h.leases.get(file.id).expired=true; // Simulate 10-minute lease expiration.
+   firstAtHead.release();
+   await resumeFirst.promise;
+  }else if(seen===2){
+   secondAtHead.release();
+   await resumeSecond.promise;
+  }
+ });
+ const first=h.invoke('/api/library/files/'+file.id+'/complete');
+ await firstAtHead.promise;
+ const second=h.invoke('/api/library/files/'+file.id+'/complete');
+ await secondAtHead.promise;
+ // The first request has lost its lease, while the second is still working.
+ resumeFirst.release();
+ const stale=await first;
+ assert.equal(stale.status,409);
+ assert.equal(file.status,'pending');
+ assert.equal(h.objects.has(file.object_key),true);
+ assert.equal(h.leases.has(file.id),true);
+ assert.equal(h.commands.filter(c=>c.constructor.name==='DeleteObjectCommand'&&c.input.Key===file.object_key).length,0);
+ resumeSecond.release();
+ const winner=await second;
+ assert.equal(winner.status,200);
+ assert.equal(file.status,'ready');
+ assert.equal(h.objects.has(file.object_key),true); // The DB now points to the immutable READY key.
+ assert.equal([...h.objects.keys()].filter(k=>k.includes('/verified/')).length,1);
+});
+
+test('stale invalid-media result after COPY cannot fail or delete staging owned by successor',async()=>{
+ const h=setup(),start=await h.invoke('/api/library/files/init',uploaded());
+ const file=h.files.get(start.body.id);h.put(file);
+ const firstCopied=barrier(),resumeFirst=barrier(),secondAtHead=barrier(),resumeSecond=barrier();
+ let copyCount=0,headCount=0;
+ h.onCopy(async (_source,key,objects)=>{
+  if(++copyCount!==1)return;
+  const tampered=Buffer.from(sample);tampered[tampered.length-1]^=0x01;
+  objects.set(key,{bytes:tampered,type:'audio/mpeg'});
+  h.leases.get(file.id).expired=true;
+  firstCopied.release();
+  await resumeFirst.promise;
+ });
+ h.onHead(async()=>{
+  if(++headCount===2){
+   secondAtHead.release();
+   await resumeSecond.promise;
+  }
+ });
+ const first=h.invoke('/api/library/files/'+file.id+'/complete');
+ await firstCopied.promise;
+ const second=h.invoke('/api/library/files/'+file.id+'/complete');
+ await secondAtHead.promise;
+ resumeFirst.release();
+ const stale=await first;
+ assert.equal(stale.status,409);
+ assert.equal(file.status,'pending');
+ assert.equal(h.objects.has(file.object_key),true);
+ assert.equal(h.leases.has(file.id),true);
+ resumeSecond.release();
+ const winner=await second;
+ assert.equal(winner.status,200);
+ assert.equal(file.status,'ready');
+ assert.equal(h.objects.has(file.object_key),true);
+ assert.equal([...h.objects.keys()].filter(k=>k.includes('/verified/')).length,1);
+});
+
+test('per-account storage plan quota changes without modifying other account entitlements',async()=>{
+ const h=setup(),body=uploaded();
+ // Each account has an existing 1 MiB READY asset (distinct SHA).
+ const prior={...body,size:1024*1024,sha256:checksum(Buffer.from('prior media'))};
+ h.addReady(prior,42);
+ h.addReady(prior,99);
+ h.planBytes.set(42,1024*1024);
+ assert.equal((await h.invoke('/api/library/files/init',body)).status,429);
+ h.planBytes.set(42,2*1024*1024);
+ assert.equal((await h.invoke('/api/library/files/init',body)).status,200);
+ h.planBytes.set(99,1024*1024);
+ assert.equal((await h.invoke('/api/library/files/init',body,{id:99})).status,429);
+ assert.equal(h.files.size,3);
+});

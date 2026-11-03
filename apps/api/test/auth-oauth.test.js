@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {createHash,scryptSync} from 'node:crypto';
 import {Readable} from 'node:stream';
 import {apiServer,apiPool} from '../src/server.js';
+import {passwordWorkPolicy} from '../src/login-admission.js';
 
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const shaBase64=value=>createHash('sha256').update(value).digest('base64url');
@@ -12,11 +13,15 @@ const passwordHash='scrypt$'+salt.toString('hex')+'$'+scryptSync('correct-secret
 function fixture(){
  const user={id:42,email:'producer@example.test',name:'Producer',picture:null,username:'producer',
   password_hash:passwordHash,email_verified:true,google_id:'google-sub-42'};
- const sessions=new Map(),attempts=new Map(),queries=[],googleFetches=[];
+ const sessions=new Map(),attempts=new Map(),queries=[],googleFetches=[],rates=new Map();
  let nextAttempt=1;
- const db={user,sessions,attempts,queries,googleFetches,async query(sql,args=[]){
+ const db={user,sessions,attempts,queries,googleFetches,rates,async query(sql,args=[]){
   queries.push({sql,args});
   if(sql==='BEGIN'||sql==='COMMIT'||sql==='ROLLBACK')return {rowCount:0,rows:[]};
+  if(sql.startsWith('INSERT INTO v2_api_rate_limits')){
+   const key=args[0]+':'+args[1],hits=(rates.get(key)||0)+1;
+   rates.set(key,hits);return {rowCount:1,rows:[{hits}]};
+  }
   if(sql==='SELECT 1')return {rowCount:1,rows:[{'?column?':1}]};
   if(sql.includes('FROM account_sessions s JOIN account_users u')){
    const s=sessions.get(args[0]);
@@ -144,14 +149,56 @@ test('wrong password, malformed JSON, invalid identity and unverified email neve
  assert.equal(h.sessions.size,0);
 });
 
-test('login rate limiting returns 429 after 20 requests from the same socket address (existing behavior)',async()=>{
+test('unknown account login failures share a bounded rate bucket across rotating identities',async()=>{
  for(let i=0;i<20;i++){
-  const res=await send('POST','/auth/login',{email:'bad',password:'x'}, {},'192.0.2.251');
-  assert.equal(res.status,400);
+  const res=await send('POST','/auth/login',{email:'unknown'+i+'@example.test',password:'wrong'}, {},i%2?'192.0.2.251':'192.0.2.252');
+  assert.equal(res.status,401);
  }
- const blocked=await send('POST','/auth/login',{email:'bad',password:'x'}, {},'192.0.2.251');
+ const blocked=await send('POST','/auth/login',{email:'unknown-last@example.test',password:'wrong'}, {},'192.0.2.251');
  assert.equal(blocked.status,429);
  assert.equal(blocked.json.error,'Too many attempts. Please try later.');
+ assert.equal(h.rates.size,1);
+});
+test('valid credentials work even if an attacker exhausted the known account failure window',async()=>{
+ for(let i=0;i<20;i++){
+  assert.equal((await send('POST','/auth/login',{email:h.user.email,password:'wrong'})).status,401);
+ }
+ const denied=await send('POST','/auth/login',{email:h.user.email,password:'wrong'});
+ assert.equal(denied.status,429);
+ const owner=await send('POST','/auth/login',{email:h.user.email,password:'correct-secret'});
+ assert.equal(owner.status,200);
+ assert.equal(owner.json.user.id,h.user.id);
+ assert.equal(h.sessions.size,1);
+});
+
+test('shared password work budget rejects costly verification before scrypt with no session creation',async()=>{
+ const subject='login-work:'+hash('all-identities');
+ h.rates.set(subject,passwordWorkPolicy.sharedPerMinute);
+ const req={email:h.user.email,password:'correct-secret'};
+ const denied=await send('POST','/auth/login',req,{'x-forwarded-for':'192.0.2.22'});
+ assert.equal(denied.status,429);
+ assert.equal(denied.json.error,'Login temporarily busy. Please retry.');
+ assert.equal(h.sessions.size,0);
+ assert.equal(h.rates.get(subject),passwordWorkPolicy.sharedPerMinute+1);
+ assert.equal(h.rates.has('login-failure:'+hash(h.user.email)),false);
+ // Changing a supplied IP header or socket address cannot bypass the global budget.
+ const another=await send('POST','/auth/login',req,{'x-forwarded-for':'203.0.113.90'},'203.0.113.57');
+ assert.equal(another.status,429);
+ assert.equal(h.sessions.size,0);
+ assert.equal(h.rates.size,1);
+});
+
+test('unknown accounts never expend the expensive-password verification budget',async()=>{
+ const unknown=await send('POST','/auth/login',{email:'missing'+Date.now()+'@example.test',password:'wrong'});
+ assert.equal(unknown.status,401);
+ assert.equal(h.rates.has('login-work:'+hash('all-identities')),false);
+ assert.equal(h.rates.has('login-failure:'+hash('unknown-account')),true);
+});
+
+test('malformed login input cannot fill hashed account rate-limit storage',async()=>{
+ for(let i=0;i<25;i++)
+  assert.equal((await send('POST','/auth/login',{email:'bad',password:'x'})).status,400);
+ assert.equal(h.rates.size,0);
 });
 
 test('Google login requires a valid client challenge and binds random state to HttpOnly cookie',async()=>{

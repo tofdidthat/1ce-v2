@@ -1,6 +1,10 @@
 // Private Cloudflare R2 uploads for 1CE v2 only. No v1 resources.
 import { randomUUID, createHash } from 'node:crypto';
-import { S3Client, PutObjectCommand, HeadObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, HeadObjectCommand, GetObjectCommand, DeleteObjectCommand, CopyObjectCommand } from '@aws-sdk/client-s3';
+import {verifyUploadedObject,InvalidMedia,VerificationUnavailable} from './upload-security.js';
+import {rateLimitExceeded,uploadLimits} from './api-rate-limits.js';
+import {accountStorageQuota} from './storage-plans.js';
+import {acquireCompletionLease,releaseCompletionLease,promoteReadyWithLease,failPendingWithLease,discardPendingWithLease} from './upload-leases.js';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import {resolveAuthorizedMediaFile} from './project-media.js';
 import {streamAuthorizedAudio} from './audio-stream.js';
@@ -130,10 +134,37 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser,{
    !Number.isSafeInteger(size)||size<=0||size>limits[kind]||typeof sha256!=='string'||!/^[a-f0-9]{64}$/.test(sha256)){
    send(res,400,{error:'Unsupported file type or size'});return true;
   }
-  const existing=await pool.query("SELECT id FROM library_files WHERE user_id=$1 AND kind=$2 AND sha256=$3 AND status='ready' LIMIT 1",[user.id,kind,sha256]);
-  if(existing.rows[0]){send(res,200,{id:existing.rows[0].id,reused:true});return true;}
-  const objectKey='users/'+user.id+'/assets/'+kind+'/'+randomUUID()+'.'+ext;
-  const inserted=await pool.query("INSERT INTO library_files(user_id,kind,object_key,original_name,content_type,byte_size,status,sha256) VALUES($1,$2,$3,$4,$5,$6,'pending',$7) RETURNING id",[user.id,kind,objectKey,name,contentType,size,sha256]);
+  // Serialize per-owner reservations across replicas. Only pending keys
+  // receive signed PUT URLs; verified keys are never writable by clients.
+  if(await rateLimitExceeded(pool,'upload-init',user.id,uploadLimits.initPerHour,60)){
+   send(res,429,{error:'Upload rate limit reached'});return true;
+  }
+  const db=await pool.connect();
+  let inserted,objectKey;
+  try{
+   await db.query('BEGIN');
+   await db.query('SELECT pg_advisory_xact_lock($1::bigint)',[user.id]);
+   const existing=await db.query("SELECT id FROM library_files WHERE user_id=$1 AND kind=$2 AND sha256=$3 AND status='ready' LIMIT 1",[user.id,kind,sha256]);
+   if(existing.rows[0]){
+    await db.query('COMMIT');send(res,200,{id:existing.rows[0].id,reused:true});return true;
+   }
+   const quota=await db.query(`SELECT
+    count(*) FILTER (WHERE status='pending' AND created_at>now()-interval '30 minutes')::int AS pending_count,
+    COALESCE(sum(byte_size) FILTER (WHERE status='ready' OR
+      (status='pending' AND created_at>now()-interval '30 minutes')),0)::text AS reserved_bytes
+    FROM library_files WHERE user_id=$1`,[user.id]);
+   const maxStoredBytes=await accountStorageQuota(db,user.id);
+   const count=Number(quota.rows[0]?.pending_count||0);
+   const reserved=Number(quota.rows[0]?.reserved_bytes||0);
+   if(count>=uploadLimits.maxPending||reserved+size>maxStoredBytes){
+    await db.query('ROLLBACK');
+    send(res,429,{error:'Account upload quota reached'});return true;
+   }
+   objectKey='staging/users/'+user.id+'/assets/'+kind+'/'+randomUUID()+'.'+ext;
+   inserted=await db.query("INSERT INTO library_files(user_id,kind,object_key,original_name,content_type,byte_size,status,sha256) VALUES($1,$2,$3,$4,$5,$6,'pending',$7) RETURNING id",[user.id,kind,objectKey,name,contentType,size,sha256]);
+   await db.query('COMMIT');
+  }catch(err){try{await db.query('ROLLBACK');}catch{}throw err;}
+  finally{db.release();}
   try{
    const uploadUrl=await signUrl(s3,new PutObjectCommand({Bucket:cfg.bucket,Key:objectKey,ContentType:contentType,ContentLength:size}),{expiresIn:300});
    send(res,200,{id:inserted.rows[0].id,uploadUrl,expiresIn:300});
@@ -150,37 +181,103 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser,{
   if(!file){send(res,404,{error:'File not found'});return true;}
   if(file.status==='ready'){send(res,200,{ok:true,id:file.id});return true;}
   if(file.status!=='pending'){send(res,409,{error:'Invalid upload state'});return true;}
+  if(await rateLimitExceeded(pool,'upload-complete',user.id,uploadLimits.completePerHour,60)){
+   send(res,429,{error:'Upload completion rate limit reached'});return true;
+  }
+  const pending=await pool.query("SELECT created_at>now()-interval '30 minutes' AS valid FROM library_files WHERE id=$1 AND user_id=$2 AND status='pending'",[id,user.id]);
+  if(!pending.rows[0]?.valid){send(res,410,{error:'Upload expired; start a new upload'});return true;}
+  const leaseToken=await acquireCompletionLease(pool,id,user.id);
+  if(!leaseToken){
+   // The first request still owns the finalization. Do not make redundant R2
+   // HEAD, COPY or GET requests while it runs on another API replica.
+   const current=await pool.query('SELECT status FROM library_files WHERE id=$1 AND user_id=$2',[id,user.id]);
+   if(current.rows[0]?.status==='ready'){send(res,200,{ok:true,id:file.id});return true;}
+   send(res,409,{error:'Upload finalization in progress; retry shortly'});return true;
+  }
   try{
-   const head=await s3.send(new HeadObjectCommand({Bucket:cfg.bucket,Key:file.object_key}));
-   if(Number(head.ContentLength)!==Number(file.byte_size)||head.ContentType!==file.content_type){
-    await s3.send(new DeleteObjectCommand({Bucket:cfg.bucket,Key:file.object_key}));
-    await pool.query("UPDATE library_files SET status='failed',updated_at=now() WHERE id=$1 AND user_id=$2",[id,user.id]);
-    send(res,422,{error:'Uploaded file metadata did not match'});return true;
-   }
+  const stagingKey=file.object_key;
+  const extension=stagingKey.split('.').pop();
+  const finalKey='users/'+user.id+'/assets/'+file.kind+'/verified/'+randomUUID()+'.'+extension;
+  const deleteObject=async key=>{
+   try{await s3.send(new DeleteObjectCommand({Bucket:cfg.bucket,Key:key}),{abortSignal:AbortSignal.timeout(15000)});}
+   catch(err){console.error('R2 cleanup deferred',err?.message);}
+  };
+  const lostLease=async()=>{
+   const current=await pool.query('SELECT status FROM library_files WHERE id=$1 AND user_id=$2',[id,user.id]);
+   if(current.rows[0]?.status==='ready')send(res,200,{ok:true,id:file.id});
+   else send(res,409,{error:'Upload finalization ownership changed; retry shortly'});
+   return true;
+  };
+  const rejectInvalid=async error=>{
+   // A former owner may be resuming after its lease expired. Only the current
+   // token may mark the row failed, and only then may staging be deleted.
+   const failed=await failPendingWithLease(pool,{fileId:id,ownerId:user.id,token:leaseToken});
+   if(!failed.rowCount)return lostLease();
+   await deleteObject(stagingKey);
+   send(res,422,{error});return true;
+  };
+  try{
+   const head=await s3.send(new HeadObjectCommand({Bucket:cfg.bucket,Key:stagingKey}),{abortSignal:AbortSignal.timeout(15000)});
+   if(Number(head.ContentLength)!==Number(file.byte_size)||head.ContentType!==file.content_type)
+    return await rejectInvalid('Uploaded file metadata did not match');
+   // Source-conditional copy must fail closed when HEAD lacks a usable ETag.
+   if(typeof head.ETag!=='string'||!head.ETag.trim())
+    throw new VerificationUnavailable('Storage ETag unavailable for conditional copy');
+   // Source can change while a signed PUT remains live. Copy with server
+   // credentials to a never-signed final key and verify FINAL bytes.
+   await s3.send(new CopyObjectCommand({
+    Bucket:cfg.bucket,Key:finalKey,CopySource:cfg.bucket+'/'+stagingKey,
+    CopySourceIfMatch:head.ETag
+   }),{abortSignal:AbortSignal.timeout(180000)});
+   await verifyUploadedObject({s3,bucket:cfg.bucket,key:finalKey,file});
   }catch(err){
-   if(err?.name==='NotFound'||err?.$metadata?.httpStatusCode===404){send(res,409,{error:'Upload not found in storage'});return true;}
+   await deleteObject(finalKey);
+   if(err instanceof InvalidMedia)return await rejectInvalid(err.message);
+   if(err?.name==='NotFound'||err?.$metadata?.httpStatusCode===404){
+    send(res,409,{error:'Upload not found in storage'});return true;
+   }
+   if(err?.$metadata?.httpStatusCode===412){
+    send(res,409,{error:'Upload changed during verification; retry'});return true;
+   }
+   if(err instanceof VerificationUnavailable||err?.name==='AbortError'){
+    send(res,503,{error:'Storage verification unavailable; retry'});return true;
+   }
    throw err;
   }
-  // Verify bytes on R2 server-side: never trust the hash provided by a browser.
-  const object=await s3.send(new GetObjectCommand({Bucket:cfg.bucket,Key:file.object_key}));
-  const hash=createHash('sha256');
-  for await(const chunk of object.Body)hash.update(chunk);
-  if(hash.digest('hex')!==file.sha256){
-   await s3.send(new DeleteObjectCommand({Bucket:cfg.bucket,Key:file.object_key}));
-   await pool.query("UPDATE library_files SET status='failed',updated_at=now() WHERE id=$1 AND user_id=$2",[id,user.id]);
-   send(res,422,{error:'File checksum mismatch'});return true;
-  }
   try{
-   await pool.query("UPDATE library_files SET status='ready',updated_at=now() WHERE id=$1 AND user_id=$2 AND status='pending'",[id,user.id]);
+   const updated=await promoteReadyWithLease(pool,{
+    fileId:id,ownerId:user.id,finalKey,token:leaseToken
+   });
+   if(!updated.rowCount){
+    await deleteObject(finalKey);
+    const current=await pool.query('SELECT id,status FROM library_files WHERE id=$1 AND user_id=$2',[id,user.id]);
+    if(current.rows[0]?.status==='ready'){send(res,200,{ok:true,id:file.id});return true;}
+    send(res,409,{error:'Upload state changed; retry'});return true;
+   }
   }catch(err){
-   if(err?.code!=='23505')throw err;
-   const existing=await pool.query("SELECT id FROM library_files WHERE user_id=$1 AND kind=$2 AND sha256=$3 AND status='ready'",[user.id,file.kind,file.sha256]);
-   if(!existing.rows[0])throw err;
-   await s3.send(new DeleteObjectCommand({Bucket:cfg.bucket,Key:file.object_key}));
-   await pool.query("DELETE FROM library_files WHERE id=$1 AND user_id=$2 AND status='pending'",[id,user.id]);
-   send(res,200,{ok:true,id:existing.rows[0].id,reused:true});return true;
+   if(err?.code==='23505'){
+    const existing=await pool.query("SELECT id FROM library_files WHERE user_id=$1 AND kind=$2 AND sha256=$3 AND status='ready'",[user.id,file.kind,file.sha256]);
+    if(existing.rows[0]){
+     // The original lease may have expired while handling the 23505; never
+     // delete a newer finalizer's pending DB row or its staging object.
+     const discarded=await discardPendingWithLease(pool,{fileId:id,ownerId:user.id,token:leaseToken});
+     await deleteObject(finalKey);
+     if(!discarded.rowCount)return await lostLease();
+     await deleteObject(stagingKey);
+     send(res,200,{ok:true,id:existing.rows[0].id,reused:true});return true;
+    }
+   }
+   // A committed DB write with a lost response must retain its final object.
+   const current=await pool.query('SELECT object_key,status FROM library_files WHERE id=$1 AND user_id=$2',[id,user.id]);
+   if(current.rows[0]?.object_key!==finalKey)await deleteObject(finalKey);
+   throw err;
   }
+  // Staging can be recreated by a still-live PUT but cannot affect READY.
+  await deleteObject(stagingKey);
   send(res,200,{ok:true,id:file.id});return true;
+  }finally{
+   await releaseCompletionLease(pool,id,leaseToken);
+  }
  }
  send(res,404,{error:'Not found'});return true;
 }
