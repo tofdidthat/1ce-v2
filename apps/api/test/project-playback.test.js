@@ -128,3 +128,22 @@ test('malformed viewer identities never gain a private playback manifest',async(
  assert.equal(pool.calls.length,6);
  assert.ok(pool.calls.every(c=>c.args[2]===null));
 });
+
+test('a pack row is decoded as pack metadata, not coerced into a beat',async()=>{
+ const pool=fixture({published:[{kind:'pack',id:packId}]});
+ const result=await resolve(pool,'pack',packId,2);
+ assert.equal(result.id,packId);
+ assert.deepEqual(result.tracks.map(track=>track.audio_file_id),[11,21]);
+ assert.equal(result.tracks[0].stems_file_id,null);
+});
+test('invalid database beat and pack rows cannot become playable manifests',async()=>{
+ const dbFor=badRow=>({async query(sql){
+  if(sql.includes('FROM library_beats b')||sql.includes('FROM library_packs p'))
+   return {rowCount:1,rows:[badRow]};
+  throw Error('Unexpected secondary query');
+ }});
+ await assert.rejects(()=>resolve(dbFor({id:beatId,title:'Test',owner_id:2,audio_file_id:11,cover_file_id:null,stems_file_id:null}),'beat',beatId,1),/Invalid database beat metadata/);
+ await assert.rejects(()=>resolve(dbFor({id:beatId,title:'Test',owner_id:1,audio_file_id:'11',cover_file_id:null,stems_file_id:null}),'beat',beatId,1),/Invalid database beat metadata/);
+ await assert.rejects(()=>resolve(dbFor({id:packId,title:'Pack',owner_id:2,cover_file_id:null}),'pack',packId,1),/Invalid database pack metadata/);
+ await assert.rejects(()=>resolve(dbFor({id:packId,title:'Pack',owner_id:1,cover_file_id:'30'}),'pack',packId,1),/Invalid database pack metadata/);
+});

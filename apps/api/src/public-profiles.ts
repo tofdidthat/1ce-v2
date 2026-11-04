@@ -6,12 +6,8 @@ import {resolveAuthorizedMediaFile,resolvePlayableProject} from './project-media
 import {streamAuthorizedAudio} from './audio-stream.js';
 import {readProfileLinksV2} from './profile-links.js';
 // 1CE v2 public profile catalog and public saves. Metadata only; R2 objects are never duplicated.
-// Compatibility signature for the still-JavaScript playback resolver. Phase 3A
-// types its optional viewer ID directly; this adapter changes no runtime behavior.
-const resolvePlayableWithViewer = resolvePlayableProject as unknown as (
- pool:QueryableV2,
- options:{ownerId:string;viewerId?:number|null;kind:ProjectKindV2;projectId:string}
-)=>ReturnType<typeof resolvePlayableProject>;
+// HTTP routing narrows the kind before calling the typed playback resolver.
+const isProjectKindV2=(value:string):value is ProjectKindV2=>value==='beat'||value==='pack';
 type DatabaseClientV2=QueryableV2&{release():void};
 type DatabasePoolV2=QueryableV2&{connect():Promise<DatabaseClientV2>};
 type AccountV2={id:number};
@@ -84,8 +80,8 @@ export async function handlePublicProfiles(req:IncomingMessage,res:ServerRespons
   const s3=new S3Client({region:'auto',endpoint:'https://'+cfg.account+'.r2.cloudflarestorage.com',credentials:{accessKeyId:cfg.key,secretAccessKey:cfg.secret},forcePathStyle:true});
   await streamAuthorizedAudio(req,res,{file,s3,bucket:cfg.bucket});return true;
  }
- if(parts.length===6&&parts[2]==='play'&&/^\d+$/.test(parts[3])&&['beat','pack'].includes(parts[4])&&uuid.test(parts[5])&&req.method==='GET'){
-  const project=await resolvePlayableWithViewer(pool,{ownerId:parts[3],viewerId:user?.id,kind:parts[4] as ProjectKindV2,projectId:parts[5]});
+ if(parts.length===6&&parts[2]==='play'&&/^\d+$/.test(parts[3])&&isProjectKindV2(parts[4])&&uuid.test(parts[5])&&req.method==='GET'){
+  const project=await resolvePlayableProject(pool,{ownerId:parts[3],viewerId:user?.id,kind:parts[4],projectId:parts[5]});
   if(!project){send(res,404,{error:'Project not available for playback'});return true;}
   send(res,200,{project});return true;
  }
