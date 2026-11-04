@@ -1,39 +1,55 @@
 # 1CE v2
 
-Independent rebuild of 1CE. The production v1 application and database must remain untouched.
+Independent 1CE application built with a React/Vite frontend, a Node.js API, PostgreSQL and private Cloudflare R2 storage. The v1 application and its infrastructure are separate and must remain untouched.
 
-## Project structure
+## Repository layout
 
-- `apps/web/` — React + Vite frontend deployed on Vercel.
-- `apps/api/` — Node.js API deployed on Railway; email/password auth and sessions.
-- `docs/` — current architecture and setup instructions.
-- `history/` — archived, already-applied scripts and historical records. Not part of app builds.
+| Path | Purpose |
+| --- | --- |
+| `apps/web/` | React, TypeScript and Vite frontend; UI modules, styles and frontend tests |
+| `apps/api/` | Node.js HTTP API; authentication, projects, media, Trash and API tests |
+| `history/database/` | Versioned v2 SQL migrations and guarded historical apply scripts |
+| `docs/` | Architecture overview, navigation, dated implementation ledgers and release evidence |
+| `scripts/` | Repository-wide audit tools |
+| `.github/workflows/` | CI checks and disposable-database smoke tests |
 
-## Deployment status
+## Local development
 
-- Frontend: Vercel project `1ce-v2`.
-- API: Railway v2 service (Node.js).
-- Database: independent Railway PostgreSQL, with initial schema applied.
-- Still required: public API domain, Vercel `VITE_API_URL`, account migration and end-to-end tests.
-
-See [auth deployment](docs/auth-deployment.md).
-
-## Local development and reproducible checks
-
-Use Node.js 22+ and the repository-pinned **pnpm 10.18.0** (see `packageManager` in the root `package.json`). Run from the workspace root:
+Use **Node.js 22 or newer** and **pnpm 10.18.0**, as pinned in the root `package.json`. From the repository root:
 
 ```sh
 pnpm install --frozen-lockfile
 pnpm dev:web
+```
+
+Start the API separately:
+
+```sh
 pnpm --filter @1ce/api dev
 ```
 
-The same frozen workspace lockfile is enforced by GitHub Actions (with `--ignore-scripts` in CI). Before a PR:
+Frontend configuration is illustrated in `apps/web/.env.example`; API configuration examples are in `apps/api/.env.example`. Provide required values through local environment variables, keep local secrets out of Git, and never reuse v1 production credentials. The frontend's `VITE_API_URL` must point at the intended **v2** API.
+
+## Validation before changes
 
 ```sh
 pnpm --filter @1ce/api test
 node --experimental-strip-types --test apps/web/test/*.test.mjs
+pnpm --filter @1ce/web typecheck
 pnpm --filter @1ce/web build
+node scripts/audit-dependencies.mjs
 ```
 
-Google login and sessions are implemented in v2. Signup and password recovery are separate product work. Always use isolated v2 development credentials; never use v1 production credentials locally. Mocked auth/upload regression tests make **no** request to real PostgreSQL, Google or Cloudflare R2 services. Refer to `docs/architecture.md` for security-release gates and unresolved upload-hardening items.
+GitHub Actions also runs API tests, a disposable PostgreSQL migration smoke test, an API startup check and frontend builds. Tests that exercise external infrastructure must be deliberately authorized and isolated.
+
+## Safety and release rules
+
+- Keep v1 code, data, sessions, buckets, tokens and domains unchanged.
+- Treat all SQL migrations as environment-specific operations; **do not rerun archived migrations** merely because they exist in Git.
+- Changes that can delete R2 data need backup evidence, independent review, disposable-media testing and a separately approved rollout.
+- A successful merge or CI run does **not** by itself confirm a Railway/Vercel production deployment or an end-to-end release.
+- Do work in focused branches, verify affected tests and builds, and avoid unrelated refactors.
+
+## Documentation
+
+Begin with the [documentation index](docs/README.md) and [system overview](docs/system-overview.md). `docs/architecture.md` is retained as a cumulative **historical implementation ledger**; older entries may describe states that have already changed. Consult the dated release evidence before making infrastructure or deletion decisions.

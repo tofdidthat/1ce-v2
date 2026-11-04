@@ -1,5 +1,7 @@
 # 1CE v2 — PR #27 (S2) security release and rollback checklist
 
+> **Historical PR #27 implementation and release evidence (2026-11-04 UTC).** [PR #27](https://github.com/tofdidthat/1ce-v2/pull/27) was merged on 2026-11-03 UTC. Statements below about a draft, unmerged branch or steps not yet approved describe their original point in time. Merge status alone does not prove a particular production deployment or end-to-end security approval. Consult the [documentation index](README.md) and verify live state separately.
+
 ## Proteção de CPU no login — PR #27 (ponto 3, 2026-11-03)
 
 **Implementado na branch:** antes de executar `scrypt` para uma conta que tem hash de senha, a API aplica admissão local por instância (`apps/api/src/login-admission.js`): burst de 48 verificações e reposição de 8/s, sem usar e-mail, socket/IP ou `X-Forwarded-For` como chave. Também usa o limitador atômico PostgreSQL existente (`v2_api_rate_limits`, scope `login-work`, sujeito constante `all-identities`) com teto global de **480 verificações por minuto** entre réplicas. Se qualquer controle exceder a capacidade, a requisição retorna `429` **antes** da operação criptográfica, sem abrir sessão. A trava de 8 verificações scrypt em paralelo permanece. Não cria tabelas, variáveis, arquivo de configuração WAF ou migração nova.

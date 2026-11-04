@@ -1,5 +1,7 @@
 # 1CE — Guia de referência da v1 e arquitetura da v2
 
+> **Guia de referência histórica (estado esclarecido em 2026-11-04 UTC).** Este arquivo preserva o mapa da v1 e o planejamento inicial da v2. Indicações abaixo como `planejado`, `não implementado` ou `pendente` podem estar desatualizadas. Para a estrutura atual, consulte o [índice da documentação](docs/README.md) e a [visão geral do sistema](docs/system-overview.md). A v1 continua estritamente somente leitura.
+
 > **Objetivo:** localizar rapidamente na 1CE v1 a origem de componentes, estilos, comportamentos, regras de interface e integrações solicitadas para a v2.
 >
 > **REGRA ABSOLUTA:** o repositório `tofdidthat/1ce` (v1) é **somente leitura**. Nunca modificar, publicar, migrar dados ou alterar deploy, banco, tokens, domínios e variáveis da v1.

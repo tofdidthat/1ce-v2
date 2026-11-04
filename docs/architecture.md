@@ -1,3 +1,9 @@
+# 1CE v2 — Historical architecture and implementation ledger
+
+> **Status clarification (2026-11-04 UTC):** This is a cumulative decision and implementation log, not a current branch/deployment status page. PRs [#27](https://github.com/tofdidthat/1ce-v2/pull/27) and [#28](https://github.com/tofdidthat/1ce-v2/pull/28) are merged into `main`; older entries below saying `draft`, `pending merge` or `not deployed` are preserved as historical snapshots. A merge does **not** establish production deployment, full end-to-end validation or authorization for irreversible storage operations. Use the [documentation index](README.md), [system overview](system-overview.md) and dated release evidence for current decisions. Do not rerun SQL migrations based on old checklist steps.
+
+---
+
 ## Atualização PR #28 — exclusão em cascata de packs e preparação de release (2026-11-03)
 
 **REGRA DEFINIDA PELO USUÁRIO:** Ao mover um pack para a lixeira, os beats que **só existem dentro dele** (sem card individual e sem outro pack ativo) devem ser movidos junto com o pack. Beats já visíveis individualmente na Home ou presentes em outro pack ativo são preservados e seus arquivos continuam referenciados, sem duplicação no R2. Pack e beats exclusivos recebem o mesmo `deleted_at` na transação, distinguindo cascata de beats apagados manualmente antes. Restaurar o pack restaura os beats cascata automaticamente, mas não os apagados individualmente. A listagem da Trash mostra o pack como um só item, sem beats filhos duplicados.

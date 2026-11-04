@@ -1,5 +1,7 @@
 # 1CE v2 PR #28 — Trash / R2 permanent deletion release gates
 
+> **Post-merge status clarification — 2026-11-04 UTC.** [PR #28](https://github.com/tofdidthat/1ce-v2/pull/28) was merged to `main` on 2026-11-04 UTC. Historical sections below were written before that merge and are retained for traceability. Verified evidence includes v2 backup, isolated full PostgreSQL restore and a successful disposable-bucket R2 delete canary. **Not established by those tests:** a complete isolated application-level Trash → Restore → Empty Trash acceptance, independent safety sign-off or the currently deployed API/frontend revision. Do not treat older `pending merge` text as current or perform permanent production deletes based only on this record. See the [documentation index](README.md).
+
 ## R2 isolated object-deletion canary — PASS (2026-11-03)
 
 **PASS — scoped smoke-bucket credentials, real Cloudflare R2 operations.** The user securely configured `R2_SMOKE_ACCESS_KEY_ID` and `R2_SMOKE_SECRET_ACCESS_KEY` directly on the temporary Railway service `1ce-v2-pr28-r2-smoke-canary`. The staged changes were restricted to that service; source was `postgres:18-alpine` with a one-time command. The command explicitly required `R2_SMOKE_BUCKET=onece-s2-smoke-27`, and used only those smoke credentials (not the production API media credentials). Railway deployment **`f6b88b41-afab-4ffc-8ee1-c30a16908db5`** reached `SUCCESS` and logged `CANARY_PHASE_UPLOAD`, `CANARY_PHASE_DELETE`, and **`CANARY_SUCCESS_SIBLING_PRESERVED`**.

@@ -1,5 +1,7 @@
 # v2 Settings identity rollout (feature branch; NOT deployed)
 
+> **Historical feature-branch rollout plan (status clarified 2026-11-04 UTC).** The title and steps below preserve the original release design; they are not evidence that Settings identity is currently undeployed. Inspect present code and runtime before rerunning migrations or deployment steps. See the [documentation index](README.md).
+
 Scope: reconstruct the **left account column** from the v1 Settings visual as a new v2 component. Do not reuse v1 token, account backend, Stripe, database or storage. Billing/subscription controls are intentionally absent until a v2 billing contract exists.
 
 ## Contract

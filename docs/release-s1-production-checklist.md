@@ -1,5 +1,7 @@
 # 1CE v2 — S1 release checklist and rollback runbook
 
+> **Historical S1 release runbook (status clarified 2026-11-04 UTC).** Keep this as baseline/rollback evidence; do not apply its deployment steps blindly to the current main branch. Confirm the target commit, deployed revision, migrations and production health first. See the [documentation index](README.md).
+
 **Status:** Pre-release document only. No merge, deploy, Railway patch acceptance, database change, R2 operation or live account test has been authorized by this document.
 
 **Goal:** Release PR #26 (frozen pnpm workspace, isolated auth/upload tests, CI audit) together with the prepared Railway install-path migration, while preserving the current v2 API, user assets, frontend and player. All actions can be performed through connected ChatGPT GitHub/Railway/Vercel tools and GitHub Actions; a computer/terminal is **not** required.

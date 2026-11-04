@@ -1,5 +1,7 @@
 # Refactoring phase A — API and media inventory
 
+> **Dated engineering inventory, not a live implementation checklist.** Endpoint contracts and risk items below reflect the phase in which they were recorded. Recheck current handlers/tests before applying any proposed refactor. See the [system overview](system-overview.md) and [documentation index](README.md).
+
 Status: **phase A inventory plus initial phase B extraction**, 2026-11-02. This document records current source and remaining test gaps. No deployed end-to-end or live database verification is claimed.
 
 Source of truth: [architecture.md](architecture.md).

@@ -1,5 +1,7 @@
 # Activate v2 login (isolated environment)
 
+> **Historical setup guide — not live deployment status (2026-11-04 UTC).** This document records the initial v2 login rollout; references below to missing OAuth/domain/configuration may be outdated. Google OAuth routes and the independent v2 API/database exist in the current source. Verify actual Railway/Vercel environment variables, account migration requirements and live behavior separately. See the [documentation index](README.md) and [system overview](system-overview.md).
+
 The frontend login form is wired to `VITE_API_URL`. The isolated API and PostgreSQL services are deployed; a public API domain, frontend environment variable and migrated identity data are still required.
 
 1. PostgreSQL v2 created and initial schema applied. Archived SQL: `history/database/001_auth_initial_schema.sql`. Never point `DATABASE_URL` at the production v1 database.
