@@ -121,8 +121,8 @@ jobs:
         run: pnpm install --frozen-lockfile --prefer-offline
       - name: Verify NodeNext source syntax and compiled TypeScript build
         run: |
-          node --check apps/api/src/server.js
           pnpm --filter @1ce/api build
+          node --check apps/api/dist/server.js
       - name: Compile API candidate with TypeScript without switching production entry
         run: |
           pnpm --filter @1ce/api build
