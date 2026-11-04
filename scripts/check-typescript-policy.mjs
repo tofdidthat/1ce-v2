@@ -25,7 +25,7 @@ export function checkTypeScriptPolicy(root=process.cwd(),exemptions=temporaryExe
   if(config.compilerOptions?.allowJs!==false)errors.push(name+': allowJs must remain false');
  }
  const encountered=new Set();
- for(const directory of ['apps/api/src','apps/web/src']){
+ for(const directory of ['apps/api/src','apps/web/src','packages/shared']){
   for(const absolute of walk(join(root,directory))){
    const path=relative(root,absolute).replaceAll('\\','/');
    if(/\.(?:js|jsx|mjs|cjs)$/i.test(path))errors.push(path+': JavaScript production source is forbidden');
