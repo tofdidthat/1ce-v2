@@ -1,6 +1,7 @@
 // Shared types only; imported with "import type" by the browser and API.
 // Server authorization and data validation are runtime responsibilities.
 export type ProjectKindV2='beat'|'pack';
+export type MediaKindV2='audio'|'cover'|'stems';
 export type AccountIdV2=number;
 export type ProjectIdV2=string;
 export type LibraryFileIdV2=number;

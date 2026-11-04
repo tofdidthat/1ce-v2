@@ -1,7 +1,42 @@
 // Shared v2 authorization for existing media endpoints.
 // Resolves an original R2 file once; publication and share grants are relationships,
 // never duplicated files. No new HTTP routes are introduced here.
-const mediaKinds=new Set(['audio','cover','stems']);
+import type {MediaKindV2,ProjectKindV2,QueryableV2} from '../../../packages/shared/contracts.js';
+
+type OwnedReadyMediaV2={
+ object_key:string;
+ content_type:string;
+ byte_size:number|string;
+};
+type MediaAccessInputV2={
+ ownerId:number|string;
+ viewerId?:number|string|null;
+ fileId:number|string;
+ kind:MediaKindV2;
+};
+type PlayableProjectInputV2={
+ ownerId:number|string;
+ viewerId?:number|string|null;
+ kind:ProjectKindV2;
+ projectId:string;
+};
+type PlayableDbRowV2={
+ id:string;
+ title:string;
+ owner_id:number;
+ audio_file_id:number;
+ cover_file_id:number|null;
+ stems_file_id:number|null;
+};
+type PlayableManifestV2={
+ owner_id:number;
+ kind:ProjectKindV2;
+ id:string;
+ title:string;
+ cover_file_id:number|null;
+ tracks:PlayableDbRowV2[];
+};
+const mediaKinds=new Set<MediaKindV2>(['audio','cover','stems']);
 
 const fileSql=`SELECT f.object_key,f.content_type,f.byte_size
  FROM library_files f
@@ -51,7 +86,7 @@ WHERE EXISTS (
 )
 LIMIT 1`;
 
-function validId(id){
+function validId(id:unknown):id is number|string{
  if(typeof id==='number')return Number.isSafeInteger(id)&&id>0;
  return typeof id==='string'&&/^[1-9]\d*$/.test(id)&&Number.isSafeInteger(Number(id));
 }
@@ -71,12 +106,12 @@ function validId(id){
  * @param {import('pg').Pool} pool
  * @param {{ownerId:number|string,viewerId?:number|string|null,fileId:number|string,kind:'audio'|'cover'|'stems'}} options
  */
-export async function resolveAuthorizedMediaFile(pool,{ownerId,viewerId=null,fileId,kind}){
+export async function resolveAuthorizedMediaFile(pool:QueryableV2,{ownerId,viewerId=null,fileId,kind}:MediaAccessInputV2):Promise<OwnedReadyMediaV2|null>{
  if(!validId(ownerId)||!validId(fileId)||!mediaKinds.has(kind))return null;
  const owner=Number(ownerId);
  const viewer=validId(viewerId)?Number(viewerId):null;
  const fileResult=await pool.query(fileSql,[Number(fileId),owner,kind]);
- const file=fileResult.rows[0];
+ const file=fileResult.rows[0] as unknown as OwnedReadyMediaV2|undefined;
  if(!file)return null;
 
  // A stored upload may not have been attached to a project yet. Owner-only
@@ -85,14 +120,14 @@ export async function resolveAuthorizedMediaFile(pool,{ownerId,viewerId=null,fil
  if(kind==='stems')return null;
 
  const access=await pool.query(authorizedProjectSql,[Number(fileId),owner,kind,viewer]);
- return access.rowCount>0?file:null;
+ return (access.rowCount??0)>0?file:null;
 }
 
 
 // A playable manifest refers to original project IDs and existing private
 // file IDs. It never creates media, grants access, or exposes R2 object keys.
 const projectUuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const projectPermission=(alias,kind)=>`
+const projectPermission=(alias:string,kind:ProjectKindV2)=>`
   ( ${alias}.user_id=$3::integer
     OR EXISTS(SELECT 1 FROM v2_public_projects pub
        WHERE pub.user_id=${alias}.user_id AND pub.kind='${kind}' AND pub.project_id=${alias}.id)
@@ -132,15 +167,15 @@ const playablePackMembersSql=`SELECT b.id,b.title,b.user_id AS owner_id,b.audio_
  * This check is repeated for each byte-stream request by resolveAuthorizedMediaFile,
  * so revoking access prevents subsequent reads even with a known file ID.
  */
-export async function resolvePlayableProject(pool,{ownerId,viewerId=null,kind,projectId}){
+export async function resolvePlayableProject(pool:QueryableV2,{ownerId,viewerId=null,kind,projectId}:PlayableProjectInputV2):Promise<PlayableManifestV2|null>{
  if(!validId(ownerId)||!['beat','pack'].includes(kind)||typeof projectId!=='string'||!projectUuid.test(projectId))return null;
  const owner=Number(ownerId);
  const viewer=validId(viewerId)?Number(viewerId):null;
  const query=kind==='beat'?playableBeatSql:playablePackSql;
  const result=await pool.query(query,[owner,projectId,viewer]);
- const project=result.rows[0];
+ const project=result.rows[0] as unknown as PlayableDbRowV2|undefined;
  if(!project)return null;
- const tracks=kind==='beat'?[project]:(await pool.query(playablePackMembersSql,[projectId,owner,viewer])).rows;
+ const tracks:PlayableDbRowV2[]=kind==='beat'?[project]:(await pool.query(playablePackMembersSql,[projectId,owner,viewer])).rows as unknown as PlayableDbRowV2[];
  return {owner_id:owner,kind,id:project.id,title:project.title,cover_file_id:project.cover_file_id??null,
   tracks:tracks.map(track=>({id:track.id,title:track.title,owner_id:owner,
    audio_file_id:track.audio_file_id,cover_file_id:track.cover_file_id??null,
