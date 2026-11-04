@@ -75,7 +75,7 @@ export async function handleProfileIdentity(req:IncomingMessage,res:ServerRespon
   const store=storageFactory();
   if(!store){send(res,503,{error:'Storage unavailable'});return true;}
   let object;
-  try{object=await store.s3.send(new GetObjectCommand({Bucket:store.bucket,Key:key}));}
+  try{object=await store.s3.send(new GetObjectCommand({Bucket:store.bucket,Key:key as string}));}
   catch(error){const failure=error as {name?:string;$metadata?:{httpStatusCode?:number}}|null;if(failure?.name==='NoSuchKey'||failure?.name==='NotFound'||failure?.$metadata?.httpStatusCode===404){send(res,404,{error:'Avatar not found'});return true;}throw error;}
   res.writeHead(200,{'Content-Type':type,'Cache-Control':'public, no-store','X-Content-Type-Options':'nosniff'});
   for await(const chunk of (object.Body as AsyncIterable<Uint8Array>))res.write(chunk);
@@ -90,11 +90,11 @@ export async function handleProfileIdentity(req:IncomingMessage,res:ServerRespon
   const changeUsername=Object.hasOwn(data||{},'username');
   const changeLinks=Object.hasOwn(data||{},'links');
   if(!changeUsername&&!changeLinks){send(res,400,{error:'No profile changes were provided.'});return true;}
-  const username=changeUsername?normalizeUsername(data.username):null;
+  const username=changeUsername?normalizeUsername(data?.username):null;
   if(changeUsername&&!username){
    send(res,400,{error:'Use 3–24 characters, beginning and ending with a letter or number; no spaces, repeated dots, or numbers-only usernames.'});return true;
   }
-  const links=changeLinks?normalizeProfileLinksV2(data.links):null;
+  const links=changeLinks?normalizeProfileLinksV2(data?.links):null;
   if(changeLinks&&!links){send(res,400,{error:'Use up to 6 unique HTTPS profile links (maximum 500 characters each), without local addresses or credentials.'});return true;}
   // The existing endpoint owns profile mutations. If both fields are submitted,
   // keep username and social URLs atomic in the existing v2 database.
@@ -114,7 +114,7 @@ export async function handleProfileIdentity(req:IncomingMessage,res:ServerRespon
   send(res,200,{user:await currentUser(req),...(changeLinks?{links}: {})});return true;
  }
  if(pathname==='/auth/me/avatar'){
-  if(!['POST','DELETE'].includes(req.method)){send(res,405,{error:'Method not allowed'});return true;}
+  if(!['POST','DELETE'].includes(req.method||'')){send(res,405,{error:'Method not allowed'});return true;}
   const user=await currentUser(req);
   if(!user){send(res,401,{error:'Not authenticated'});return true;}
   const store=storageFactory();
