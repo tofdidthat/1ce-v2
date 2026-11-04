@@ -113,3 +113,21 @@ test('avatar upload cannot be modified without authentication',async()=>{
  await handleProfileIdentity(request('POST',png,{'content-type':'image/png'}),res,'/auth/me/avatar',h.pool,async()=>null,{storageFactory:h.storageFactory});
  assert.equal(res.status,401);assert.equal(h.objects.size,0);
 });
+
+test('anonymous avatar deletion and wrong-owner public reads never mutate private R2',async()=>{
+ const h=fakeBackend();
+ let res=response();
+ await handleProfileIdentity(request('POST',png,{'content-type':'image/png'}),res,'/auth/me/avatar',h.pool,h.currentUser,{storageFactory:h.storageFactory});
+ assert.equal(res.status,200);
+ const original=h.state.avatar;
+ assert.equal(h.objects.size,1);
+ res=response();
+ await handleProfileIdentity(request('DELETE'),res,'/auth/me/avatar',h.pool,async()=>null,{storageFactory:h.storageFactory});
+ assert.equal(res.status,401);
+ assert.equal(h.state.avatar,original);
+ assert.equal(h.objects.size,1);
+ res=response();
+ await handleProfileIdentity(request('GET'),res,'/api/public/avatar/43',h.pool,h.currentUser,{storageFactory:h.storageFactory});
+ assert.equal(res.status,404);
+ assert.equal(h.objects.size,1);
+});
