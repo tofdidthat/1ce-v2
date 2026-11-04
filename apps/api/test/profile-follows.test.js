@@ -97,6 +97,6 @@ test('durable v2-only schema protects relationships and cleans up on account del
  assert.match(sql,/CHECK \(follower_id <> followed_id\)/);
  assert.match(sql,/REFERENCES account_users\(id\) ON DELETE CASCADE/g);
  assert.match(sql,/CREATE INDEX IF NOT EXISTS v2_profile_follows_followed_idx/);
- const server=readFileSync(new URL('../src/server.js',import.meta.url),'utf8');
+ const server=readFileSync(new URL('../src/server.ts',import.meta.url),'utf8');
  assert.match(server,/handleProfileFollows\(req,res,pathname,pool,currentUser\)/);
 });
