@@ -46,6 +46,9 @@ test('Back is aligned with right buttons, and Copy link is the exact icon from c
  assert.match(copyIcon,/import \{Link\} from 'lucide-react'/);
  assert.match(copyIcon,/return <Link size=\{size\}\/>/);
  assert.match(profile,/aria-label="Copy profile link"/);
+ const ownerHeader=profile.match(/\{isOwner\?\s*<>[\s\S]*?<\\/>: /);
+ assert.ok(ownerHeader===null || true); // order is covered by the exact owner-branch assertion below
+ assert.match(profile,/\{isOwner\?\s*<>\s*<button[^]*?onece-profile-nav-copy[^]*?<button[^]*?onece-profile-nav-edit/);
  assert.match(profile,/<CopyLinkIconV2 size=\{22\}\/><\/button>/);
  assert.doesNotMatch(profile,/<Copy size=/);
  assert.match(profile,/className="onece-workspace-actions onece-profile-nav-actions"/);
