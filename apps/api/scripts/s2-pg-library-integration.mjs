@@ -120,7 +120,7 @@ try{
   kind:'audio',name:'ready.mp3',contentType:'audio/mpeg',size:800,sha256:sha('audio-a.mp3')
  },a);
  assert.equal(existing.status,200);
- assert.deepEqual(existing.body,{id:audioA,reused:true});
+ assert.deepEqual(existing.body,{id:String(audioA),reused:true});
  assert.equal(signed.length,11,'Reused READY asset must never issue a signed PUT');
  console.log('Phase 4C disposable PostgreSQL PASS: concurrent quota locks, READY dedup, per-owner file grants, pack membership, standalone visibility; R2 intentionally not used');
 }finally{await db.end();}
