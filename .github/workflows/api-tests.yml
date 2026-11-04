@@ -80,6 +80,13 @@ jobs:
           S2_TEST_DATABASE_URL: postgresql://s2_ci:isolated-ci-only@127.0.0.1:5432/onece_s2_ci
         run: node apps/api/scripts/s2-migration-smoke.mjs
 
+  s2-isolated-s3-runner:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify isolated integration script syntax
+        run: node --check apps/api/scripts/s2-local-storage-integration.mjs
+
   api-tests:
     runs-on: ubuntu-latest
     steps:
