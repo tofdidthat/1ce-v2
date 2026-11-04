@@ -105,7 +105,7 @@ try{
  assert.equal(ready.status,'ready');
  assert.match(ready.object_key,new RegExp('^users/'+a+'/assets/audio/verified/'));
  assert.deepEqual(await getBytes(ready.object_key),original);
- assert.rejects(()=>s3.send(new HeadObjectCommand({Bucket:bucket,Key:first.staging})));
+ await assert.rejects(()=>s3.send(new HeadObjectCommand({Bucket:bucket,Key:first.staging})));
  // The original signed PUT remains restricted to staging and cannot mutate READY.
  const overwrite=await fetch(first.url,{method:'PUT',
   headers:{'Content-Type':'audio/mpeg'},body:distinct,signal:AbortSignal.timeout(15000)});
