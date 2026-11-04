@@ -96,3 +96,26 @@ test('share, save and publication writes acquire the owner lock before inserting
   assert.ok(locks.some(i=>i<at),'write before owner Trash lock: '+edge);
  }
 });
+
+test('anonymous callers cannot redeem share grants, save or publish private projects',async()=>{
+ const db=fixture();
+ const routes=[
+  ['POST','redeem/'+sharedToken],
+  ['POST','save/1/beat/'+beat],
+  ['POST','share/beat/'+beat],
+  ['POST','publish/beat/'+beat],
+  ['DELETE','publish/beat/'+beat]
+ ];
+ for(const [method,path] of routes){
+  const response=await request(db,method,path,null);
+  assert.equal(response.status,401,path);
+ }
+ const writes=db.calls.filter(c=>/^(INSERT|UPDATE|DELETE) /.test(c.sql));
+ assert.deepEqual(writes,[],'denied visitors may not mutate access or publication');
+});
+test('invalid save owner is rejected before any permission grant can be inserted',async()=>{
+ const db=fixture();
+ const response=await request(db,'POST','save/0/beat/'+beat,2);
+ assert.equal(response.status,404);
+ assert.equal(db.calls.some(c=>c.sql.startsWith('INSERT INTO v2_public_saves')),false);
+});
