@@ -127,3 +127,12 @@ test('restoring a pack first revives only auto-trashed member beats inside the s
  assert.match(checks[members],/b.library_visible=FALSE/);
  assert.equal(checks.at(-1),'COMMIT');
 });
+
+test('invalid account IDs are rejected before database access',async()=>{
+ const pool=poolFixture();
+ for(const identity of [null,{id:0},{id:-3},{id:'invalid'}]){
+  const response=await invoke({pool,identity});
+  assert.equal(response.status,401);
+ }
+ assert.equal(pool.calls.length,0);
+});
