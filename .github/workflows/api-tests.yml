@@ -79,6 +79,12 @@ jobs:
         env:
           S2_TEST_DATABASE_URL: postgresql://s2_ci:isolated-ci-only@127.0.0.1:5432/onece_s2_ci
         run: node apps/api/scripts/s2-migration-smoke.mjs
+      - name: Verify owner-locked uploads, READY files, and pack links on disposable PostgreSQL
+        env:
+          S2_TEST_DATABASE_URL: postgresql://s2_ci:isolated-ci-only@127.0.0.1:5432/onece_s2_ci
+        run: |
+          node --check apps/api/scripts/s2-pg-library-integration.mjs
+          node apps/api/scripts/s2-pg-library-integration.mjs
 
   s2-isolated-s3-runner:
     runs-on: ubuntu-latest
