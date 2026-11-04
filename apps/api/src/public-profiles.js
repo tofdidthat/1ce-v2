@@ -6,6 +6,20 @@ import {readProfileLinksV2} from './profile-links.js';
 // 1CE v2 public profile catalog and public saves. Metadata only; R2 objects are never duplicated.
 const send=(res,status,data)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data));};
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const ownerResult=(status,data)=>({status,data});
+// Serialize publication/save/share writes with move-to-Trash, restore and permanent purge.
+// Mutations must re-check live project state *after* acquiring this lock.
+async function ownerMutation(pool,owner,work){
+ const db=await pool.connect();
+ try{
+  await db.query('BEGIN');
+  await db.query('SELECT pg_advisory_xact_lock($1::bigint)',[owner]);
+  const result=await work(db);
+  await db.query(result.status>=400?'ROLLBACK':'COMMIT');
+  return result;
+ }catch(error){try{await db.query('ROLLBACK');}catch{}throw error;}
+ finally{db.release();}
+}
 let initialized;
 function ready(pool){
  if(!initialized)initialized=(async()=>{
@@ -36,8 +50,8 @@ const selectProjects=`SELECT pub.kind,pub.project_id AS id,pub.user_id AS owner_
  CASE WHEN pub.kind='pack' THEN (SELECT count(*)::int FROM library_pack_beats pb WHERE pb.pack_id=p.id) ELSE NULL END AS track_count,
  pub.published_at
  FROM v2_public_projects pub
- LEFT JOIN library_beats b ON pub.kind='beat' AND b.id=pub.project_id AND b.user_id=pub.user_id
- LEFT JOIN library_packs p ON pub.kind='pack' AND p.id=pub.project_id AND p.user_id=pub.user_id
+ LEFT JOIN library_beats b ON pub.kind='beat' AND b.id=pub.project_id AND b.user_id=pub.user_id AND b.deleted_at IS NULL
+ LEFT JOIN library_packs p ON pub.kind='pack' AND p.id=pub.project_id AND p.user_id=pub.user_id AND p.deleted_at IS NULL
  WHERE (b.id IS NOT NULL OR p.id IS NOT NULL)`;
 export async function handlePublicProfiles(req,res,pathname,pool,currentUser){
  if(!pathname.startsWith('/api/public/'))return false;
@@ -92,8 +106,8 @@ export async function handlePublicProfiles(req,res,pathname,pool,currentUser){
    pool.query(`SELECT s.kind,s.project_id AS id,s.owner_id,COALESCE(b.title,p.title) AS title,COALESCE(b.cover_file_id,p.cover_file_id) AS cover_file_id,
     CASE WHEN s.kind='pack' THEN (SELECT count(*)::int FROM library_pack_beats pb WHERE pb.pack_id=p.id) ELSE NULL END AS track_count,s.saved_at AS published_at
     FROM v2_public_saves s
-    LEFT JOIN library_beats b ON s.kind='beat' AND b.id=s.project_id AND b.user_id=s.owner_id
-    LEFT JOIN library_packs p ON s.kind='pack' AND p.id=s.project_id AND p.user_id=s.owner_id
+    LEFT JOIN library_beats b ON s.kind='beat' AND b.id=s.project_id AND b.user_id=s.owner_id AND b.deleted_at IS NULL
+    LEFT JOIN library_packs p ON s.kind='pack' AND p.id=s.project_id AND p.user_id=s.owner_id AND p.deleted_at IS NULL
     WHERE s.user_id=$1 AND (b.id IS NOT NULL OR p.id IS NOT NULL)
     -- A saved private project belongs to the saver's personal Saves view.
     -- A project owner or a separately granted viewer must not discover
@@ -108,22 +122,32 @@ export async function handlePublicProfiles(req,res,pathname,pool,currentUser){
  if(!user){send(res,401,{error:'Not authenticated'});return true;}
  if(parts.length===5&&parts[2]==='share'&&['beat','pack'].includes(parts[3])&&uuid.test(parts[4])&&req.method==='POST'){
   const kind=parts[3],id=parts[4],table=kind==='beat'?'library_beats':'library_packs';
-  const owned=await pool.query('SELECT 1 FROM '+table+' WHERE id=$1 AND user_id=$2',[id,user.id]);
-  if(!owned.rowCount){send(res,404,{error:'Project not found'});return true;}
   const token=randomBytes(32).toString('base64url');
-  await pool.query('INSERT INTO v2_project_share_links(token_hash,owner_id,kind,project_id) VALUES($1,$2,$3,$4)',[createHash('sha256').update(token).digest('hex'),user.id,kind,id]);
-  send(res,200,{token});return true;
+  const response=await ownerMutation(pool,user.id,async db=>{
+   const owned=await db.query('SELECT 1 FROM '+table+' WHERE id=$1 AND user_id=$2 AND deleted_at IS NULL',[id,user.id]);
+   if(!owned.rowCount)return ownerResult(404,{error:'Project not found'});
+   await db.query('INSERT INTO v2_project_share_links(token_hash,owner_id,kind,project_id) VALUES($1,$2,$3,$4)',[createHash('sha256').update(token).digest('hex'),user.id,kind,id]);
+   return ownerResult(200,{token});
+  });
+  send(res,response.status,response.data);return true;
  }
  if(parts.length===4&&parts[2]==='redeem'&&req.method==='POST'&&/^[A-Za-z0-9_-]{43}$/.test(parts[3])){
   const hash=createHash('sha256').update(parts[3]).digest('hex');
-  const link=await pool.query('SELECT owner_id,kind,project_id FROM v2_project_share_links WHERE token_hash=$1',[hash]);
-  if(!link.rowCount){send(res,404,{error:'Invalid share link'});return true;}
-  const {owner_id,kind,project_id}=link.rows[0];
-  const table=kind==='beat'?'library_beats':'library_packs';
-  const exists=await pool.query('SELECT 1 FROM '+table+' WHERE user_id=$1 AND id=$2',[owner_id,project_id]);
-  if(!exists.rowCount){send(res,404,{error:'Project not found'});return true;}
-  await pool.query('INSERT INTO v2_project_access(owner_id,viewer_id,kind,project_id) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING',[owner_id,user.id,kind,project_id]);
-  send(res,200,{ok:true,owner_id,kind,id:project_id});return true;
+  // Read owner only to choose advisory lock; re-read the link inside the lock.
+  const candidate=await pool.query('SELECT owner_id FROM v2_project_share_links WHERE token_hash=$1',[hash]);
+  if(!candidate.rowCount){send(res,404,{error:'Invalid share link'});return true;}
+  const response=await ownerMutation(pool,candidate.rows[0].owner_id,async db=>{
+   const link=await db.query('SELECT owner_id,kind,project_id FROM v2_project_share_links WHERE token_hash=$1',[hash]);
+   if(!link.rowCount)return ownerResult(404,{error:'Invalid share link'});
+   const {owner_id,kind,project_id}=link.rows[0];
+   if(!['beat','pack'].includes(kind))return ownerResult(404,{error:'Invalid share link'});
+   const table=kind==='beat'?'library_beats':'library_packs';
+   const exists=await db.query('SELECT 1 FROM '+table+' WHERE user_id=$1 AND id=$2 AND deleted_at IS NULL',[owner_id,project_id]);
+   if(!exists.rowCount)return ownerResult(404,{error:'Project not found'});
+   await db.query('INSERT INTO v2_project_access(owner_id,viewer_id,kind,project_id) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING',[owner_id,user.id,kind,project_id]);
+   return ownerResult(200,{ok:true,owner_id,kind,id:project_id});
+  });
+  send(res,response.status,response.data);return true;
  }
  if(parts.length===3&&parts[2]==='mine'&&req.method==='GET'){
   const [published,saved]=await Promise.all([
@@ -134,21 +158,34 @@ export async function handlePublicProfiles(req,res,pathname,pool,currentUser){
  }
  if(parts.length===5&&parts[2]==='publish'&&['beat','pack'].includes(parts[3])&&uuid.test(parts[4])&&['POST','DELETE'].includes(req.method)){
   const kind=parts[3],id=parts[4],table=kind==='beat'?'library_beats':'library_packs';
-  const owned=await pool.query('SELECT id FROM '+table+' WHERE id=$1 AND user_id=$2',[id,user.id]);
-  if(!owned.rowCount){send(res,404,{error:'Project not found'});return true;}
-  if(req.method==='POST')await pool.query('INSERT INTO v2_public_projects(user_id,kind,project_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING',[user.id,kind,id]);
-  else await pool.query('DELETE FROM v2_public_projects WHERE user_id=$1 AND kind=$2 AND project_id=$3',[user.id,kind,id]);
-  send(res,200,{ok:true,published:req.method==='POST'});return true;
+  const response=await ownerMutation(pool,user.id,async db=>{
+   const owned=await db.query('SELECT id FROM '+table+' WHERE id=$1 AND user_id=$2 AND deleted_at IS NULL',[id,user.id]);
+   if(!owned.rowCount)return ownerResult(404,{error:'Project not found'});
+   if(req.method==='POST')await db.query('INSERT INTO v2_public_projects(user_id,kind,project_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING',[user.id,kind,id]);
+   else await db.query('DELETE FROM v2_public_projects WHERE user_id=$1 AND kind=$2 AND project_id=$3',[user.id,kind,id]);
+   return ownerResult(200,{ok:true,published:req.method==='POST'});
+  });
+  send(res,response.status,response.data);return true;
  }
  if(parts.length===6&&parts[2]==='save'&&/^\d+$/.test(parts[3])&&['beat','pack'].includes(parts[4])&&uuid.test(parts[5])&&['POST','DELETE'].includes(req.method)){
-  const [, , ,owner,kind,id]=parts;
-  if(req.method==='POST'){
-   const allowed=await pool.query(`SELECT 1 WHERE $1::integer=$2::integer OR EXISTS(SELECT 1 FROM v2_public_projects WHERE user_id=$2 AND kind=$3 AND project_id=$4) OR EXISTS(SELECT 1 FROM v2_project_access WHERE viewer_id=$1 AND owner_id=$2 AND kind=$3 AND project_id=$4)`,[user.id,owner,kind,id]);
-   if(!allowed.rowCount){send(res,403,{error:'Access required'});return true;}
-  }
-  if(req.method==='POST')await pool.query('INSERT INTO v2_public_saves(user_id,owner_id,kind,project_id) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING',[user.id,owner,kind,id]);
-  else await pool.query('DELETE FROM v2_public_saves WHERE user_id=$1 AND owner_id=$2 AND kind=$3 AND project_id=$4',[user.id,owner,kind,id]);
-  send(res,200,{ok:true,saved:req.method==='POST'});return true;
+  const [, , ,ownerText,kind,id]=parts;
+  const owner=Number(ownerText);
+  if(!Number.isSafeInteger(owner)||owner<1||owner>2147483647){send(res,404,{error:'Project not found'});return true;}
+  const table=kind==='beat'?'library_beats':'library_packs';
+  const response=await ownerMutation(pool,owner,async db=>{
+   if(req.method==='POST'){
+    const allowed=await db.query(`SELECT 1 FROM ${table} p WHERE p.user_id=$2::integer AND p.id=$4::uuid AND p.deleted_at IS NULL
+     AND ($1::integer=$2::integer
+      OR EXISTS(SELECT 1 FROM v2_public_projects WHERE user_id=$2 AND kind=$3 AND project_id=$4)
+      OR EXISTS(SELECT 1 FROM v2_project_access WHERE viewer_id=$1 AND owner_id=$2 AND kind=$3 AND project_id=$4))`,[user.id,owner,kind,id]);
+    if(!allowed.rowCount)return ownerResult(403,{error:'Access required'});
+    await db.query('INSERT INTO v2_public_saves(user_id,owner_id,kind,project_id) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING',[user.id,owner,kind,id]);
+   }else{
+    await db.query('DELETE FROM v2_public_saves WHERE user_id=$1 AND owner_id=$2 AND kind=$3 AND project_id=$4',[user.id,owner,kind,id]);
+   }
+   return ownerResult(200,{ok:true,saved:req.method==='POST'});
+  });
+  send(res,response.status,response.data);return true;
  }
  send(res,404,{error:'Not found'});return true;
 }

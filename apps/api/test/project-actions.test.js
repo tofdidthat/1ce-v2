@@ -8,7 +8,7 @@ const second='5fd06bbc-c6a7-43f6-9205-bac180ba9273';
 const pack='e2c0e2e6-2e40-4cdf-a207-1ba6cc66cc2a';
 const pack2='36a40238-f0d5-47d5-8193-36b9309c53b7';
 
-function fixture({owner=1,missing=false,badCover=false,members=[]}={}){
+function fixture({owner=1,missing=false,badCover=false,members=[],cascadedBeats=[]}={}){
  const calls=[];
  const rows={
   beat:{id:beat,title:'Original',cover_file_id:15},
@@ -28,6 +28,8 @@ function fixture({owner=1,missing=false,badCover=false,members=[]}={}){
    if(sql.includes('SELECT b.id FROM library_packs'))return {rowCount:missing?0:2,rows:missing?[]:[{id:beat},{id:second}]};
    if(sql.startsWith('SELECT beat_id,position FROM library_pack_beats'))return {rowCount:members.length,rows:members};
    if(sql.startsWith('SELECT beat_id FROM library_pack_beats'))return {rowCount:members.length,rows:members};
+   if(sql.startsWith('UPDATE library_beats b SET deleted_at=p.deleted_at'))return {rowCount:cascadedBeats.length,rows:cascadedBeats.map(id=>({id}))};
+   if(sql.includes('SET deleted_at=now()'))return {rowCount:missing?0:1,rows:missing?[]:[{id:args[1]}]};
    if(sql.startsWith('UPDATE library_'))return {rowCount:1,rows:[{id:args[1],title:args[0]??'Original',cover_file_id:args[0]}]};
    return {rowCount:1,rows:[]};
   },connect:async()=>({query:(...args)=>ctx.query(...args),release(){calls.push({sql:'RELEASE'})}})};
@@ -96,23 +98,44 @@ test('new project creates a pack with references even from a single beat',async(
  assert.equal(db.calls.filter(x=>x.sql.startsWith('INSERT INTO library_pack_beats')).length,1);
  assert.equal(db.calls.filter(x=>x.sql.includes('library_files')&&x.sql.startsWith('INSERT')).length,0);
 });
-test('delete beat clears all public references and pack links without deleting media',async()=>{
+test('delete beat moves it to Trash, revokes public edges and retains media and membership',async()=>{
  const db=fixture();
- const result=await invoke(db,'DELETE','beat/'+beat);
- assert.equal(result.status,200);
- assert.equal(result.body.mediaRetained,true);
+ const response=await invoke(db,'DELETE','beat/'+beat);
+ assert.equal(response.status,200);
+ assert.equal(response.body.trashed,true);
+ assert.equal(response.body.restoreDays,30);
  const queries=db.calls.map(x=>x.sql);
- for(const table of ['v2_public_projects','v2_public_saves','v2_project_access','v2_project_share_links','library_pack_beats','library_beats']){
+ assert.equal(queries.some(sql=>sql.startsWith("UPDATE library_beats SET deleted_at=now()")),true);
+ for(const table of ['v2_public_projects','v2_public_saves','v2_project_access','v2_project_share_links'])
   assert.equal(queries.some(sql=>sql.startsWith('DELETE FROM '+table)),true,table);
- }
- assert.equal(queries.some(sql=>sql.startsWith('DELETE FROM library_files')),false);
- assert.ok(queries.indexOf('DELETE FROM library_pack_beats WHERE beat_id=$1')<queries.indexOf('DELETE FROM library_beats WHERE id=$1 AND user_id=$2'));
+ for(const table of ['library_beats','library_pack_beats','library_files'])
+  assert.equal(queries.some(sql=>sql.startsWith('DELETE FROM '+table)),false,table);
 });
-test('delete pack removes associations but never deletes member beats or R2',async()=>{
+test('delete pack moves the pack to Trash while preserving beats and R2 objects',async()=>{
  const db=fixture();
  const response=await invoke(db,'DELETE','pack/'+pack);
  assert.equal(response.status,200);
+ assert.equal(response.body.trashed,true);
+ assert.equal(db.calls.some(x=>x.sql.startsWith("UPDATE library_packs SET deleted_at=now()")),true);
+ assert.equal(db.calls.some(x=>x.sql.startsWith('DELETE FROM library_packs')),false);
  assert.equal(db.calls.some(x=>x.sql.startsWith('DELETE FROM library_beats')),false);
  assert.equal(db.calls.some(x=>x.sql.startsWith('DELETE FROM library_files')),false);
- assert.equal(db.calls.some(x=>x.sql.startsWith('DELETE FROM library_packs')),true);
+});
+
+test('pack delete cascades hidden-only beats and revokes their public edges',async()=>{
+ const db=fixture({cascadedBeats:[beat]});
+ const response=await invoke(db,'DELETE','pack/'+pack);
+ assert.equal(response.status,200);
+ const cascade=db.calls.find(x=>x.sql.startsWith('UPDATE library_beats b SET deleted_at=p.deleted_at'));
+ assert.ok(cascade);
+ assert.match(cascade.sql,/b.library_visible=FALSE/);
+ assert.match(cascade.sql,/other.deleted_at IS NULL/);
+ assert.deepEqual(cascade.args,[1,pack]);
+ for(const edge of ['v2_public_projects','v2_public_saves','v2_project_access','v2_project_share_links']){
+  const calls=db.calls.filter(x=>x.sql.startsWith('DELETE FROM '+edge));
+  assert.equal(calls.length,2);
+  assert.match(calls[1].sql,/kind='beat'/);
+  assert.deepEqual(calls[1].args,[1,[beat]]);
+ }
+ assert.equal(db.calls.some(x=>x.sql.startsWith('DELETE FROM library_files')),false);
 });

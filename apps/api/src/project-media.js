@@ -15,14 +15,14 @@ const fileSql=`SELECT f.object_key,f.content_type,f.byte_size
 const authorizedProjectSql=`SELECT 1 FROM (
  SELECT 'beat'::text AS kind,b.id AS project_id
  FROM library_beats b
- WHERE b.user_id=$2 AND (
+ WHERE b.user_id=$2 AND b.deleted_at IS NULL AND (
    ($3='audio' AND b.audio_file_id=$1) OR
    ($3='cover' AND b.cover_file_id=$1)
  )
  UNION ALL
  SELECT 'pack'::text AS kind,p.id AS project_id
  FROM library_packs p
- WHERE p.user_id=$2 AND $3='cover' AND p.cover_file_id=$1
+ WHERE p.user_id=$2 AND p.deleted_at IS NULL AND $3='cover' AND p.cover_file_id=$1
  UNION ALL
  -- A published/shared pack grants access to the audio and cover of its
  -- original member beats without publishing those beats individually.
@@ -30,7 +30,7 @@ const authorizedProjectSql=`SELECT 1 FROM (
  FROM library_packs p
  JOIN library_pack_beats pb ON pb.pack_id=p.id
  JOIN library_beats member ON member.id=pb.beat_id AND member.user_id=p.user_id
- WHERE p.user_id=$2 AND (
+ WHERE p.user_id=$2 AND p.deleted_at IS NULL AND member.deleted_at IS NULL AND (
   ($3='audio' AND member.audio_file_id=$1) OR
   ($3='cover' AND member.cover_file_id=$1)
  )
@@ -108,12 +108,12 @@ const playableBeatSql=`SELECT b.id,b.title,b.user_id AS owner_id,b.audio_file_id
  CASE WHEN b.user_id=$3::integer THEN b.stems_file_id ELSE NULL END AS stems_file_id
  FROM library_beats b
  JOIN library_files file ON file.id=b.audio_file_id AND file.user_id=b.user_id AND file.kind='audio' AND file.status='ready'
- WHERE b.user_id=$1 AND b.id=$2 AND ${projectPermission('b','beat')}
+ WHERE b.user_id=$1 AND b.id=$2 AND b.deleted_at IS NULL AND ${projectPermission('b','beat')}
  LIMIT 1`;
 
 const playablePackSql=`SELECT p.id,p.title,p.user_id AS owner_id,p.cover_file_id
  FROM library_packs p
- WHERE p.user_id=$1 AND p.id=$2 AND ${projectPermission('p','pack')}
+ WHERE p.user_id=$1 AND p.id=$2 AND p.deleted_at IS NULL AND ${projectPermission('p','pack')}
  LIMIT 1`;
 
 const playablePackMembersSql=`SELECT b.id,b.title,b.user_id AS owner_id,b.audio_file_id,b.cover_file_id,
@@ -121,7 +121,7 @@ const playablePackMembersSql=`SELECT b.id,b.title,b.user_id AS owner_id,b.audio_
  FROM library_pack_beats pb
  JOIN library_beats b ON b.id=pb.beat_id AND b.user_id=$2
  JOIN library_files file ON file.id=b.audio_file_id AND file.user_id=b.user_id AND file.kind='audio' AND file.status='ready'
- WHERE pb.pack_id=$1 ORDER BY pb.position ASC`;
+ WHERE pb.pack_id=$1 AND b.deleted_at IS NULL ORDER BY pb.position ASC`;
 
 /**
  * Resolve a beat or pack for playback by canonical (ownerId, kind, projectId).

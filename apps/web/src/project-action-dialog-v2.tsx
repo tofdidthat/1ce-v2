@@ -113,13 +113,13 @@ export default function ProjectActionDialogV2({
     </>}
     {action==='delete'&&<p className="v2-project-dialog-warning">
      {project.kind==='beat'
-      ?'Delete this beat permanently from Home, Catalog, Saves and any packs that contain it? Other beats in those packs are preserved.'
-      :'Delete this pack permanently? The beats inside it remain in your Home and any other packs.'}
-     {' '}Existing media files are retained in private storage. This action cannot be undone.
+      ?'Move this beat to Trash? It will disappear from Home, Catalog, Saves, and playback. Other beats in its packs remain available.'
+      :'Move this pack to Trash? Beats that exist only inside this pack move to Trash with it. Beats visible individually or used by other active packs are preserved.'}
+     {' '}You can restore it in Settings → Trash for 30 days. Empty Trash permanently removes deleted projects and unreferenced media. Publishing and sharing are revoked.
     </p>}
     {error&&<p className="v2-project-dialog-error" role="alert">{error}</p>}
     <footer><button type="button" disabled={busy} onClick={onClose}>Cancel</button>
-     <button type="submit" className={action==='delete'?'danger':''} disabled={busy||(action==='add'&&!destination)||(action==='cover'&&!file&&!removeCover)}>{busy?'Saving…':action==='delete'?'Delete':action==='add'?'Add':action==='cover'?'Save cover':'Save'}</button>
+     <button type="submit" className={action==='delete'?'danger':''} disabled={busy||(action==='add'&&!destination)||(action==='cover'&&!file&&!removeCover)}>{busy?'Saving…':action==='delete'?'Move to Trash':action==='add'?'Add':action==='cover'?'Save cover':'Save'}</button>
     </footer>
    </form>
   </section>

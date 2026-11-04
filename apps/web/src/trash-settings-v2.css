@@ -1,0 +1,22 @@
+.onece-trash-settings{padding:20px;min-width:0}
+.onece-trash-heading{display:flex;align-items:flex-start;gap:12px;margin-bottom:18px}
+.onece-trash-back{flex:0 0 29px;width:29px;height:29px;display:grid;place-items:center;padding:0;border:1px solid #ffffff13;border-radius:50%;background:#ffffff08;color:#e4dff0;cursor:pointer}
+.onece-trash-heading h2{display:flex;align-items:center;gap:8px;margin:0;color:#f5f3ff;font-size:15px;font-weight:600}
+.onece-trash-heading p,.onece-trash-info{margin:7px 0 0;color:#92899e;font-size:12px;line-height:1.5}
+.onece-trash-items{list-style:none;padding:0;margin:0 0 20px}
+.onece-trash-items li{display:flex;align-items:center;justify-content:space-between;gap:9px;min-width:0;padding:13px 0;border-top:1px solid #ffffff0a}
+.onece-trash-items li>div{display:flex;flex-direction:column;gap:4px;min-width:0}
+.onece-trash-items strong{color:#e8e2f2;font-size:12px;font-weight:600;overflow-wrap:anywhere}
+.onece-trash-items span{color:#91869f;font-size:11px}
+.onece-trash-items button{display:inline-flex;align-items:center;gap:5px;flex-shrink:0;padding:7px 9px;border:1px solid #ffffff12;border-radius:9px;background:#ffffff08;color:#cbc2e4;font-size:11px;cursor:pointer}
+.onece-trash-permanent{border-top:1px solid #ffffff12;padding-top:16px}
+.onece-trash-permanent h3{margin:0 0 7px;font-size:13px;font-weight:600}
+.onece-trash-permanent p{color:#a49aaf;font-size:11px;line-height:1.6}
+.onece-trash-permanent label{display:flex;flex-direction:column;gap:8px;margin-top:14px;color:#dcd5e7;font-size:11px}
+.onece-trash-permanent input{width:100%;padding:11px 12px;min-width:0;border:1px solid #ffffff25;border-radius:10px;background:#0c0a11;color:#f5f3ff;outline:none}
+.onece-trash-permanent input:focus{border-color:#a78bfa}
+.onece-trash-empty-button{width:100%;margin-top:10px;padding:12px;border:1px solid #f2b0b736;border-radius:10px;background:#79191955;color:#ffb9b9;font-size:12px;font-weight:600;cursor:pointer}
+.onece-trash-empty-button:hover:not(:disabled){background:#79191999}
+.onece-trash-settings button:disabled{opacity:.45;cursor:default}
+.onece-trash-error,.onece-trash-notice,.onece-trash-pending{font-size:11px;line-height:1.5}
+.onece-trash-error{color:#f2b0b7}.onece-trash-notice{color:#c4b5fd}.onece-trash-pending{color:#f2c290!important}

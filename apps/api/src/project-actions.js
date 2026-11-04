@@ -2,6 +2,7 @@
 // Existing projects and private R2 file references are never cloned or deleted.
 // All writes are owner-scoped and transactional where multiple rows change.
 import {randomUUID} from 'node:crypto';
+import {moveProjectToTrash} from './trash.js';
 
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const send=(res,status,payload)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(payload));};
@@ -9,10 +10,11 @@ async function parseJson(req){
  let raw='';for await(const part of req){raw+=part;if(raw.length>8192)throw Error('oversized');}
  try{return JSON.parse(raw);}catch{throw Error('invalid');}
 }
-async function transaction(pool,work){
+async function transaction(pool,owner,work){
  const c=await pool.connect();
  try{
   await c.query('BEGIN');
+  await c.query('SELECT pg_advisory_xact_lock($1::bigint)',[owner]);
   const result=await work(c);
   if(result.status>=400){await c.query('ROLLBACK');return result;}
   await c.query('COMMIT');return result;
@@ -22,16 +24,16 @@ async function transaction(pool,work){
 const result=(status,data)=>({status,data});
 async function ownerProject(c,kind,id,owner){
  const table=kind==='beat'?'library_beats':'library_packs';
- return (await c.query('SELECT id,title,cover_file_id FROM '+table+' WHERE id=$1 AND user_id=$2 FOR UPDATE',[id,owner])).rows[0]||null;
+ return (await c.query('SELECT id,title,cover_file_id FROM '+table+' WHERE id=$1 AND user_id=$2 AND deleted_at IS NULL FOR UPDATE',[id,owner])).rows[0]||null;
 }
 async function sourceBeats(c,kind,id,owner){
  if(kind==='beat'){
-  const r=await c.query('SELECT id FROM library_beats WHERE id=$1 AND user_id=$2',[id,owner]);
+  const r=await c.query('SELECT id FROM library_beats WHERE id=$1 AND user_id=$2 AND deleted_at IS NULL',[id,owner]);
   return r.rows.map(x=>x.id);
  }
  const r=await c.query(`SELECT b.id FROM library_packs p JOIN library_pack_beats pb ON pb.pack_id=p.id
   JOIN library_beats b ON b.id=pb.beat_id AND b.user_id=$2
-  WHERE p.id=$1 AND p.user_id=$2 ORDER BY pb.position ASC`,[id,owner]);
+  WHERE p.id=$1 AND p.user_id=$2 AND p.deleted_at IS NULL AND b.deleted_at IS NULL ORDER BY pb.position ASC`,[id,owner]);
  return r.rows.map(x=>x.id);
 }
 async function attach(c,targetId,beatIds){
@@ -63,7 +65,7 @@ export async function handleProjectActions(req,res,pathname,pool,currentUser){
   if(!['beat','pack'].includes(sourceKind)||!uuid.test(sourceId||'')||!title||title.length>180){
    send(res,400,{error:'Invalid new project'});return true;
   }
-  const response=await transaction(pool,async c=>{
+  const response=await transaction(pool,owner,async c=>{
    const beats=await sourceBeats(c,sourceKind,sourceId,owner);
    if(!beats.length)return result(404,{error:'Source project is unavailable or empty'});
    if(beats.length>100)return result(400,{error:'A pack cannot contain more than 100 beats'});
@@ -80,7 +82,7 @@ export async function handleProjectActions(req,res,pathname,pool,currentUser){
   if(!['beat','pack'].includes(sourceKind)||!uuid.test(sourceId||'')){
    send(res,400,{error:'Invalid source'});return true;
   }
-  const response=await transaction(pool,async c=>{
+  const response=await transaction(pool,owner,async c=>{
    if(!await ownerProject(c,'pack',parts[4],owner))return result(404,{error:'Target pack not found'});
    if(sourceKind==='pack'&&sourceId===parts[4])return result(400,{error:'Cannot add a pack to itself'});
    const beats=await sourceBeats(c,sourceKind,sourceId,owner);
@@ -107,7 +109,7 @@ export async function handleProjectActions(req,res,pathname,pool,currentUser){
    (hasCover&&cover!==null&&(!Number.isSafeInteger(cover)||cover<1))){
    send(res,400,{error:'Specify one valid title or coverFileId'});return true;
   }
-  const response=await transaction(pool,async c=>{
+  const response=await transaction(pool,owner,async c=>{
    if(!await ownerProject(c,kind,id,owner))return result(404,{error:'Project not found'});
    if(hasCover&&cover!==null){
     const check=await c.query("SELECT id FROM library_files WHERE id=$1 AND user_id=$2 AND kind='cover' AND status='ready'",[cover,owner]);
@@ -121,22 +123,9 @@ export async function handleProjectActions(req,res,pathname,pool,currentUser){
   send(res,response.status,response.data);return true;
  }
  if(req.method==='DELETE'){
-  const response=await transaction(pool,async c=>{
-   if(!await ownerProject(c,kind,id,owner))return result(404,{error:'Project not found'});
-   // These generic UUID relationships intentionally have no FK to beats/packs.
-   // Remove them before deleting metadata so no stale public/granted/save edges survive.
-   await c.query('DELETE FROM v2_public_projects WHERE user_id=$1 AND kind=$2 AND project_id=$3',[owner,kind,id]);
-   await c.query('DELETE FROM v2_public_saves WHERE owner_id=$1 AND kind=$2 AND project_id=$3',[owner,kind,id]);
-   await c.query('DELETE FROM v2_project_access WHERE owner_id=$1 AND kind=$2 AND project_id=$3',[owner,kind,id]);
-   await c.query('DELETE FROM v2_project_share_links WHERE owner_id=$1 AND kind=$2 AND project_id=$3',[owner,kind,id]);
-   if(kind==='beat'){
-    // Pack member rows reference beats with ON DELETE RESTRICT.
-    // Explicitly detach only this beat, retaining all other pack beats.
-    await c.query('DELETE FROM library_pack_beats WHERE beat_id=$1',[id]);
-   }
-   // Pack member rows are ON DELETE CASCADE. Neither deletion deletes R2.
-   await c.query('DELETE FROM '+table+' WHERE id=$1 AND user_id=$2',[id,owner]);
-   return result(200,{deleted:true,id,kind,mediaRetained:true});
+  const response=await transaction(pool,owner,async c=>{
+   const moved=await moveProjectToTrash(c,{owner,kind,id});
+   return moved?result(200,{trashed:true,id,kind,restoreDays:30}):result(404,{error:'Project not found'});
   });
   send(res,response.status,response.data);return true;
  }
