@@ -132,10 +132,13 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - name: Install like Railpack with frozen workspace dependency graph
         run: pnpm install --frozen-lockfile --prefer-offline
+      - name: Guard TypeScript-first API source policy
+        run: |
+          node --input-type=module -e "import {readdirSync} from 'node:fs'; const files=readdirSync('apps/api/src').filter(x=>x.endsWith('.js')); if(files.length)throw Error('Unexpected JavaScript API modules: '+files.join(', ')); console.log('TypeScript-only API source policy validated');"
       - name: Verify NodeNext source syntax and compiled TypeScript build
         run: |
-          node --check apps/api/src/server.js
           pnpm --filter @1ce/api build
+          node --check apps/api/dist/server.js
       - name: Compile API candidate with TypeScript without switching production entry
         run: |
           pnpm --filter @1ce/api build
