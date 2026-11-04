@@ -1,5 +1,14 @@
 # 1CE v2 PR #28 — Trash / R2 permanent deletion release gates
 
+## PR28 R2 canary attempt — test bucket access blocked (2026-11-03)
+
+**SAFE BLOCKER, NO R2 MUTATION:** A private one-shot Railway service `1ce-v2-pr28-r2-testbucket-delete-once` attempted the permitted first stage of an R2 DeleteObject canary using a **dedicated disposable bucket only**, `onece-s2-smoke-27`. Its script enforced `TEST_BUCKET != R2_BUCKET_NAME` (production media bucket), and would have created two random `users/999999/assets/.../verified/UUID` objects, deleted only one, checked the other's contents, and cleaned up the second. Runtime deployment `20ae9973-aec9-4803-b4c1-df5e7b7cf95b` stopped at the first read-only `HeadBucket` check with `403 Forbidden`. Therefore **no test objects were uploaded or deleted** and **no production media operations occurred**. The ephemeral service was removed; the normal API and Postgres remained SUCCESS and no Railway changes were staged.
+
+**Remediation before retry:** supply an R2 key scoped to the disposable test bucket (configure securely within Railway, never paste credentials into GitHub/docs/chat) or verify the correct accessible isolated test bucket and permissions. Do not weaken the bucket-name safety guard or fallback to production media without a new explicit scoped release decision. A successful real DeleteObject/HeadObject test and the complete UI/API Trash → Restore → Empty Trash disposable-media canary are **still pending**.
+
+**Read-only code review begun:** reviewed `trash.js`, the 003/004 FK schema, project actions, public profiles and media-access guards on PR #28. Observed owner-scoped R2 key validation, advisory locks around owner mutations, FK-RESTRICT file references, transactional outbox creation and a bounded idempotent worker. These observations and passing automated tests **do not constitute a separate independent security approval**. Obtain independent R2/concurrency review before release.
+
+
 ## Complete isolated restore rehearsal — 2026-11-03
 
 **PASS — full restore of a previously verified private R2 backup to disposable PostgreSQL.** One-shot Railway service `1ce-v2-private-restore-rehearsal-once` used the `postgres:18-alpine` image, downloaded only `db-backups/1ce-v2/20261103T215852Z/postgres-custom.dump` from the private v2 R2 bucket, verified its archived SHA-256 `83dcaa6dc51e580fb4e54d21741b0d24ae488da590f15740b177eb4ead07e0fb`, initialized a PostgreSQL 18 cluster inside the disposable container (local Unix socket only, no TCP listener, no persistent volume, **no production DB credentials**), and completed `pg_restore --no-owner --no-acl --exit-on-error --single-transaction` into its temporary database.
