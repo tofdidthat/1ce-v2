@@ -139,3 +139,13 @@ test('pack delete cascades hidden-only beats and revokes their public edges',asy
  }
  assert.equal(db.calls.some(x=>x.sql.startsWith('DELETE FROM library_files')),false);
 });
+
+test('another account cannot rename, recolor or attach to the owner pack',async()=>{
+ const db=fixture({owner:1});
+ const outsider={id:2};
+ assert.equal((await invoke(db,'PATCH','beat/'+beat,{title:'Stolen title'},outsider)).status,404);
+ assert.equal((await invoke(db,'PATCH','pack/'+pack,{coverFileId:100},outsider)).status,404);
+ assert.equal((await invoke(db,'POST','pack/'+pack+'/add',{sourceKind:'beat',sourceId:beat},outsider)).status,404);
+ assert.equal(db.calls.some(c=>/^(UPDATE|INSERT|DELETE) library_/.test(c.sql)),false);
+ assert.ok(db.calls.filter(c=>c.sql==='ROLLBACK').length>=3);
+});
