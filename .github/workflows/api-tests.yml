@@ -79,6 +79,19 @@ jobs:
         env:
           S2_TEST_DATABASE_URL: postgresql://s2_ci:isolated-ci-only@127.0.0.1:5432/onece_s2_ci
         run: node apps/api/scripts/s2-migration-smoke.mjs
+      - name: Verify owner-locked uploads, READY files, and pack links on disposable PostgreSQL
+        env:
+          S2_TEST_DATABASE_URL: postgresql://s2_ci:isolated-ci-only@127.0.0.1:5432/onece_s2_ci
+        run: |
+          node --check apps/api/scripts/s2-pg-library-integration.mjs
+          node apps/api/scripts/s2-pg-library-integration.mjs
+
+  s2-local-s3-syntax-preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax only - local S3 integration is opt-in and NOT executed
+        run: node --check apps/api/scripts/s2-local-storage-integration.mjs
 
   api-tests:
     runs-on: ubuntu-latest
@@ -121,7 +134,7 @@ jobs:
         run: pnpm install --frozen-lockfile --prefer-offline
       - name: Guard TypeScript-first API source policy
         run: |
-          node --input-type=module -e "import {readdirSync} from 'node:fs'; const legacy=new Set(['library-files.js','trash.js']); const files=readdirSync('apps/api/src').filter(x=>x.endsWith('.js')); const unexpected=files.filter(x=>!legacy.has(x)); if(unexpected.length)throw Error('Unplanned JavaScript API modules: '+unexpected.join(', ')); console.log('TypeScript-first API policy validated');"
+          node --input-type=module -e "import {readdirSync} from 'node:fs'; const files=readdirSync('apps/api/src').filter(x=>x.endsWith('.js')); if(files.length)throw Error('Unexpected JavaScript API modules: '+files.join(', ')); console.log('TypeScript-only API source policy validated');"
       - name: Verify NodeNext source syntax and compiled TypeScript build
         run: |
           pnpm --filter @1ce/api build
