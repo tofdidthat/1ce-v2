@@ -86,11 +86,11 @@ jobs:
           node --check apps/api/scripts/s2-pg-library-integration.mjs
           node apps/api/scripts/s2-pg-library-integration.mjs
 
-  s2-isolated-s3-runner:
+  s2-local-s3-syntax-preflight:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Verify isolated integration script syntax
+      - name: Syntax only - local S3 integration is opt-in and NOT executed
         run: node --check apps/api/scripts/s2-local-storage-integration.mjs
 
   api-tests:
