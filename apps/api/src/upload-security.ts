@@ -2,12 +2,39 @@
 // object key through a signed PUT URL. No full-file buffering or decompression.
 import {createHash} from 'node:crypto';
 import {GetObjectCommand} from '@aws-sdk/client-s3';
+import type {S3Client} from '@aws-sdk/client-s3';
+import type {MediaKindV2} from '../../../packages/shared/contracts.js';
+
+type StoredUploadV2={
+ kind:MediaKindV2;
+ content_type:string;
+ byte_size:number|string;
+ sha256:string;
+};
+type ReadableR2Body=AsyncIterable<Uint8Array>&{
+ destroy?:(error?:Error)=>unknown;
+};
+type ReadOptions={
+ range?:string;
+ maxBytes:number;
+ timeoutMs:number;
+ onChunk:(chunk:Buffer)=>void;
+};
+type ReadResult={total:number;contentRange:string|undefined};
+type VerifyUploadOptions={
+ s3:S3Client;
+ bucket:string;
+ key:string;
+ file:StoredUploadV2;
+ timeoutMs?:number;
+};
+type MpegFrameV2={version:number;sampleRate:number;bytes:number};
 
 export class InvalidMedia extends Error {
- constructor(message){super(message);this.name='InvalidMedia';}
+ constructor(message:string){super(message);this.name='InvalidMedia';}
 }
 export class VerificationUnavailable extends Error {
- constructor(message){super(message);this.name='VerificationUnavailable';}
+ constructor(message:string){super(message);this.name='VerificationUnavailable';}
 }
 
 const MB=1024*1024;
@@ -16,22 +43,22 @@ const MAX_ZIP_ENTRIES=200;
 const MAX_ZIP_DIRECTORY=2*MB;
 const MAX_ZIP_EXPANDED=2*1024*MB;
 const ZIP_TAIL=65557; // EOCD, maximum 65535-byte comment
-const maxTime={audio:120000,cover:45000,stems:180000};
-const matches=(bytes,offset,signature)=>bytes.length>=offset+signature.length&&
+const maxTime:Record<MediaKindV2,number>={audio:120000,cover:45000,stems:180000};
+const matches=(bytes:Buffer,offset:number,signature:string|number[]):boolean=>bytes.length>=offset+signature.length&&
  bytes.subarray(offset,offset+signature.length).equals(Buffer.from(signature));
 
-async function readObject(s3,bucket,key,{range,maxBytes,timeoutMs,onChunk}){
+async function readObject(s3:S3Client,bucket:string,key:string,{range,maxBytes,timeoutMs,onChunk}:ReadOptions):Promise<ReadResult>{
  const controller=new AbortController();
  const timer=setTimeout(()=>controller.abort(new Error('R2 verification deadline exceeded')),timeoutMs);
  // Keep the deadline referenced so stalled streams cannot outlive the verifier.
- let body;
+ let body:ReadableR2Body|undefined;
  try{
   const object=await s3.send(new GetObjectCommand({Bucket:bucket,Key:key,...(range?{Range:range}: {})}),{abortSignal:controller.signal});
-  body=object.Body;
+  body=object.Body as unknown as ReadableR2Body|undefined;
   if(!body||typeof body[Symbol.asyncIterator]!=='function')throw new VerificationUnavailable('R2 did not provide a readable body');
   if(Number.isFinite(Number(object.ContentLength))&&Number(object.ContentLength)>maxBytes)
    throw new InvalidMedia('R2 response exceeds the permitted size');
-  const stop=()=>body.destroy?.(new Error('R2 verification deadline exceeded'));
+  const stop=()=>body?.destroy?.(new Error('R2 verification deadline exceeded'));
   controller.signal.addEventListener('abort',stop,{once:true});
   let total=0;
   try{
@@ -50,10 +77,10 @@ async function readObject(s3,bucket,key,{range,maxBytes,timeoutMs,onChunk}){
  }finally{clearTimeout(timer);body?.destroy?.();}
 }
 
-async function rangedBytes(s3,bucket,key,start,end,timeoutMs=15000){
+async function rangedBytes(s3:S3Client,bucket:string,key:string,start:number,end:number,timeoutMs=15000):Promise<Buffer>{
  if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start<0||end<start||end-start+1>MAX_ZIP_DIRECTORY)
   throw new InvalidMedia('Invalid ZIP verification range');
- const chunks=[],expected=end-start+1;
+ const chunks:Buffer[]=[],expected=end-start+1;
  const result=await readObject(s3,bucket,key,{
   range:`bytes=${start}-${end}`,maxBytes:expected,timeoutMs,onChunk:chunk=>chunks.push(chunk)
  });
@@ -63,8 +90,9 @@ async function rangedBytes(s3,bucket,key,start,end,timeoutMs=15000){
  return Buffer.concat(chunks,expected);
 }
 
-function validateSignature(file,prefix,tail){
- const {kind,content_type:contentType,byte_size:size}=file;
+function validateSignature(file:StoredUploadV2,prefix:Buffer,tail:Buffer):void{
+ const {kind,content_type:contentType}=file;
+ const size=Number(file.byte_size);
  if(kind==='audio'&&['audio/mpeg','audio/mp3'].includes(contentType)){
   const id3=matches(prefix,0,[0x49,0x44,0x33])&&prefix.length>=10&&
    prefix[3]>=2&&prefix[3]<=4&&prefix[4]===0&&
@@ -112,7 +140,7 @@ function validateSignature(file,prefix,tail){
 // ID3 metadata alone is not an MP3. Validate two consecutive MPEG Layer III
 // frame headers at the actual audio offset; VBR may change bitrate per frame.
 // This is a bounded structural check, NOT full audio decoding.
-function mp3Frame(header){
+function mp3Frame(header:Buffer):MpegFrameV2|null{
  if(header.length!==4||header[0]!==0xff||(header[1]&0xe0)!==0xe0)return null;
  const version=(header[1]>>3)&3,layer=(header[1]>>1)&3;
  const bitrateIndex=(header[2]>>4)&15,sampleIndex=(header[2]>>2)&3;
@@ -125,7 +153,7 @@ function mp3Frame(header){
  const bytes=Math.floor((version===3?144:72)*bitrate/sampleRate)+padding;
  return bytes>=24?{version,sampleRate,bytes}:null;
 }
-async function validateMp3Frames(s3,bucket,key,file,prefix){
+async function validateMp3Frames(s3:S3Client,bucket:string,key:string,file:StoredUploadV2,prefix:Buffer):Promise<void>{
  const tagged=matches(prefix,0,'ID3');
  const encoded=tagged?((prefix[6]<<21)|(prefix[7]<<14)|(prefix[8]<<7)|prefix[9]):0;
  const footer=tagged&&prefix[3]===4&&(prefix[5]&0x10)?10:0;
@@ -140,7 +168,7 @@ async function validateMp3Frames(s3,bucket,key,file,prefix){
   throw new InvalidMedia('MP3 requires consecutive compatible Layer III frames');
 }
 
-async function validateZip(s3,bucket,key,size){
+async function validateZip(s3:S3Client,bucket:string,key:string,size:number):Promise<void>{
  const deadline=Date.now()+60000;
  const remaining=()=>{
   const ms=deadline-Date.now();
@@ -206,12 +234,12 @@ async function validateZip(s3,bucket,key,size){
  if(offset!==dir.length||files===0)throw new InvalidMedia('ZIP directory is inconsistent or empty');
 }
 
-export async function verifyUploadedObject({s3,bucket,key,file,timeoutMs}){
+export async function verifyUploadedObject({s3,bucket,key,file,timeoutMs}:VerifyUploadOptions):Promise<void>{
  const size=Number(file.byte_size);
  if(!Number.isSafeInteger(size)||size<1||!['audio','cover','stems'].includes(file.kind))
   throw new InvalidMedia('Invalid stored media metadata');
  const hash=createHash('sha256');
- let prefix=Buffer.alloc(0),tail=Buffer.alloc(0);
+ let prefix:Buffer=Buffer.alloc(0),tail:Buffer=Buffer.alloc(0);
  const {total}=await readObject(s3,bucket,key,{
   maxBytes:size,timeoutMs:timeoutMs??maxTime[file.kind],onChunk:chunk=>{
    hash.update(chunk);
