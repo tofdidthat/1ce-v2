@@ -1,4 +1,6 @@
 import { createServer } from 'node:http';
+import type {IncomingMessage,ServerResponse} from 'node:http';
+import type {PoolClient} from 'pg';
 import { pathToFileURL } from 'node:url';
 import { randomBytes, createHash, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
@@ -11,17 +13,20 @@ import {handleTrash} from './trash.js';
 import { handlePublicProfiles } from './public-profiles.js';
 import { handleProfileFollows } from './profile-follows.js';
 import { handleProfileIdentity } from './profile-identity.js';
-const scrypt=promisify(scryptCallback);
+type AccountV2={id:number;email:string;name:string|null;picture:string|null;username?:string|null;has_avatar?:boolean;avatar_updated_at?:string|null};
+type VerifiedGoogleV2={sub:string;email:string;email_verified:true;name?:string|null;picture?:string|null};
+type GoogleConfigV2={clientId:string|undefined;clientSecret:string|undefined;redirectUri:string|undefined};
+const scrypt=promisify(scryptCallback) as (password:string,salt:Buffer,size:number,options:{N:number;r:number;p:number})=>Promise<Buffer>;
 const pool=new pg.Pool({connectionString:process.env.DATABASE_URL,ssl:process.env.DATABASE_SSL==='true'?{rejectUnauthorized:true}:undefined});
 const origin=process.env.WEB_ORIGIN || 'http://localhost:5173';
 const cookieName='onece_v2_session';
-const hash=s=>createHash('sha256').update(s).digest('hex');
-const json=(res,status,data,headers={})=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',...headers});res.end(JSON.stringify(data));};
-const parseCookies=s=>Object.fromEntries((s||'').split(';').map(x=>x.trim().split('=').slice(0,2)).filter(x=>x.length===2));
+const hash=(s:string)=>createHash('sha256').update(s).digest('hex');
+const json=(res:ServerResponse,status:number,data:unknown,headers:Record<string,string>={})=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',...headers});res.end(JSON.stringify(data));};
+const parseCookies=(s:string|undefined):Record<string,string>=>Object.fromEntries((s||'').split(';').map(x=>x.trim().split('=').slice(0,2)).filter(x=>x.length===2));
 let activePasswordChecks=0;
 const MAX_PARALLEL_PASSWORD_CHECKS=8;
 class LoginCapacityExceeded extends Error {}
-async function verify(password,stored){
+async function verify(password:string,stored:string|undefined|null):Promise<boolean>{
  const p=(stored||'').split('$');
  if(p.length!==3||p[0]!=='scrypt'||!/^[a-f0-9]{32}$/i.test(p[1])||!/^[a-f0-9]{128}$/i.test(p[2]))return false;
  if(activePasswordChecks>=MAX_PARALLEL_PASSWORD_CHECKS)throw new LoginCapacityExceeded('Password verification busy');
@@ -32,27 +37,27 @@ async function verify(password,stored){
   return timingSafeEqual(derived,expected);
  }finally{activePasswordChecks--;}
 }
-function cookie(token,maxAge){return cookieName+'='+token+'; HttpOnly; Secure; SameSite=None; Path=/; Max-Age='+maxAge;}
-async function currentUser(req){const token=parseCookies(req.headers.cookie)[cookieName];if(!token||!/^[a-f0-9]{64}$/.test(token))return null;const q=await pool.query('SELECT u.id,u.email,u.name,u.picture,u.username,(u.avatar_key IS NOT NULL) AS has_avatar,u.avatar_updated_at FROM account_sessions s JOIN account_users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>now()',[hash(token)]);return q.rows[0]||null;}
+function cookie(token:string,maxAge:number){return cookieName+'='+token+'; HttpOnly; Secure; SameSite=None; Path=/; Max-Age='+maxAge;}
+async function currentUser(req:IncomingMessage):Promise<AccountV2|null>{const token=parseCookies(req.headers.cookie)[cookieName];if(!token||!/^[a-f0-9]{64}$/.test(token))return null;const q=await pool.query('SELECT u.id,u.email,u.name,u.picture,u.username,(u.avatar_key IS NOT NULL) AS has_avatar,u.avatar_updated_at FROM account_sessions s JOIN account_users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>now()',[hash(token)]);return q.rows[0]||null;}
 
 const googleStateCookie='onece_v2_google_state';
-const shaBase64=s=>createHash('sha256').update(s).digest('base64url');
-const validCode=s=>typeof s==='string'&&/^[A-Za-z0-9_-]{43}$/.test(s);
+const shaBase64=(s:string)=>createHash('sha256').update(s).digest('base64url');
+const validCode=(s:unknown):s is string=>typeof s==='string'&&/^[A-Za-z0-9_-]{43}$/.test(s);
 const googleConfig=()=>({clientId:process.env.GOOGLE_CLIENT_ID,clientSecret:process.env.GOOGLE_CLIENT_SECRET,redirectUri:process.env.GOOGLE_REDIRECT_URI});
-const redirect=(res,url,headers={})=>{res.writeHead(302,{'Location':url,'Cache-Control':'no-store',...headers});res.end();};
-const googleError=res=>redirect(res,origin+'/app?login=error',{'Set-Cookie':googleStateCookie+'=; HttpOnly; Secure; SameSite=Lax; Path=/auth/google; Max-Age=0'});
-async function requestGoogleUser(code,config){
- const tokenResponse=await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({code,client_id:config.clientId,client_secret:config.clientSecret,redirect_uri:config.redirectUri,grant_type:'authorization_code'}),signal:AbortSignal.timeout(10000)});
+const redirect=(res:ServerResponse,url:string,headers:Record<string,string>={})=>{res.writeHead(302,{'Location':url,'Cache-Control':'no-store',...headers});res.end();};
+const googleError=(res:ServerResponse)=>redirect(res,origin+'/app?login=error',{'Set-Cookie':googleStateCookie+'=; HttpOnly; Secure; SameSite=Lax; Path=/auth/google; Max-Age=0'});
+async function requestGoogleUser(code:string,config:GoogleConfigV2):Promise<VerifiedGoogleV2>{
+ const tokenResponse=await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({code,client_id:config.clientId!,client_secret:config.clientSecret!,redirect_uri:config.redirectUri!,grant_type:'authorization_code'}),signal:AbortSignal.timeout(10000)});
  if(!tokenResponse.ok)throw new Error('Google token exchange failed');
- const token=await tokenResponse.json();
+ const token=await tokenResponse.json() as {access_token?:unknown};
  if(typeof token.access_token!=='string')throw new Error('Google access token missing');
  const userResponse=await fetch('https://openidconnect.googleapis.com/v1/userinfo',{headers:{Authorization:'Bearer '+token.access_token},signal:AbortSignal.timeout(10000)});
  if(!userResponse.ok)throw new Error('Google userinfo failed');
- const user=await userResponse.json();
+ const user=await userResponse.json() as {sub?:unknown;email?:unknown;email_verified?:unknown;name?:string|null;picture?:string|null};
  if(typeof user.sub!=='string'||!user.sub||typeof user.email!=='string'||user.email_verified!==true)throw new Error('Google identity not verified');
- return user;
+ return user as VerifiedGoogleV2;
 }
-async function linkGoogleUser(client,profile){
+async function linkGoogleUser(client:PoolClient,profile:VerifiedGoogleV2):Promise<number>{
  const email=profile.email.trim().toLowerCase();
  if(!email||email.length>254)throw new Error('Invalid Google email');
  const byGoogle=await client.query('SELECT id,email,google_id,email_verified FROM account_users WHERE google_id=$1 FOR UPDATE',[profile.sub]);
