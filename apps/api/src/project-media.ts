@@ -50,7 +50,7 @@ function decodeReadyMediaRow(value:unknown):OwnedReadyMediaV2{
  const row=dbRecord(value);
  const bytes=row.byte_size;
  const validSize=(typeof bytes==='number'&&Number.isSafeInteger(bytes)&&bytes>0)||
-  (typeof bytes==='string'&&/^[1-9]\\d*$/.test(bytes));
+  (typeof bytes==='string'&&/^[1-9]\d*$/.test(bytes));
  if(typeof row.object_key!=='string'||!row.object_key||
   typeof row.content_type!=='string'||!row.content_type||!validSize)
   throw Error('Invalid ready media metadata');
