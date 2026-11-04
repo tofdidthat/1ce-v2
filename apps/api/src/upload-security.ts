@@ -91,7 +91,8 @@ async function rangedBytes(s3:S3Client,bucket:string,key:string,start:number,end
 }
 
 function validateSignature(file:StoredUploadV2,prefix:Buffer,tail:Buffer):void{
- const {kind,content_type:contentType,byte_size:size}=file;
+ const {kind,content_type:contentType}=file;
+ const size=Number(file.byte_size);
  if(kind==='audio'&&['audio/mpeg','audio/mp3'].includes(contentType)){
   const id3=matches(prefix,0,[0x49,0x44,0x33])&&prefix.length>=10&&
    prefix[3]>=2&&prefix[3]<=4&&prefix[4]===0&&
@@ -238,7 +239,7 @@ export async function verifyUploadedObject({s3,bucket,key,file,timeoutMs}:Verify
  if(!Number.isSafeInteger(size)||size<1||!['audio','cover','stems'].includes(file.kind))
   throw new InvalidMedia('Invalid stored media metadata');
  const hash=createHash('sha256');
- let prefix=Buffer.alloc(0),tail=Buffer.alloc(0);
+ let prefix:Buffer=Buffer.alloc(0),tail:Buffer=Buffer.alloc(0);
  const {total}=await readObject(s3,bucket,key,{
   maxBytes:size,timeoutMs:timeoutMs??maxTime[file.kind],onChunk:chunk=>{
    hash.update(chunk);
