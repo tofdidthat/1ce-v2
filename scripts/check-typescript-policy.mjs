@@ -22,14 +22,14 @@ export function checkTypeScriptPolicy(root=process.cwd(),exemptions=temporaryExe
   if(config.compilerOptions?.allowJs!==false)errors.push(name+': allowJs must remain false');
  }
  const encountered=new Set();
- for(const directory of ['apps/api/src','apps/web/src']){
+ for(const directory of ['apps/api/src','apps/web/src','packages/shared']){
   for(const absolute of walk(join(root,directory))){
    const path=relative(root,absolute).replaceAll('\\','/');
    if(/\.(?:js|jsx|mjs|cjs)$/i.test(path))errors.push(path+': JavaScript production source is forbidden');
    if(!/\.(?:ts|tsx)$/i.test(path))continue;
    const source=readFileSync(absolute,'utf8');
-   if(/\/\/\s*@ts-ignore\b/.test(source))errors.push(path+': @ts-ignore forbidden');
-   if(/\/\/\s*@ts-nocheck\b/.test(source)){
+   if(/(?:\/\/|\/\*)\s*@ts-ignore\b/.test(source))errors.push(path+': @ts-ignore forbidden');
+   if(/(?:\/\/|\/\*)\s*@ts-nocheck\b/.test(source)){
     encountered.add(path);
     if(!exemptions.has(path))errors.push(path+': @ts-nocheck forbidden');
    }
