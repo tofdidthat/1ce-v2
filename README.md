@@ -1,36 +1,40 @@
 # 1CE v2
 
-Independent 1CE application built with a React/Vite frontend, a Node.js API, PostgreSQL and private Cloudflare R2 storage. The v1 application and its infrastructure are separate and must remain untouched.
+1CE v2 is an independent music-project platform. The monorepo contains a React + TypeScript frontend, a Node.js API, a PostgreSQL database model and private Cloudflare R2 storage.
 
-## Repository layout
+**Documentation:** This README is the quick-start guide. All maintained technical decisions, module maps, operational instructions, release evidence and pending checks live in **[docs/architecture.md](docs/architecture.md)**. Historical documents and per-PR implementation notes remain recoverable in Git history, rather than maintained as separate Markdown files.
 
-| Path | Purpose |
+## Repository structure
+
+| Directory | Responsibility |
 | --- | --- |
-| `apps/web/` | React, TypeScript and Vite frontend; UI modules, styles and frontend tests |
-| `apps/api/` | Node.js HTTP API; authentication, projects, media, Trash and API tests |
-| `history/database/` | Versioned v2 SQL migrations and guarded historical apply scripts |
-| `docs/` | Architecture overview, navigation, dated implementation ledgers and release evidence |
-| `scripts/` | Repository-wide audit tools |
-| `.github/workflows/` | CI checks and disposable-database smoke tests |
+| `apps/web/` | Vite/React frontend, UI components, styling and frontend tests |
+| `apps/api/` | Node.js API, authentication, uploads, media, Trash and backend tests |
+| `history/database/` | v2 SQL migrations and guarded historical application scripts |
+| `scripts/` | Dependency and repository audits |
+| `.github/workflows/` | CI, API tests, disposable PostgreSQL smoke, frontend builds |
+| `docs/architecture.md` | **Single technical guide and release reference** |
+
+The original v1 repository, its live application, database, buckets and credentials are **read-only and outside the v2 deployment boundary**.
 
 ## Local development
 
-Use **Node.js 22 or newer** and **pnpm 10.18.0**, as pinned in the root `package.json`. From the repository root:
+Requirements: **Node.js 22+** and **pnpm 10.18.0** (pinned in root `package.json`). Run from the repository root:
 
 ```sh
 pnpm install --frozen-lockfile
 pnpm dev:web
 ```
 
-Start the API separately:
+In a second terminal:
 
 ```sh
 pnpm --filter @1ce/api dev
 ```
 
-Frontend configuration is illustrated in `apps/web/.env.example`; API configuration examples are in `apps/api/.env.example`. Provide required values through local environment variables, keep local secrets out of Git, and never reuse v1 production credentials. The frontend's `VITE_API_URL` must point at the intended **v2** API.
+Copy only the **variable names** from `apps/web/.env.example` and `apps/api/.env.example`; configure environment-specific secrets outside Git. `VITE_API_URL` must point to the intended **v2** API. Never reuse v1 production credentials.
 
-## Validation before changes
+## Validation
 
 ```sh
 pnpm --filter @1ce/api test
@@ -40,16 +44,12 @@ pnpm --filter @1ce/web build
 node scripts/audit-dependencies.mjs
 ```
 
-GitHub Actions also runs API tests, a disposable PostgreSQL migration smoke test, an API startup check and frontend builds. Tests that exercise external infrastructure must be deliberately authorized and isolated.
+The GitHub workflow also tests the API startup and SQL migrations on disposable infrastructure. External PostgreSQL/R2 tests must be explicitly isolated and authorized.
 
-## Safety and release rules
+## Engineering rules
 
-- Keep v1 code, data, sessions, buckets, tokens and domains unchanged.
-- Treat all SQL migrations as environment-specific operations; **do not rerun archived migrations** merely because they exist in Git.
-- Changes that can delete R2 data need backup evidence, independent review, disposable-media testing and a separately approved rollout.
-- A successful merge or CI run does **not** by itself confirm a Railway/Vercel production deployment or an end-to-end release.
-- Do work in focused branches, verify affected tests and builds, and avoid unrelated refactors.
-
-## Documentation
-
-Begin with the [documentation index](docs/README.md) and [system overview](docs/system-overview.md). `docs/architecture.md` is retained as a cumulative **historical implementation ledger**; older entries may describe states that have already changed. Consult the dated release evidence before making infrastructure or deletion decisions.
+- Keep the v1 stack untouched; work on the v2 branch and environment only.
+- Prefer existing components, CSS and TypeScript interfaces; avoid unnecessary files, duplication and unrelated refactors.
+- Treat **implemented**, **merged**, **migrated**, **deployed** and **manually verified** as five different statuses.
+- Do not reapply historical migrations or delete real user media because an older runbook says to.
+- Review the relevant part of [the architecture and release guide](docs/architecture.md) before a change. Work in scoped batches, verify CI and get separate approval before production deploys or irreversible actions.
