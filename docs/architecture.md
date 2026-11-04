@@ -271,3 +271,10 @@ Maior dependência externa: **validação de comportamentos reais entre contas, 
 - Workspace navigation uses known route targets. A dead edit-profile action in the normal workspace header is removed because that header never renders on profile routes; the actual profile toolbar remains unchanged.
 - Upload file IDs are numbers, beat/pack project IDs are UUID strings, and neither are converted across categories. Upload/R2, dedup, player, queue, pack visibility and playback flow are preserved.
 - CI compilation cannot substitute for manual browser acceptance of navigation, account sessions and private media operations.
+
+
+### Verified TypeScript audit criteria (draft Lot C)
+
+- Negative policy tests cover nested JavaScript source under API, web and shared contracts, compiler strictness, block and line comment suppressions, and stale exceptions.
+- The authenticated identity parser tests both minimal valid session objects and malformed user JSON; no client value replaces API ownership checks.
+- CI at the final branch head is necessary but not sufficient for browser-level sign-in, Home, uploads, profile navigation and player acceptance. Keep the PRs in Draft until explicit merge and release approval.
