@@ -85,7 +85,7 @@ export async function handleLibraryFiles(
    await db.query('SELECT pg_advisory_xact_lock($1::bigint)',[user.id]);
    const q=await db.query("SELECT id,kind FROM library_files WHERE user_id=$1 AND status='ready' AND id=ANY($2::bigint[])",[user.id,ids]);
    const valid=new Map(q.rows.map(x=>[Number(x.id),x.kind]));
-   if(valid.get(data.audioFileId)!=='audio'||data.coverFileId!=null&&valid.get(data.coverFileId)!=='cover'||data.stemsFileId!=null&&valid.get(data.stemsFileId)!=='stems'){
+   if(valid.get(data.audioFileId)!=='audio'||data.coverFileId!=null&&valid.get(data.coverFileId as number)!=='cover'||data.stemsFileId!=null&&valid.get(data.stemsFileId as number)!=='stems'){
     await db.query('ROLLBACK');send(res,400,{error:'Assets must be owned by you and ready'});return true;
    }
    const existing=await db.query("SELECT id,deleted_at FROM library_beats WHERE user_id=$1 AND audio_file_id=$2",[user.id,data.audioFileId]);
@@ -107,19 +107,19 @@ export async function handleLibraryFiles(
   const newBeatIds=data?.newBeatIds||[];
   if(!title||title.length>180||!Array.isArray(beatIds)||beatIds.length<2||beatIds.length>100||new Set(beatIds).size!==beatIds.length||beatIds.some(id=>typeof id!=='string'||!/^[a-f0-9-]{36}$/i.test(id))){send(res,400,{error:'Invalid pack'});return true;}
   if(!Array.isArray(newBeatIds)||new Set(newBeatIds).size!==newBeatIds.length||newBeatIds.some(id=>!beatIds.includes(id))){send(res,400,{error:'Invalid new beat IDs'});return true;}
-  if(data.coverFileId!=null&&(typeof data.coverFileId!=='number'||!Number.isSafeInteger(data.coverFileId)||data.coverFileId<1)){send(res,400,{error:'Invalid cover'});return true;}
+  if(data?.coverFileId!=null&&(typeof data.coverFileId!=='number'||!Number.isSafeInteger(data.coverFileId)||data.coverFileId<1)){send(res,400,{error:'Invalid cover'});return true;}
   const client=await pool.connect();
   try{
    await client.query('BEGIN');
    await client.query('SELECT pg_advisory_xact_lock($1::bigint)',[user.id]);
    const owned=await client.query('SELECT id FROM library_beats WHERE user_id=$1 AND deleted_at IS NULL AND id=ANY($2::uuid[])',[user.id,beatIds]);
    if(owned.rowCount!==beatIds.length){await client.query('ROLLBACK');send(res,403,{error:'Beat not owned by you'});return true;}
-   if(data.coverFileId!=null){
-    const cover=await client.query("SELECT id FROM library_files WHERE id=$1 AND user_id=$2 AND kind='cover' AND status='ready'",[data.coverFileId,user.id]);
+   if(data?.coverFileId!=null){
+    const cover=await client.query("SELECT id FROM library_files WHERE id=$1 AND user_id=$2 AND kind='cover' AND status='ready'",[data?.coverFileId,user.id]);
     if(!cover.rowCount){await client.query('ROLLBACK');send(res,403,{error:'Cover not owned by you'});return true;}
    }
    const id=randomUUID();
-   await client.query('INSERT INTO library_packs(id,user_id,title,cover_file_id) VALUES($1,$2,$3,$4)',[id,user.id,title,data.coverFileId||null]);
+   await client.query('INSERT INTO library_packs(id,user_id,title,cover_file_id) VALUES($1,$2,$3,$4)',[id,user.id,title,data?.coverFileId||null]);
    for(let i=0;i<beatIds.length;i++)await client.query('INSERT INTO library_pack_beats(pack_id,beat_id,position) VALUES($1,$2,$3)',[id,beatIds[i],i]);
    if(newBeatIds.length)await client.query('UPDATE library_beats SET library_visible=FALSE WHERE user_id=$1 AND id=ANY($2::uuid[]) AND library_visible=TRUE',[user.id,newBeatIds]);
    await client.query('COMMIT');send(res,201,{id});return true;
