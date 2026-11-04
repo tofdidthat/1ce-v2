@@ -46,6 +46,7 @@ test('Back is aligned with right buttons, and Copy link is the exact icon from c
  assert.match(copyIcon,/import \{Link\} from 'lucide-react'/);
  assert.match(copyIcon,/return <Link size=\{size\}\/>/);
  assert.match(profile,/aria-label="Copy profile link"/);
+ assert.match(profile,/onece-profile-nav-copy[^]*?onece-profile-nav-edit/);
  assert.match(profile,/<CopyLinkIconV2 size=\{22\}\/><\/button>/);
  assert.doesNotMatch(profile,/<Copy size=/);
  assert.match(profile,/className="onece-workspace-actions onece-profile-nav-actions"/);
