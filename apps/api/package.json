@@ -3,9 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node src/server.js",
-    "start": "node src/server.js",
-    "test": "node --test",
+    "dev": "pnpm build && node dist/server.js",
+    "start": "node dist/server.js",
+    "test": "pnpm build && node --test",
     "build": "tsc --project tsconfig.json",
     "start:compiled": "node dist/server.js"
   },
