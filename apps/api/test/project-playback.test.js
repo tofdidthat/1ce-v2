@@ -117,3 +117,14 @@ test('invalid and nonexistent references never expose private media',async()=>{
  assert.equal(await resolvePlayableProject(pool,{ownerId:'1 OR 1=1',kind:'beat',projectId:beatId,viewerId:1}),null);
  assert.equal(pool.calls.length,1);
 });
+
+test('malformed viewer identities never gain a private playback manifest',async()=>{
+ const pool=fixture({grants:[{kind:'beat',id:beatId,viewer:2}]});
+ for(const viewerId of ['02','2 OR 1=1','2.0',0,-1,2.5]){
+  assert.equal(await resolvePlayableProject(pool,{
+   ownerId:1,viewerId,kind:'beat',projectId:beatId
+  }),null);
+ }
+ assert.equal(pool.calls.length,6);
+ assert.ok(pool.calls.every(c=>c.args[2]===null));
+});
