@@ -1,15 +1,22 @@
 import {randomBytes,createHash} from 'node:crypto';
+import type {IncomingMessage,ServerResponse} from 'node:http';
+import type {ProjectKindV2,QueryableV2} from '../../../packages/shared/contracts.js';
 import {S3Client,GetObjectCommand} from '@aws-sdk/client-s3';
 import {resolveAuthorizedMediaFile,resolvePlayableProject} from './project-media.js';
 import {streamAuthorizedAudio} from './audio-stream.js';
 import {readProfileLinksV2} from './profile-links.js';
 // 1CE v2 public profile catalog and public saves. Metadata only; R2 objects are never duplicated.
-const send=(res,status,data)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data));};
+type DatabaseClientV2=QueryableV2&{release():void};
+type DatabasePoolV2=QueryableV2&{connect():Promise<DatabaseClientV2>};
+type AccountV2={id:number};
+type SessionLookupV2=(req:IncomingMessage)=>Promise<AccountV2|null>;
+type PublicMutationV2={status:number;data:unknown};
+const send=(res:ServerResponse,status:number,data:unknown)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data));};
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const ownerResult=(status,data)=>({status,data});
+const ownerResult=(status:number,data:unknown):PublicMutationV2=>({status,data});
 // Serialize publication/save/share writes with move-to-Trash, restore and permanent purge.
 // Mutations must re-check live project state *after* acquiring this lock.
-async function ownerMutation(pool,owner,work){
+async function ownerMutation(pool:DatabasePoolV2,owner:number,work:(db:DatabaseClientV2)=>Promise<PublicMutationV2>):Promise<PublicMutationV2>{
  const db=await pool.connect();
  try{
   await db.query('BEGIN');
@@ -20,8 +27,8 @@ async function ownerMutation(pool,owner,work){
  }catch(error){try{await db.query('ROLLBACK');}catch{}throw error;}
  finally{db.release();}
 }
-let initialized;
-function ready(pool){
+let initialized:Promise<void>|null|undefined;
+function ready(pool:DatabasePoolV2):Promise<void>{
  if(!initialized)initialized=(async()=>{
   await pool.query(`CREATE TABLE IF NOT EXISTS v2_public_projects (
    user_id INTEGER NOT NULL REFERENCES account_users(id) ON DELETE CASCADE,
@@ -42,7 +49,7 @@ function ready(pool){
   await pool.query("CREATE TABLE IF NOT EXISTS v2_project_share_links (token_hash TEXT PRIMARY KEY,owner_id INTEGER NOT NULL REFERENCES account_users(id) ON DELETE CASCADE,kind TEXT NOT NULL CHECK(kind IN ('beat','pack')),project_id UUID NOT NULL,created_at TIMESTAMPTZ DEFAULT now())");
   await pool.query('CREATE INDEX IF NOT EXISTS v2_public_saves_owner_idx ON v2_public_saves(owner_id,kind,project_id)');
  })().catch(err=>{initialized=null;throw err});
- return initialized;
+ return initialized!;
 }
 const selectProjects=`SELECT pub.kind,pub.project_id AS id,pub.user_id AS owner_id,
  CASE WHEN pub.kind='beat' THEN b.title ELSE p.title END AS title,
@@ -53,9 +60,9 @@ const selectProjects=`SELECT pub.kind,pub.project_id AS id,pub.user_id AS owner_
  LEFT JOIN library_beats b ON pub.kind='beat' AND b.id=pub.project_id AND b.user_id=pub.user_id AND b.deleted_at IS NULL
  LEFT JOIN library_packs p ON pub.kind='pack' AND p.id=pub.project_id AND p.user_id=pub.user_id AND p.deleted_at IS NULL
  WHERE (b.id IS NOT NULL OR p.id IS NOT NULL)`;
-export async function handlePublicProfiles(req,res,pathname,pool,currentUser){
+export async function handlePublicProfiles(req:IncomingMessage,res:ServerResponse,pathname:string,pool:DatabasePoolV2,currentUser:SessionLookupV2):Promise<boolean>{
  if(!pathname.startsWith('/api/public/'))return false;
- if(!['GET','POST','DELETE'].includes(req.method)){send(res,405,{error:'Method not allowed'});return true;}
+ if(!['GET','POST','DELETE'].includes(req.method||'')){send(res,405,{error:'Method not allowed'});return true;}
  await ready(pool);
  const parts=pathname.split('/').filter(Boolean);
  const user=await currentUser(req);
@@ -72,7 +79,7 @@ export async function handlePublicProfiles(req,res,pathname,pool,currentUser){
   await streamAuthorizedAudio(req,res,{file,s3,bucket:cfg.bucket});return true;
  }
  if(parts.length===6&&parts[2]==='play'&&/^\d+$/.test(parts[3])&&['beat','pack'].includes(parts[4])&&uuid.test(parts[5])&&req.method==='GET'){
-  const project=await resolvePlayableProject(pool,{ownerId:parts[3],viewerId:user?.id,kind:parts[4],projectId:parts[5]});
+  const project=await resolvePlayableProject(pool,{ownerId:parts[3],viewerId:user?.id,kind:parts[4] as ProjectKindV2,projectId:parts[5]});
   if(!project){send(res,404,{error:'Project not available for playback'});return true;}
   send(res,200,{project});return true;
  }
@@ -85,7 +92,7 @@ export async function handlePublicProfiles(req,res,pathname,pool,currentUser){
   const s3=new S3Client({region:'auto',endpoint:'https://'+cfg.account+'.r2.cloudflarestorage.com',credentials:{accessKeyId:cfg.key,secretAccessKey:cfg.secret},forcePathStyle:true});
   const obj=await s3.send(new GetObjectCommand({Bucket:cfg.bucket,Key:file.object_key}));
   res.writeHead(200,{'Content-Type':file.content_type,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'});
-  for await(const chunk of obj.Body)res.write(chunk);
+  for await(const chunk of (obj.Body as AsyncIterable<Uint8Array>))res.write(chunk);
   res.end();return true;
  }
  if(parts.length===4&&parts[2]==='profile'&&req.method==='GET'){
@@ -99,7 +106,7 @@ export async function handlePublicProfiles(req,res,pathname,pool,currentUser){
    [byId?numericId:slug]
   );
   if(!profile.rowCount){send(res,404,{error:'Profile not found'});return true;}
-  const profileId=profile.rows[0].id;
+  const profileId=profile.rows[0].id as number;
   const [catalog,saves,links]=await Promise.all([
    
    pool.query(selectProjects+' AND pub.user_id=$1 ORDER BY pub.published_at DESC LIMIT 200',[profileId]),
@@ -136,7 +143,7 @@ export async function handlePublicProfiles(req,res,pathname,pool,currentUser){
   // Read owner only to choose advisory lock; re-read the link inside the lock.
   const candidate=await pool.query('SELECT owner_id FROM v2_project_share_links WHERE token_hash=$1',[hash]);
   if(!candidate.rowCount){send(res,404,{error:'Invalid share link'});return true;}
-  const response=await ownerMutation(pool,candidate.rows[0].owner_id,async db=>{
+  const response=await ownerMutation(pool,candidate.rows[0].owner_id as number,async db=>{
    const link=await db.query('SELECT owner_id,kind,project_id FROM v2_project_share_links WHERE token_hash=$1',[hash]);
    if(!link.rowCount)return ownerResult(404,{error:'Invalid share link'});
    const {owner_id,kind,project_id}=link.rows[0];
@@ -156,7 +163,7 @@ export async function handlePublicProfiles(req,res,pathname,pool,currentUser){
   ]);
   send(res,200,{published:published.rows,saved:saved.rows});return true;
  }
- if(parts.length===5&&parts[2]==='publish'&&['beat','pack'].includes(parts[3])&&uuid.test(parts[4])&&['POST','DELETE'].includes(req.method)){
+ if(parts.length===5&&parts[2]==='publish'&&['beat','pack'].includes(parts[3])&&uuid.test(parts[4])&&['POST','DELETE'].includes(req.method||'')){
   const kind=parts[3],id=parts[4],table=kind==='beat'?'library_beats':'library_packs';
   const response=await ownerMutation(pool,user.id,async db=>{
    const owned=await db.query('SELECT id FROM '+table+' WHERE id=$1 AND user_id=$2 AND deleted_at IS NULL',[id,user.id]);
@@ -167,7 +174,7 @@ export async function handlePublicProfiles(req,res,pathname,pool,currentUser){
   });
   send(res,response.status,response.data);return true;
  }
- if(parts.length===6&&parts[2]==='save'&&/^\d+$/.test(parts[3])&&['beat','pack'].includes(parts[4])&&uuid.test(parts[5])&&['POST','DELETE'].includes(req.method)){
+ if(parts.length===6&&parts[2]==='save'&&/^\d+$/.test(parts[3])&&['beat','pack'].includes(parts[4])&&uuid.test(parts[5])&&['POST','DELETE'].includes(req.method||'')){
   const [, , ,ownerText,kind,id]=parts;
   const owner=Number(ownerText);
   if(!Number.isSafeInteger(owner)||owner<1||owner>2147483647){send(res,404,{error:'Project not found'});return true;}
