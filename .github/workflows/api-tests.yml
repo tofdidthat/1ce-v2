@@ -6,6 +6,7 @@ on:
     paths:
       - 'apps/api/**'
       - 'apps/web/**'
+      - 'packages/**'
       - 'package.json'
       - 'pnpm-workspace.yaml'
       - 'pnpm-lock.yaml'
@@ -17,6 +18,7 @@ on:
     paths:
       - 'apps/api/**'
       - 'apps/web/**'
+      - 'packages/**'
       - 'package.json'
       - 'pnpm-workspace.yaml'
       - 'pnpm-lock.yaml'
@@ -95,6 +97,8 @@ jobs:
         run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Run isolated API unit tests
         run: pnpm --filter @1ce/api test
+      - name: Syntax-check read-only orphan audit (do not execute)
+        run: node --check apps/api/scripts/s2-orphan-audit.mjs
       - name: Syntax-check opt-in real R2 preflight (do not execute or use secrets)
         run: node --check apps/api/scripts/s2-r2-smoke.mjs
       - name: Syntax-check bounded v2 rate-limit cleanup (do not execute)
