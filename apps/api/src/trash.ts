@@ -143,7 +143,7 @@ export async function handleTrash(req:IncomingMessage,res:ServerResponse,pathnam
    pool.query('SELECT count(*)::int AS pending FROM v2_r2_delete_jobs WHERE user_id=$1 AND completed_at IS NULL',[owner])
   ]);
   const items=[...beats.rows.map(x=>({...x,kind:'beat'})),...packs.rows.map(x=>({...x,kind:'pack'}))]
-   .sort((a,b)=>new Date(b.deleted_at as string|Date).getTime()-new Date(a.deleted_at as string|Date).getTime());
+   .sort((a,b)=>new Date((b as Record<string,unknown>).deleted_at as string|Date).getTime()-new Date((a as Record<string,unknown>).deleted_at as string|Date).getTime());
   respond(res,200,{items,pendingMedia:Number(pending.rows[0]?.pending||0),retentionDays:30});return true;
  }
  if(req.method==='POST'&&parts.length===6&&tableFor(parts[3])&&uuid.test(parts[4])&&parts[5]==='restore'){
