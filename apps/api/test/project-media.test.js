@@ -171,3 +171,15 @@ test('authorization SQL binds published, granted and personal saved access to or
  assert.match(authSql,/saved\.user_id=\$4/);
  assert.deepEqual(pool.calls[1].params,[12,1,'cover',2]);
 });
+
+test('malformed viewer identifiers never confer owner, saved or share access to private media',async()=>{
+ const pool=fixture();
+ for(const viewerId of ['01','1.0','1 OR 1=1','',0,-1,1.5]){
+  assert.equal(await resolveAuthorizedMediaFile(pool,{
+   ownerId:1,viewerId,fileId:11,kind:'audio'
+  }),null);
+ }
+ const accessChecks=pool.calls.filter(c=>c.sql.startsWith('SELECT 1 FROM ('));
+ assert.equal(accessChecks.length,7);
+ assert.ok(accessChecks.every(c=>c.params[3]===null));
+});
