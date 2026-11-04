@@ -127,3 +127,33 @@ test('restoring a pack first revives only auto-trashed member beats inside the s
  assert.match(checks[members],/b.library_visible=FALSE/);
  assert.equal(checks.at(-1),'COMMIT');
 });
+
+test('invalid account IDs are rejected before database access',async()=>{
+ const pool=poolFixture();
+ for(const identity of [null,{id:0},{id:-3},{id:'invalid'}]){
+  const response=await invoke({pool,identity});
+  assert.equal(response.status,401);
+ }
+ assert.equal(pool.calls.length,0);
+});
+
+test('completed outbox work remains fenced to the original owner and claim token',async()=>{
+ const calls=[];
+ let claimed=false;
+ const pool={async query(sql,args=[]){
+  calls.push({sql,args});
+  if(sql.startsWith('WITH next AS'))return {rows:claimed?[]:[{id:13,object_key:key}],rowCount:claimed?0:1};
+  if(sql.startsWith('UPDATE v2_r2_delete_jobs SET completed_at')){claimed=true;return {rows:[],rowCount:1};}
+  if(sql.startsWith('SELECT count(*)::int AS pending'))return {rows:[{pending:0}],rowCount:1};
+  throw Error('Unexpected query '+sql);
+ }};
+ const r2={async send(){return {}}};
+ const result=await processPendingTrashJobs(pool,{owner,s3:r2,bucket:'disposable-test',max:1});
+ assert.equal(result.deletedMedia,1);
+ const acquire=calls.find(c=>c.sql.startsWith('WITH next AS'));
+ const completed=calls.find(c=>c.sql.startsWith('UPDATE v2_r2_delete_jobs SET completed_at'));
+ assert.equal(acquire.args[0],owner);
+ assert.equal(completed.args[1],owner);
+ assert.equal(completed.args[2],acquire.args[1]);
+ assert.match(completed.sql,/claim_token=\$3::uuid/);
+});

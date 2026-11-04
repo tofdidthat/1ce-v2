@@ -8,9 +8,32 @@ import {acquireCompletionLease,releaseCompletionLease,promoteReadyWithLease,fail
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import {resolveAuthorizedMediaFile} from './project-media.js';
 import {streamAuthorizedAudio} from './audio-stream.js';
+import type {IncomingMessage,ServerResponse} from 'node:http';
+import type {QueryableV2,DbQueryResultV2,MediaKindV2} from '../../../packages/shared/contracts.js';
 
-const limits={audio:150*1024*1024,cover:15*1024*1024,stems:250*1024*1024};
-const types={
+type AccountV2={id:number};
+type CurrentUserV2=(req:IncomingMessage)=>Promise<AccountV2|null>;
+type TransactionClientV2=QueryableV2&{release():void};
+type TransactionPoolV2=QueryableV2&{connect():Promise<TransactionClientV2>};
+type StorageV2={s3:S3Client|null;bucket:string};
+type DependencyOverridesV2={
+ storageFactory?:()=>StorageV2;
+ signUrl?:typeof getSignedUrl;
+};
+type StoredPendingFileV2={
+ id:number|string;
+ kind:MediaKindV2;
+ sha256:string;
+ object_key:string;
+ content_type:string;
+ byte_size:number|string;
+ status:string;
+};
+const isMediaKindV2=(value:unknown):value is MediaKindV2=>
+ value==='audio'||value==='cover'||value==='stems';
+
+const limits:Record<MediaKindV2,number>={audio:150*1024*1024,cover:15*1024*1024,stems:250*1024*1024};
+const types:Record<MediaKindV2,Record<string,readonly string[]>>={
  audio:{'audio/mpeg':['mp3'],'audio/mp3':['mp3'],'audio/wav':['wav'],'audio/x-wav':['wav'],'audio/wave':['wav']},
  cover:{'image/jpeg':['jpg','jpeg'],'image/png':['png'],'image/webp':['webp']},
  stems:{'application/zip':['zip'],'application/x-zip-compressed':['zip']}
@@ -21,36 +44,39 @@ const config=()=>({
  secret:process.env.R2_SECRET_ACCESS_KEY,
  bucket:process.env.R2_BUCKET_NAME
 });
-function client(){
+function client():S3Client|null{
  const c=config();
  if(!c.account||!c.key||!c.secret||!c.bucket) return null;
  return new S3Client({region:'auto',endpoint:'https://'+c.account+'.r2.cloudflarestorage.com',
  credentials:{accessKeyId:c.key,secretAccessKey:c.secret},forcePathStyle:true});
 }
-const send=(res,status,data)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data));};
-async function bodyJSON(req){
+const send=(res:ServerResponse,status:number,data:unknown):void=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data));};
+async function bodyJSON(req:IncomingMessage):Promise<Record<string,unknown>|null>{
  let raw='';for await(const chunk of req){raw+=chunk;if(raw.length>8192)throw new Error('Request too large');}
- try{return JSON.parse(raw)}catch{throw new Error('Invalid JSON');}
+ try{return JSON.parse(raw) as Record<string,unknown>|null}catch{throw new Error('Invalid JSON');}
 }
 // Optional dependencies are for request-level regression tests; in production
 // the exact same private R2 client and presigner are used as before.
-export async function handleLibraryFiles(req,res,pathname,pool,currentUser,{
- storageFactory=()=>({s3:client(),bucket:config().bucket}),
- signUrl=getSignedUrl
-}={}){
+export async function handleLibraryFiles(
+ req:IncomingMessage,res:ServerResponse,pathname:string,
+ pool:TransactionPoolV2,currentUser:CurrentUserV2,{
+  storageFactory=()=>({s3:client(),bucket:config().bucket as string}),
+  signUrl=getSignedUrl
+ }:DependencyOverridesV2={}
+):Promise<boolean>{
  if(!pathname.startsWith('/api/library/files'))return false;
- if(!['GET','POST'].includes(req.method)){send(res,405,{error:'Method not allowed'});return true;}
+ if(!['GET','POST'].includes(req.method||'')){send(res,405,{error:'Method not allowed'});return true;}
  const user=await currentUser(req);
  if(!user){send(res,401,{error:'Not authenticated'});return true;}
  const {s3,bucket}=storageFactory(),cfg={bucket};
  if(!s3){send(res,503,{error:'Storage is not configured'});return true;}
  const segments=pathname.split('/').filter(Boolean);
  if(req.method==='POST'&&segments.length===4&&segments[3]==='beats'){
-  let data;try{data=await bodyJSON(req)}catch{send(res,400,{error:'Invalid request'});return true;}
+  let data:Record<string,unknown>|null;try{data=await bodyJSON(req)}catch{send(res,400,{error:'Invalid request'});return true;}
   const title=typeof data?.title==='string'?data.title.trim():'';
-  if(!title||title.length>180||!Number.isSafeInteger(data.audioFileId)||data.audioFileId<1){send(res,400,{error:'Invalid beat'});return true;}
+  if(!title||title.length>180||typeof data?.audioFileId!=='number'||!Number.isSafeInteger(data.audioFileId)||data.audioFileId<1){send(res,400,{error:'Invalid beat'});return true;}
   const ids=[data.audioFileId,data.coverFileId,data.stemsFileId].filter(x=>x!=null);
-  if(ids.some(x=>!Number.isSafeInteger(x)||x<1)){send(res,400,{error:'Invalid asset IDs'});return true;}
+  if(ids.some(x=>typeof x!=='number'||!Number.isSafeInteger(x)||x<1)){send(res,400,{error:'Invalid asset IDs'});return true;}
   // Take the same owner lock as Trash: a concurrent purge cannot retire a
   // verified media row between the READY check and linking a new beat.
   const db=await pool.connect();
@@ -59,7 +85,7 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser,{
    await db.query('SELECT pg_advisory_xact_lock($1::bigint)',[user.id]);
    const q=await db.query("SELECT id,kind FROM library_files WHERE user_id=$1 AND status='ready' AND id=ANY($2::bigint[])",[user.id,ids]);
    const valid=new Map(q.rows.map(x=>[Number(x.id),x.kind]));
-   if(valid.get(data.audioFileId)!=='audio'||data.coverFileId!=null&&valid.get(data.coverFileId)!=='cover'||data.stemsFileId!=null&&valid.get(data.stemsFileId)!=='stems'){
+   if(valid.get(data.audioFileId)!=='audio'||data.coverFileId!=null&&valid.get(data.coverFileId as number)!=='cover'||data.stemsFileId!=null&&valid.get(data.stemsFileId as number)!=='stems'){
     await db.query('ROLLBACK');send(res,400,{error:'Assets must be owned by you and ready'});return true;
    }
    const existing=await db.query("SELECT id,deleted_at FROM library_beats WHERE user_id=$1 AND audio_file_id=$2",[user.id,data.audioFileId]);
@@ -75,25 +101,25 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser,{
   finally{db.release();}
  }
  if(req.method==='POST'&&segments.length===4&&segments[3]==='packs'){
-  let data;try{data=await bodyJSON(req)}catch{send(res,400,{error:'Invalid request'});return true;}
+  let data:Record<string,unknown>|null;try{data=await bodyJSON(req)}catch{send(res,400,{error:'Invalid request'});return true;}
   const title=typeof data?.title==='string'?data.title.trim():'';
   const beatIds=data?.beatIds;
   const newBeatIds=data?.newBeatIds||[];
   if(!title||title.length>180||!Array.isArray(beatIds)||beatIds.length<2||beatIds.length>100||new Set(beatIds).size!==beatIds.length||beatIds.some(id=>typeof id!=='string'||!/^[a-f0-9-]{36}$/i.test(id))){send(res,400,{error:'Invalid pack'});return true;}
   if(!Array.isArray(newBeatIds)||new Set(newBeatIds).size!==newBeatIds.length||newBeatIds.some(id=>!beatIds.includes(id))){send(res,400,{error:'Invalid new beat IDs'});return true;}
-  if(data.coverFileId!=null&&(!Number.isSafeInteger(data.coverFileId)||data.coverFileId<1)){send(res,400,{error:'Invalid cover'});return true;}
+  if(data?.coverFileId!=null&&(typeof data.coverFileId!=='number'||!Number.isSafeInteger(data.coverFileId)||data.coverFileId<1)){send(res,400,{error:'Invalid cover'});return true;}
   const client=await pool.connect();
   try{
    await client.query('BEGIN');
    await client.query('SELECT pg_advisory_xact_lock($1::bigint)',[user.id]);
    const owned=await client.query('SELECT id FROM library_beats WHERE user_id=$1 AND deleted_at IS NULL AND id=ANY($2::uuid[])',[user.id,beatIds]);
    if(owned.rowCount!==beatIds.length){await client.query('ROLLBACK');send(res,403,{error:'Beat not owned by you'});return true;}
-   if(data.coverFileId!=null){
-    const cover=await client.query("SELECT id FROM library_files WHERE id=$1 AND user_id=$2 AND kind='cover' AND status='ready'",[data.coverFileId,user.id]);
+   if(data?.coverFileId!=null){
+    const cover=await client.query("SELECT id FROM library_files WHERE id=$1 AND user_id=$2 AND kind='cover' AND status='ready'",[data?.coverFileId,user.id]);
     if(!cover.rowCount){await client.query('ROLLBACK');send(res,403,{error:'Cover not owned by you'});return true;}
    }
    const id=randomUUID();
-   await client.query('INSERT INTO library_packs(id,user_id,title,cover_file_id) VALUES($1,$2,$3,$4)',[id,user.id,title,data.coverFileId||null]);
+   await client.query('INSERT INTO library_packs(id,user_id,title,cover_file_id) VALUES($1,$2,$3,$4)',[id,user.id,title,data?.coverFileId||null]);
    for(let i=0;i<beatIds.length;i++)await client.query('INSERT INTO library_pack_beats(pack_id,beat_id,position) VALUES($1,$2,$3)',[id,beatIds[i],i]);
    if(newBeatIds.length)await client.query('UPDATE library_beats SET library_visible=FALSE WHERE user_id=$1 AND id=ANY($2::uuid[]) AND library_visible=TRUE',[user.id,newBeatIds]);
    await client.query('COMMIT');send(res,201,{id});return true;
@@ -103,7 +129,7 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser,{
   const id=segments[4];
   const file=await resolveAuthorizedMediaFile(pool,{ownerId:user.id,viewerId:user.id,fileId:id,kind:'audio'});
   if(!file){send(res,404,{error:'Audio not found'});return true;}
-  await streamAuthorizedAudio(req,res,{file,s3,bucket:cfg.bucket});return true;
+  await streamAuthorizedAudio(req as unknown as Parameters<typeof streamAuthorizedAudio>[0],res,{file,s3,bucket:cfg.bucket});return true;
  }
  if(req.method==='GET'&&segments.length===5&&segments[3]==='pack-tracks'&&/^[a-f0-9-]{36}$/i.test(segments[4])){
   const q=await pool.query(`SELECT b.id,b.title,b.audio_file_id,b.cover_file_id,b.stems_file_id
@@ -133,7 +159,7 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser,{
   if(!file){send(res,404,{error:'Cover not found'});return true;}
   const object=await s3.send(new GetObjectCommand({Bucket:cfg.bucket,Key:file.object_key}));
   res.writeHead(200,{'Content-Type':file.content_type,'Cache-Control':'private, max-age=300','X-Content-Type-Options':'nosniff'});
-  for await(const chunk of object.Body)res.write(chunk);
+  for await(const chunk of (object.Body as AsyncIterable<Uint8Array>))res.write(chunk);
   res.end();return true;
  }
  if(req.method==='GET'&&segments.length===3){
@@ -141,12 +167,12 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser,{
   send(res,200,{files:q.rows});return true;
  }
  if(req.method==='POST'&&segments.length===4&&segments[3]==='init'){
-  let data;try{data=await bodyJSON(req)}catch{send(res,400,{error:'Invalid request'});return true;}
+  let data:Record<string,unknown>|null;try{data=await bodyJSON(req)}catch{send(res,400,{error:'Invalid request'});return true;}
   const {kind,name,contentType,size,sha256}=data||{};
-  const ext=typeof name==='string'?name.toLowerCase().split('.').pop():'';
-  if(!Object.hasOwn(limits,kind)||typeof name!=='string'||name.length>240||name.length<1||/[\\/\x00-\x1f]/.test(name)||
+  const ext=typeof name==='string'?name.toLowerCase().split('.').pop()||'':'';
+  if(!isMediaKindV2(kind)||typeof name!=='string'||name.length>240||name.length<1||/[\\/\x00-\x1f]/.test(name)||
    typeof contentType!=='string'||!types[kind]?.[contentType]?.includes(ext)||
-   !Number.isSafeInteger(size)||size<=0||size>limits[kind]||typeof sha256!=='string'||!/^[a-f0-9]{64}$/.test(sha256)){
+   typeof size!=='number'||!Number.isSafeInteger(size)||size<=0||size>limits[kind]||typeof sha256!=='string'||!/^[a-f0-9]{64}$/.test(sha256)){
    send(res,400,{error:'Unsupported file type or size'});return true;
   }
   // Serialize per-owner reservations across replicas. Only pending keys
@@ -155,7 +181,7 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser,{
    send(res,429,{error:'Upload rate limit reached'});return true;
   }
   const db=await pool.connect();
-  let inserted,objectKey;
+  let inserted!:DbQueryResultV2,objectKey!:string;
   try{
    await db.query('BEGIN');
    await db.query('SELECT pg_advisory_xact_lock($1::bigint)',[user.id]);
@@ -192,7 +218,7 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser,{
  if(req.method==='POST'&&segments.length===5&&segments[4]==='complete'&&/^\d+$/.test(segments[3])){
   const id=segments[3];
   const q=await pool.query('SELECT id,kind,sha256,object_key,content_type,byte_size,status FROM library_files WHERE id=$1 AND user_id=$2',[id,user.id]);
-  const file=q.rows[0];
+  const file=q.rows[0] as unknown as StoredPendingFileV2|undefined;
   if(!file){send(res,404,{error:'File not found'});return true;}
   if(file.status==='ready'){send(res,200,{ok:true,id:file.id});return true;}
   if(file.status!=='pending'){send(res,409,{error:'Invalid upload state'});return true;}
@@ -213,9 +239,9 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser,{
   const stagingKey=file.object_key;
   const extension=stagingKey.split('.').pop();
   const finalKey='users/'+user.id+'/assets/'+file.kind+'/verified/'+randomUUID()+'.'+extension;
-  const deleteObject=async key=>{
+  const deleteObject=async (key:string):Promise<void>=>{
    try{await s3.send(new DeleteObjectCommand({Bucket:cfg.bucket,Key:key}),{abortSignal:AbortSignal.timeout(15000)});}
-   catch(err){console.error('R2 cleanup deferred',err?.message);}
+   catch(err){console.error('R2 cleanup deferred',(err as {message?:string}|null)?.message);}
   };
   const lostLease=async()=>{
    const current=await pool.query('SELECT status FROM library_files WHERE id=$1 AND user_id=$2',[id,user.id]);
@@ -223,7 +249,7 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser,{
    else send(res,409,{error:'Upload finalization ownership changed; retry shortly'});
    return true;
   };
-  const rejectInvalid=async error=>{
+  const rejectInvalid=async (error:string):Promise<boolean>=>{
    // A former owner may be resuming after its lease expired. Only the current
    // token may mark the row failed, and only then may staging be deleted.
    const failed=await failPendingWithLease(pool,{fileId:id,ownerId:user.id,token:leaseToken});
@@ -246,15 +272,16 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser,{
    }),{abortSignal:AbortSignal.timeout(180000)});
    await verifyUploadedObject({s3,bucket:cfg.bucket,key:finalKey,file});
   }catch(err){
+   const failure=err as {name?:string;$metadata?:{httpStatusCode?:number};code?:string}|null;
    await deleteObject(finalKey);
    if(err instanceof InvalidMedia)return await rejectInvalid(err.message);
-   if(err?.name==='NotFound'||err?.$metadata?.httpStatusCode===404){
+   if(failure?.name==='NotFound'||failure?.$metadata?.httpStatusCode===404){
     send(res,409,{error:'Upload not found in storage'});return true;
    }
-   if(err?.$metadata?.httpStatusCode===412){
+   if(failure?.$metadata?.httpStatusCode===412){
     send(res,409,{error:'Upload changed during verification; retry'});return true;
    }
-   if(err instanceof VerificationUnavailable||err?.name==='AbortError'){
+   if(err instanceof VerificationUnavailable||failure?.name==='AbortError'){
     send(res,503,{error:'Storage verification unavailable; retry'});return true;
    }
    throw err;
@@ -270,7 +297,7 @@ export async function handleLibraryFiles(req,res,pathname,pool,currentUser,{
     send(res,409,{error:'Upload state changed; retry'});return true;
    }
   }catch(err){
-   if(err?.code==='23505'){
+   if((err as {code?:string}|null)?.code==='23505'){
     const existing=await pool.query("SELECT id FROM library_files WHERE user_id=$1 AND kind=$2 AND sha256=$3 AND status='ready'",[user.id,file.kind,file.sha256]);
     if(existing.rows[0]){
      // The original lease may have expired while handling the 23505; never

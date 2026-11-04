@@ -1,4 +1,6 @@
 import { createServer } from 'node:http';
+import type {IncomingMessage,ServerResponse} from 'node:http';
+import type {PoolClient} from 'pg';
 import { pathToFileURL } from 'node:url';
 import { randomBytes, createHash, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
@@ -11,17 +13,20 @@ import {handleTrash} from './trash.js';
 import { handlePublicProfiles } from './public-profiles.js';
 import { handleProfileFollows } from './profile-follows.js';
 import { handleProfileIdentity } from './profile-identity.js';
-const scrypt=promisify(scryptCallback);
+type AccountV2={id:number;email:string;name:string|null;picture:string|null;username?:string|null;has_avatar?:boolean;avatar_updated_at?:string|null};
+type VerifiedGoogleV2={sub:string;email:string;email_verified:true;name?:string|null;picture?:string|null};
+type GoogleConfigV2={clientId:string|undefined;clientSecret:string|undefined;redirectUri:string|undefined};
+const scrypt=promisify(scryptCallback) as (password:string,salt:Buffer,size:number,options:{N:number;r:number;p:number})=>Promise<Buffer>;
 const pool=new pg.Pool({connectionString:process.env.DATABASE_URL,ssl:process.env.DATABASE_SSL==='true'?{rejectUnauthorized:true}:undefined});
 const origin=process.env.WEB_ORIGIN || 'http://localhost:5173';
 const cookieName='onece_v2_session';
-const hash=s=>createHash('sha256').update(s).digest('hex');
-const json=(res,status,data,headers={})=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',...headers});res.end(JSON.stringify(data));};
-const parseCookies=s=>Object.fromEntries((s||'').split(';').map(x=>x.trim().split('=').slice(0,2)).filter(x=>x.length===2));
+const hash=(s:string)=>createHash('sha256').update(s).digest('hex');
+const json=(res:ServerResponse,status:number,data:unknown,headers:Record<string,string>={})=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',...headers});res.end(JSON.stringify(data));};
+const parseCookies=(s:string|undefined):Record<string,string>=>Object.fromEntries((s||'').split(';').map(x=>x.trim().split('=').slice(0,2)).filter(x=>x.length===2));
 let activePasswordChecks=0;
 const MAX_PARALLEL_PASSWORD_CHECKS=8;
 class LoginCapacityExceeded extends Error {}
-async function verify(password,stored){
+async function verify(password:string,stored:string|undefined|null):Promise<boolean>{
  const p=(stored||'').split('$');
  if(p.length!==3||p[0]!=='scrypt'||!/^[a-f0-9]{32}$/i.test(p[1])||!/^[a-f0-9]{128}$/i.test(p[2]))return false;
  if(activePasswordChecks>=MAX_PARALLEL_PASSWORD_CHECKS)throw new LoginCapacityExceeded('Password verification busy');
@@ -32,27 +37,27 @@ async function verify(password,stored){
   return timingSafeEqual(derived,expected);
  }finally{activePasswordChecks--;}
 }
-function cookie(token,maxAge){return cookieName+'='+token+'; HttpOnly; Secure; SameSite=None; Path=/; Max-Age='+maxAge;}
-async function currentUser(req){const token=parseCookies(req.headers.cookie)[cookieName];if(!token||!/^[a-f0-9]{64}$/.test(token))return null;const q=await pool.query('SELECT u.id,u.email,u.name,u.picture,u.username,(u.avatar_key IS NOT NULL) AS has_avatar,u.avatar_updated_at FROM account_sessions s JOIN account_users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>now()',[hash(token)]);return q.rows[0]||null;}
+function cookie(token:string,maxAge:number){return cookieName+'='+token+'; HttpOnly; Secure; SameSite=None; Path=/; Max-Age='+maxAge;}
+async function currentUser(req:IncomingMessage):Promise<AccountV2|null>{const token=parseCookies(req.headers.cookie)[cookieName];if(!token||!/^[a-f0-9]{64}$/.test(token))return null;const q=await pool.query('SELECT u.id,u.email,u.name,u.picture,u.username,(u.avatar_key IS NOT NULL) AS has_avatar,u.avatar_updated_at FROM account_sessions s JOIN account_users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>now()',[hash(token)]);return q.rows[0]||null;}
 
 const googleStateCookie='onece_v2_google_state';
-const shaBase64=s=>createHash('sha256').update(s).digest('base64url');
-const validCode=s=>typeof s==='string'&&/^[A-Za-z0-9_-]{43}$/.test(s);
+const shaBase64=(s:string)=>createHash('sha256').update(s).digest('base64url');
+const validCode=(s:unknown):s is string=>typeof s==='string'&&/^[A-Za-z0-9_-]{43}$/.test(s);
 const googleConfig=()=>({clientId:process.env.GOOGLE_CLIENT_ID,clientSecret:process.env.GOOGLE_CLIENT_SECRET,redirectUri:process.env.GOOGLE_REDIRECT_URI});
-const redirect=(res,url,headers={})=>{res.writeHead(302,{'Location':url,'Cache-Control':'no-store',...headers});res.end();};
-const googleError=res=>redirect(res,origin+'/app?login=error',{'Set-Cookie':googleStateCookie+'=; HttpOnly; Secure; SameSite=Lax; Path=/auth/google; Max-Age=0'});
-async function requestGoogleUser(code,config){
- const tokenResponse=await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({code,client_id:config.clientId,client_secret:config.clientSecret,redirect_uri:config.redirectUri,grant_type:'authorization_code'}),signal:AbortSignal.timeout(10000)});
+const redirect=(res:ServerResponse,url:string,headers:Record<string,string>={})=>{res.writeHead(302,{'Location':url,'Cache-Control':'no-store',...headers});res.end();};
+const googleError=(res:ServerResponse)=>redirect(res,origin+'/app?login=error',{'Set-Cookie':googleStateCookie+'=; HttpOnly; Secure; SameSite=Lax; Path=/auth/google; Max-Age=0'});
+async function requestGoogleUser(code:string,config:GoogleConfigV2):Promise<VerifiedGoogleV2>{
+ const tokenResponse=await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({code,client_id:config.clientId!,client_secret:config.clientSecret!,redirect_uri:config.redirectUri!,grant_type:'authorization_code'}),signal:AbortSignal.timeout(10000)});
  if(!tokenResponse.ok)throw new Error('Google token exchange failed');
- const token=await tokenResponse.json();
+ const token=await tokenResponse.json() as {access_token?:unknown};
  if(typeof token.access_token!=='string')throw new Error('Google access token missing');
  const userResponse=await fetch('https://openidconnect.googleapis.com/v1/userinfo',{headers:{Authorization:'Bearer '+token.access_token},signal:AbortSignal.timeout(10000)});
  if(!userResponse.ok)throw new Error('Google userinfo failed');
- const user=await userResponse.json();
+ const user=await userResponse.json() as {sub?:unknown;email?:unknown;email_verified?:unknown;name?:string|null;picture?:string|null};
  if(typeof user.sub!=='string'||!user.sub||typeof user.email!=='string'||user.email_verified!==true)throw new Error('Google identity not verified');
- return user;
+ return user as VerifiedGoogleV2;
 }
-async function linkGoogleUser(client,profile){
+async function linkGoogleUser(client:PoolClient,profile:VerifiedGoogleV2):Promise<number>{
  const email=profile.email.trim().toLowerCase();
  if(!email||email.length>254)throw new Error('Invalid Google email');
  const byGoogle=await client.query('SELECT id,email,google_id,email_verified FROM account_users WHERE google_id=$1 FOR UPDATE',[profile.sub]);
@@ -79,20 +84,20 @@ async function linkGoogleUser(client,profile){
 }
 
 const server=createServer(async(req,res)=>{
- const pathname=new URL(req.url,'http://localhost').pathname;
+ const pathname=new URL(req.url!,'http://localhost').pathname;
  const allowed=req.headers.origin===origin;
  if(allowed){res.setHeader('Access-Control-Allow-Origin',origin);res.setHeader('Access-Control-Allow-Credentials','true');res.setHeader('Vary','Origin');}
  if(req.method==='OPTIONS'){res.writeHead(allowed?204:403,{'Access-Control-Allow-Methods':'GET,POST,PATCH,DELETE,OPTIONS','Access-Control-Allow-Headers':'Content-Type'});return res.end();}
  if(pathname==='/health'&&req.method==='GET')return json(res,200,{ok:true,service:'1ce-v2-api'});
  if(pathname==='/health/db'&&req.method==='GET'){
   try{await pool.query('SELECT 1');return json(res,200,{ok:true,database:'connected'});}
-  catch(err){console.error('v2 database health check failed',err?.message);return json(res,503,{ok:false,database:'unavailable'});}
+  catch(err){console.error('v2 database health check failed',(err as Error)?.message);return json(res,503,{ok:false,database:'unavailable'});}
  }
  if(!allowed && req.headers.origin)return json(res,403,{error:'Origin not allowed'});
  try{
 
   if(await handleProfileIdentity(req,res,pathname,pool,currentUser))return;
-  if(await handleProfileFollows(req,res,pathname,pool,currentUser))return;
+  if(await handleProfileFollows(req as Parameters<typeof handleProfileFollows>[0],res,pathname,pool,currentUser as Parameters<typeof handleProfileFollows>[4]))return;
   if(await handlePublicProfiles(req,res,pathname,pool,currentUser))return;
   if(await handleTrash(req,res,pathname,pool,currentUser))return;
   if(await handleProjectActions(req,res,pathname,pool,currentUser))return;
@@ -101,7 +106,7 @@ const server=createServer(async(req,res)=>{
   if(pathname==='/auth/google'&&req.method==='GET'){
    const config=googleConfig();
    if(!config.clientId||!config.clientSecret||!config.redirectUri)return json(res,503,{error:'Google login is not configured'});
-   const challenge=new URL(req.url,'http://localhost').searchParams.get('challenge');
+   const challenge=new URL(req.url!,'http://localhost').searchParams.get('challenge');
    if(!validCode(challenge))return json(res,400,{error:'Invalid challenge'});
    const state=randomBytes(32).toString('base64url');
    await pool.query('INSERT INTO account_google_login_attempts(state_hash,verifier_challenge) VALUES($1,$2)',[hash(state),shaBase64(challenge)]);
@@ -110,11 +115,11 @@ const server=createServer(async(req,res)=>{
    return redirect(res,url.toString(),{'Set-Cookie':googleStateCookie+'='+state+'; HttpOnly; Secure; SameSite=Lax; Path=/auth/google; Max-Age=600'});
   }
   if(pathname==='/auth/google/callback'&&req.method==='GET'){
-   const params=new URL(req.url,'http://localhost').searchParams;
+   const params=new URL(req.url!,'http://localhost').searchParams;
    const state=params.get('state'),code=params.get('code'),cookieState=parseCookies(req.headers.cookie)[googleStateCookie];
    if(!validCode(state)||!validCode(cookieState)||!code||code.length>4096||!timingSafeEqual(Buffer.from(state),Buffer.from(cookieState)))return googleError(res);
    const client=await pool.connect();
-   let loginCode;
+   let loginCode:string;
    try{
     await client.query('BEGIN');
     const transaction=await client.query('UPDATE account_google_login_attempts SET callback_used_at=now() WHERE state_hash=$1 AND callback_used_at IS NULL AND expires_at>now() RETURNING id',[hash(state)]);
@@ -128,14 +133,14 @@ const server=createServer(async(req,res)=>{
     await client.query('COMMIT');
    }catch(err){
     try{await client.query('ROLLBACK');}catch{}
-    console.error('Google callback failed:',err?.message);
+    console.error('Google callback failed:',(err as Error)?.message);
     return googleError(res);
    }finally{client.release();}
    return redirect(res,origin+'/app?login_code='+encodeURIComponent(loginCode),{'Set-Cookie':googleStateCookie+'=; HttpOnly; Secure; SameSite=Lax; Path=/auth/google; Max-Age=0'});
   }
   if(pathname==='/auth/google/exchange'&&req.method==='POST'){
    let body='';for await(const chunk of req){body+=chunk;if(body.length>8192)return json(res,413,{error:'Request too large'});}
-   let data;try{data=JSON.parse(body)}catch{return json(res,400,{error:'Invalid request'});}
+   let data:{loginCode?:unknown;verifier?:unknown};try{data=JSON.parse(body) as {loginCode?:unknown;verifier?:unknown}}catch{return json(res,400,{error:'Invalid request'});}
    if(!validCode(data.loginCode)||!validCode(data.verifier))return json(res,400,{error:'Invalid exchange'});
    const client=await pool.connect();
    try{
@@ -155,7 +160,7 @@ const server=createServer(async(req,res)=>{
   if(pathname==='/auth/logout'&&req.method==='POST'){const token=parseCookies(req.headers.cookie)[cookieName];if(token)await pool.query('DELETE FROM account_sessions WHERE token_hash=$1',[hash(token)]);return json(res,200,{ok:true},{'Set-Cookie':cookie('',0)});}
   if(pathname==='/auth/login'&&req.method==='POST'){
    let body='';for await(const chunk of req){body+=chunk;if(body.length>8192)return json(res,413,{error:'Request too large'});}
-   let data;try{data=JSON.parse(body)}catch{return json(res,400,{error:'Invalid request'})}
+   let data:{email?:unknown;password?:unknown};try{data=JSON.parse(body) as {email?:unknown;password?:unknown}}catch{return json(res,400,{error:'Invalid request'})}
    const email=String(data.email||'').trim().toLowerCase();const password=data.password;
    if(email.length>254||!email.includes('@')||typeof password!=='string'||password.length>1024||!password)return json(res,400,{error:'Invalid email or password'});
    const q=await pool.query('SELECT id,email,name,picture,password_hash,email_verified FROM account_users WHERE lower(email)=$1 LIMIT 1',[email]);
@@ -189,7 +194,7 @@ const server=createServer(async(req,res)=>{
    return json(res,200,{user:{id:user.id,email:user.email,name:user.name,picture:user.picture}},{'Set-Cookie':cookie(token,604800)});
   }
   return json(res,404,{error:'Not found'});
- }catch(err){console.error('v2 api error',err?.message);return json(res,500,{error:'Service unavailable'});}
+ }catch(err){console.error('v2 api error',(err as Error)?.message);return json(res,500,{error:'Service unavailable'});}
 });
 // Importing the router in isolated tests must not bind a live port. Direct
 // "node src/server.js" / Railway starts exactly as before.

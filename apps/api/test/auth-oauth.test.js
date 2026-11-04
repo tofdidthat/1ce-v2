@@ -358,3 +358,15 @@ test('health endpoints are isolated from authentication; DB health is verified t
  assert.equal(db.status,200);
  assert.deepEqual(db.json,{ok:true,database:'connected'});
 });
+
+test('CORS preflight is restricted to configured web origin without database work',async()=>{
+ const allowed=process.env.WEB_ORIGIN||'http://localhost:5173';
+ const ok=await send('OPTIONS','/auth/me',undefined,{origin:allowed});
+ assert.equal(ok.status,204);
+ assert.equal(ok.headers['Access-Control-Allow-Origin'],allowed);
+ assert.equal(ok.headers['Access-Control-Allow-Credentials'],'true');
+ const blocked=await send('OPTIONS','/auth/me',undefined,{origin:'https://unauthorized.invalid'});
+ assert.equal(blocked.status,403);
+ assert.equal(blocked.headers['Access-Control-Allow-Origin'],undefined);
+ assert.equal(h.queries.length,0);
+});
