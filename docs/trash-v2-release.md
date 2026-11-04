@@ -1,5 +1,14 @@
 # 1CE v2 PR #28 — Trash / R2 permanent deletion release gates
 
+## Complete isolated restore rehearsal — 2026-11-03
+
+**PASS — full restore of a previously verified private R2 backup to disposable PostgreSQL.** One-shot Railway service `1ce-v2-private-restore-rehearsal-once` used the `postgres:18-alpine` image, downloaded only `db-backups/1ce-v2/20261103T215852Z/postgres-custom.dump` from the private v2 R2 bucket, verified its archived SHA-256 `83dcaa6dc51e580fb4e54d21741b0d24ae488da590f15740b177eb4ead07e0fb`, initialized a PostgreSQL 18 cluster inside the disposable container (local Unix socket only, no TCP listener, no persistent volume, **no production DB credentials**), and completed `pg_restore --no-owner --no-acl --exit-on-error --single-transaction` into its temporary database.
+
+The restore then verified the required v2 tables and migration 012 trash schema in the restored database and counted **18 public tables, 2 users, 11 beats, 1 pack, 23 library files, 0 queued R2 deletes, and 24 foreign-key constraints**. Runtime logs on deployment `1670bf99-b544-49a5-a167-cfd8f5807e3d` ended with `RESTORE_CHECK schema_012_and_required_tables_valid` and **`RESTORE_FULL_SUCCESS`**. Earlier attempts uncovered and fixed two test-harness problems (missing `su-exec` image utility and ownership of the locally downloaded archive); no production data/schema change was attempted. On success the temporary service was deleted. Post-cleanup inventory shows only the original Postgres and 1ce-v2 services (both SUCCESS) and no pending Railway changes. This closes the full restore rehearsal gate; it does **not** authorize PR28 merge, application deploy, or R2 deletion.
+
+**Remaining:** independent deletion/concurrency safety review, controlled disposable-media R2 canary, final-HEAD CI and explicit coordinated release approval.
+
+
 ## Verified v2 production database backup — 2026-11-03
 
 **COMPLETED (archive + remote integrity):** An isolated, ephemeral Railway one-shot service `1ce-v2-private-db-backup-once` ran `pg_dump --format=custom --no-owner --no-acl` against **v2 production PostgreSQL only** in Railway project `courteous-spontaneity`. It uploaded the archive to the private R2 bucket under `db-backups/1ce-v2/20261103T215852Z/postgres-custom.dump` (57,413 bytes, SHA-256 `83dcaa6dc51e580fb4e54d21741b0d24ae488da590f15740b177eb4ead07e0fb`). Deployment `ab27fb87-4e14-467d-8bbe-bd6dedbcdedc` logs confirmed:
