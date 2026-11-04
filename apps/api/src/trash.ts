@@ -95,13 +95,13 @@ export async function purgeTrashMetadata(db:QueryableV2,owner:number):Promise<{r
  return {removedProjects:(beats.rowCount??0)+(packs.rowCount??0),queuedMedia};
 }
 
-export async function processPendingTrashJobs(pool,{owner,s3,bucket,max=12}){
+export async function processPendingTrashJobs(pool:QueryableV2,{owner,s3,bucket,max=12}:{owner:number;s3:S3Client;bucket:string;max?:number}):Promise<{deletedMedia:number;failedMedia:number;pendingMedia:number}>{
  if(!s3||!bucket)throw Error('Storage unavailable');
  let deletedMedia=0,failedMedia=0;
  for(let n=0;n<max;n++){
   const token=randomUUID();
   const claim=await pool.query("WITH next AS (SELECT id FROM v2_r2_delete_jobs WHERE user_id=$1 AND completed_at IS NULL AND (claim_until IS NULL OR claim_until<now()) ORDER BY created_at,id LIMIT 1 FOR UPDATE SKIP LOCKED) UPDATE v2_r2_delete_jobs j SET claim_token=$2::uuid,claim_until=now()+interval '2 minutes',attempts=j.attempts+1 FROM next WHERE j.id=next.id RETURNING j.id,j.object_key",[owner,token]);
-  const job=claim.rows[0];
+  const job=claim.rows[0] as {id:number|string;object_key:string}|undefined;
   if(!job)break;
   if(!safeKey.test(job.object_key)||!job.object_key.startsWith('users/'+owner+'/')){
    await pool.query("UPDATE v2_r2_delete_jobs SET claim_token=NULL,claim_until=NULL,last_error='Unsafe key refused' WHERE id=$1 AND user_id=$2 AND claim_token=$3::uuid",[job.id,owner,token]);
@@ -122,9 +122,9 @@ export async function processPendingTrashJobs(pool,{owner,s3,bucket,max=12}){
  return {deletedMedia,failedMedia,pendingMedia:Number(pending.rows[0]?.pending||0)};
 }
 
-export async function handleTrash(req,res,pathname,pool,currentUser,{storageFactory=storage}={}){
+export async function handleTrash(req:IncomingMessage,res:ServerResponse,pathname:string,pool:TxPoolV2,currentUser:CurrentUserV2,{storageFactory=storage}:{storageFactory?:()=>StorageV2|null}={}):Promise<boolean>{
  if(!pathname.startsWith('/api/library/trash'))return false;
- if(!['GET','POST'].includes(req.method)){respond(res,405,{error:'Method not allowed'});return true;}
+ if(!['GET','POST'].includes(req.method||'')){respond(res,405,{error:'Method not allowed'});return true;}
  const user=await currentUser(req);
  if(!user){respond(res,401,{error:'Not authenticated'});return true;}
  const owner=Number(user.id),parts=pathname.split('/').filter(Boolean);
@@ -143,11 +143,11 @@ export async function handleTrash(req,res,pathname,pool,currentUser,{storageFact
    pool.query('SELECT count(*)::int AS pending FROM v2_r2_delete_jobs WHERE user_id=$1 AND completed_at IS NULL',[owner])
   ]);
   const items=[...beats.rows.map(x=>({...x,kind:'beat'})),...packs.rows.map(x=>({...x,kind:'pack'}))]
-   .sort((a,b)=>new Date(b.deleted_at)-new Date(a.deleted_at));
+   .sort((a,b)=>new Date(b.deleted_at as string|Date).getTime()-new Date(a.deleted_at as string|Date).getTime());
   respond(res,200,{items,pendingMedia:Number(pending.rows[0]?.pending||0),retentionDays:30});return true;
  }
  if(req.method==='POST'&&parts.length===6&&tableFor(parts[3])&&uuid.test(parts[4])&&parts[5]==='restore'){
-  const kind=parts[3],id=parts[4];
+  const kind=parts[3] as ProjectKindV2,id=parts[4];
   const found=await tx(pool,async db=>{
    await db.query('SELECT pg_advisory_xact_lock($1::bigint)',[owner]);
    if(kind==='pack'){
@@ -168,7 +168,7 @@ export async function handleTrash(req,res,pathname,pool,currentUser,{storageFact
        )`,[owner,id]);
    }
    const q=await db.query('UPDATE '+tableFor(kind)+" SET deleted_at=NULL WHERE user_id=$1 AND id=$2 AND deleted_at>=now()-interval '30 days' RETURNING id",[owner,id]);
-   return q.rowCount>0;
+   return (q.rowCount??0)>0;
   });
   respond(res,found?200:404,found?{restored:true,id,kind}:{error:'Project not found or recovery period ended'});return true;
  }
