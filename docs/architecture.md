@@ -122,3 +122,122 @@ The v1 repo `tofdidthat/1ce` is read-only. For a requested visual reference, ins
 | `src/routes/AppRouter.jsx` | Legacy app routes |
 
 **Documentation policy:** keep just `README.md` and `docs/architecture.md`. Add new, verified decisions to the appropriate section of this guide; avoid chronological dumps, redundant files and speculative implementation claims. Preserve sensitive operational evidence outside the repo and use Git/PR history to recover older notes.
+
+---
+
+## 8. Plano completo — migração gradual do backend para TypeScript (2026-11-04)
+
+> **Fonte:** transcrição técnica consolidada da resposta e do planejamento aprovados para consulta nas próximas etapas. **Não é autorização de merge/deploy.** Este plano registra a ordem, o esforço, as integrações e as regras que devem ser verificadas antes de cada lote. Atualizar o andamento aqui, sem criar outros arquivos Markdown.
+
+Revisei a estrutura da `main`, módulos do backend, testes, GitHub Actions e configuração Railway. **Recomendação: migrar a aplicação inteira para TypeScript sem conversão em massa.** Agrupar módulos simples, isolando autenticação, permissões, uploads e exclusões permanentes. A API existente precisa continuar funcionando durante toda a migração.
+
+### 8.1 Situação de partida
+
+| Área | Inventário no planejamento | Situação |
+| --- | --- | --- |
+| Frontend | 27 arquivos `.ts`/`.tsx` | Já usa TypeScript, React e verificação de tipos |
+| Backend | 16 módulos `.js` | Executado diretamente pela Railway, sem compilação TypeScript |
+| Testes | 39 arquivos (15 API + 24 web) | JavaScript/MJS; testes de API importam `src/*.js` |
+| Operação | Build Railway via `node --check apps/api/src/server.js`; start via `pnpm --filter @1ce/api start` | Não basta renomear arquivos para `.ts`; é preciso adaptar build, imports, testes e runtime |
+
+**Primeiro objetivo:** configurar a API compilada e prová-la no CI antes de qualquer troca da entrada em produção.
+
+### 8.2 Prioridades, impacto, tamanho, dificuldade e conectores
+
+Esforço: **P** = pequeno; **M** = médio; **G** = grande; **GG** = muito grande. Impacto crítico significa risco maior se houver regressão, não que o módulo esteja defeituoso.
+
+| Ordem | Migração | Impacto | Esforço | Dificuldade | Conectores |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Compilação TypeScript da API, CI e execução Railway | Muito alto | M | Alta | Sim; deploy controlado |
+| 2 | Tipos compartilhados: Beat, Pack, Project, File e User | Muito alto | M | Média | Sim |
+| 3 | Utilitários menores: limites, planos, login admission e profile links | Médio | P–M | Baixa | Sim |
+| 4 | Streaming, auditoria de órfãos e follows | Médio | M | Média | Parcial; R2 real |
+| 5 | Identidade e permissões de mídia (`profile-identity`, `project-media`) | Muito alto | G | Alta | Parcial; autorização real |
+| 6 | Perfis públicos e ações de projetos | Muito alto | G | Alta | Parcial; testes entre contas |
+| 7 | Segurança e concorrência de uploads | Crítico | G | Muito alta | Parcial; R2/DB isolados |
+| 8 | `library-files.js`, gerenciamento completo de arquivos | Crítico | GG | Muito alta | Parcial; integração real |
+| 9 | `trash.js`, lixeira e exclusão permanente | Crítico | G | Muito alta | Parcial; R2 descartável |
+| 10 | `server.js`, autenticação/OAuth/servidor principal | Crítico | GG | Muito alta | Parcial; login real |
+| 11 | Testes e scripts auxiliares restantes | Médio | G | Média | Sim, quase tudo |
+
+### 8.3 Fases de implementação
+
+#### Fase 1 — Preparar TypeScript sem alterar funcionalidades (infraestrutura isolada)
+
+1. Configurar `tsconfig` da API para Node.js ESM e compilação de JavaScript/TypeScript.
+2. Preparar build que gera JavaScript em `dist/`.
+3. Adaptar CI e testes que dependem diretamente de `src/`; manter testes de código-fonte e validar também o artefato compilado.
+4. Testar a API compilada e **só então**, com aprovação explícita, trocar a execução na Railway.
+
+**Resultado:** infraestrutura de compilação pronta para migração incremental. **Gate especial:** a troca do processo de produção é um release separado; não presumir que autorização para criar branch concede deploy.
+
+#### Fase 2 — Contratos compartilhados e módulos pequenos (lotes conjuntos)
+
+Definir contratos para projetos, usuários, beats, packs, arquivos e respostas da API. Migrar juntos `login-admission.js`, `storage-plans.js`, `api-rate-limits.js` e `profile-links.js`. Em segundo lote, migrar `audio-stream.js`, `orphan-audit.js` e `profile-follows.js`. Verificar exports, `.js` specifiers ESM, tipos e testes existentes.
+
+**Resultado:** contratos centrais e sete módulos convertidos sem redesenhar comportamento.
+
+#### Fase 3 — Identidade, projetos e permissões (quatro revisões separadas)
+
+Migrar `profile-identity.js` (identidade, username, avatar); `project-media.js` (acesso por usuário e recurso); `public-profiles.js` (publicações, compartilhamentos, saves); `project-actions.js` (mutações de beats e packs), com testes em duas contas. Não alterar a política de acesso nem as rotas durante a conversão.
+
+**Resultado:** autorização tipada e contratos existentes preservados.
+
+#### Fase 4 — Uploads e R2 (três revisões separadas)
+
+Migrar individualmente `upload-security.js` (validação e integridade), `upload-leases.js` (concorrência e fencing) e `library-files.js` (uploads, deduplicação, R2, referências). `library-files.js` concentra várias consultas SQL e operações S3, por isso precisa de testes de concorrência em PostgreSQL e R2 descartáveis. Não misturar novos recursos de upload.
+
+**Resultado:** armazenamento tipado sem alterar chaves, mídia, deduplicação ou dados de usuários.
+
+#### Fase 5 — Lixeira e exclusão permanente (exclusiva)
+
+Migrar `trash.js` em branch/revisão própria depois dos contratos e arquivos. Preservar transações, advisory locks, leases, FKs, outbox e limitações de owner-scoped `verified/` keys. Validar Delete → Trash → Restore → Empty Trash com ativos descartáveis; falhas/retries e autorizações negativas. Nunca testar exclusão de mídias reais.
+
+**Resultado:** lixeira tipada com revisão especial de segurança.
+
+#### Fase 6 — Servidor principal e autenticação (núcleo por último)
+
+Migrar `server.js` quando handlers já estiverem tipados. Revalidar HTTP, sessões, cookies, rate limit, Google OAuth, login por senha, health e CORS. Aplicar testes adversariais e verificação de rotas em ambiente autorizado antes de qualquer rollout.
+
+**Resultado:** todos os 16 módulos de produção da API em TypeScript.
+
+#### Fase 7 — Testes, scripts e acabamento (lotes opcionais)
+
+Migrar testes JavaScript que ganhem valor com tipos, e avaliar scripts `.mjs` usados em manutenção. Cobertura necessária ao comportamento deve ser criada **durante** as fases anteriores; a fase 7 apenas completa a padronização conveniente.
+
+### 8.4 Capacidades dos conectores e limitações
+
+| Atividade | Execução pelos conectores | Condição |
+| --- | --- | --- |
+| Editar arquivos, branches, commits, PRs | Sim | GitHub |
+| Executar testes e builds | Sim | GitHub Actions |
+| Configurar build/start da API | Sim | Railway; exige autorização de deploy |
+| Acompanhar deploys | Sim | Vercel/Railway |
+| PostgreSQL e R2 descartáveis | Em grande parte | Isolamento e credenciais adequadas |
+| Login Google, interações e reprodução em navegador | Parcial | Algumas etapas exigem sessão/teste manual |
+| Garantia de zero regressões | Não | TypeScript, testes e CI reduzem risco, não o eliminam |
+
+Maior dependência externa: **validação de comportamentos reais entre contas, R2 e banco**, com ambientes isolados e credenciais instaladas diretamente nos serviços, sem exposição em chat ou Git.
+
+### 8.5 Lotes, deploys e pontos de aprovação
+
+- **Marco A — infraestrutura pronta:** compilação TypeScript e CI funcionando; publicar a troca de runtime somente após teste da API compilada e autorização.
+- **Marco B — módulos de menor risco:** contratos e utilitários migrados, agrupando alterações relacionadas em poucas publicações.
+- **Marco C — módulos críticos:** permissões, uploads, lixeira e autenticação revisados isoladamente; não forçar tudo em um deploy para economizar builds.
+- Cada fase tem branch/PR e teste próprio. Nenhum merge ou deploy automático por iniciativa do assistente. A infraestrutura pode ter deploy automático ao mesclar `main`; checar o mecanismo antes de autorizar merges.
+
+### 8.6 Regras permanentes da migração
+
+1. **Sem alteração intencional de comportamento:** mudar a linguagem/contratos, não adicionar funções.
+2. **Sem migration SQL por padrão:** TypeScript não exige mudar as tabelas.
+3. **Sem `any` indiscriminado:** usar tipos, `unknown` e validação em runtime nas fronteiras.
+4. **Preservar R2 e autorização:** sem reprocessar arquivos ou mudar keys, grants, dedupe e política de acesso.
+5. **Só dois Markdown:** `README.md` e `docs/architecture.md`; documentar progresso nesta seção.
+6. **Validação por lote:** API, testes web, compilação, CI e testes PostgreSQL/R2 conforme risco; distinguir mock de teste real.
+7. **Sem merge/deploy sem autorização específica:** a migração precisa preservar as funcionalidades em produção durante o trabalho.
+
+### 8.7 Recomendação e andamento
+
+**Começar pelas fases 1 e 2.** Configurar a execução compilada e os contratos pequenos antes de migrar módulos de arquivos/autenticação. Isso oferece ganhos de tipagem e ferramentas com o menor risco inicial; depois avançar isoladamente por componente crítico.
+
+**Controle do andamento (2026-11-04 UTC):** Fase 1 iniciada na branch `chore/api-typescript-phase-1`, sem merge e sem deploy. Verificar o estado real da branch/CI antes de marcar Fase 1 concluída. A produção deve continuar usando o comando anterior até autorização separada.

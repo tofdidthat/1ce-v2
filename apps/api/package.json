@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "node src/server.js",
     "start": "node src/server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "build": "tsc --project tsconfig.json",
+    "start:compiled": "node dist/server.js"
   },
   "engines": {
     "node": ">=22"
