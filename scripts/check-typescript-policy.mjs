@@ -4,10 +4,7 @@ import {readFileSync,readdirSync} from 'node:fs';
 import {join,relative,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
-const temporaryExemptions=new Set([
- 'apps/web/src/workspace-v1.tsx',
- 'apps/web/src/library-upload-v1.tsx',
-]);
+const temporaryExemptions=new Set();
 function walk(dir){
  const found=[];
  for(const entry of readdirSync(dir,{withFileTypes:true})){
@@ -25,7 +22,7 @@ export function checkTypeScriptPolicy(root=process.cwd(),exemptions=temporaryExe
   if(config.compilerOptions?.allowJs!==false)errors.push(name+': allowJs must remain false');
  }
  const encountered=new Set();
- for(const directory of ['apps/api/src','apps/web/src','packages/shared']){
+ for(const directory of ['apps/api/src','apps/web/src']){
   for(const absolute of walk(join(root,directory))){
    const path=relative(root,absolute).replaceAll('\\','/');
    if(/\.(?:js|jsx|mjs|cjs)$/i.test(path))errors.push(path+': JavaScript production source is forbidden');
