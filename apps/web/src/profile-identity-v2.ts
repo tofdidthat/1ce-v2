@@ -1,6 +1,6 @@
 // Browser read model for /api/public/profile/:identifier.
 // Profile metadata is not proof of authorization to private project media.
-import {isAccountUserV2,type AccountUserV2} from './account-identity-v2';
+import {isAccountUserV2,type AccountUserV2} from './account-identity-v2.ts';
 
 export type PublicProfileIdentityV2=AccountUserV2&{links?:string[]};
 

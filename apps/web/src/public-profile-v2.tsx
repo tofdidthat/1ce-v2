@@ -344,7 +344,7 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
    </section>
   </div>}
   {actionDialog&&<ProjectActionDialogV2 key={actionDialog.action+':'+actionDialog.project.id} project={actionDialog.project} action={actionDialog.action} packs={ownerPacks} userId={user?.id} onClose={()=>setActionDialog(null)} onChanged={onProjectChanged}/>}
-  {editorOpen&&isOwner&&<EditProfilePanelV2 key={String(user.id)} user={user} profile={visibleProfileUser||user} catalog={visibleProjects.catalog}
+  {editorOpen&&isOwner&&user&&<EditProfilePanelV2 key={String(user.id)} user={user} profile={visibleProfileUser||user} catalog={visibleProjects.catalog}
     onClose={()=>setEditorOpen(false)} onIdentityUpdated={onIdentityUpdated} onProfileUpdated={()=>setRefreshRevision(v=>v+1)}/>}
   </section>
 }
