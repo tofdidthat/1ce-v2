@@ -84,20 +84,20 @@ async function linkGoogleUser(client:PoolClient,profile:VerifiedGoogleV2):Promis
 }
 
 const server=createServer(async(req,res)=>{
- const pathname=new URL(req.url,'http://localhost').pathname;
+ const pathname=new URL(req.url!,'http://localhost').pathname;
  const allowed=req.headers.origin===origin;
  if(allowed){res.setHeader('Access-Control-Allow-Origin',origin);res.setHeader('Access-Control-Allow-Credentials','true');res.setHeader('Vary','Origin');}
  if(req.method==='OPTIONS'){res.writeHead(allowed?204:403,{'Access-Control-Allow-Methods':'GET,POST,PATCH,DELETE,OPTIONS','Access-Control-Allow-Headers':'Content-Type'});return res.end();}
  if(pathname==='/health'&&req.method==='GET')return json(res,200,{ok:true,service:'1ce-v2-api'});
  if(pathname==='/health/db'&&req.method==='GET'){
   try{await pool.query('SELECT 1');return json(res,200,{ok:true,database:'connected'});}
-  catch(err){console.error('v2 database health check failed',err?.message);return json(res,503,{ok:false,database:'unavailable'});}
+  catch(err){console.error('v2 database health check failed',(err as Error)?.message);return json(res,503,{ok:false,database:'unavailable'});}
  }
  if(!allowed && req.headers.origin)return json(res,403,{error:'Origin not allowed'});
  try{
 
   if(await handleProfileIdentity(req,res,pathname,pool,currentUser))return;
-  if(await handleProfileFollows(req,res,pathname,pool,currentUser))return;
+  if(await handleProfileFollows(req as Parameters<typeof handleProfileFollows>[0],res,pathname,pool,currentUser as Parameters<typeof handleProfileFollows>[4]))return;
   if(await handlePublicProfiles(req,res,pathname,pool,currentUser))return;
   if(await handleTrash(req,res,pathname,pool,currentUser))return;
   if(await handleProjectActions(req,res,pathname,pool,currentUser))return;
@@ -106,7 +106,7 @@ const server=createServer(async(req,res)=>{
   if(pathname==='/auth/google'&&req.method==='GET'){
    const config=googleConfig();
    if(!config.clientId||!config.clientSecret||!config.redirectUri)return json(res,503,{error:'Google login is not configured'});
-   const challenge=new URL(req.url,'http://localhost').searchParams.get('challenge');
+   const challenge=new URL(req.url!,'http://localhost').searchParams.get('challenge');
    if(!validCode(challenge))return json(res,400,{error:'Invalid challenge'});
    const state=randomBytes(32).toString('base64url');
    await pool.query('INSERT INTO account_google_login_attempts(state_hash,verifier_challenge) VALUES($1,$2)',[hash(state),shaBase64(challenge)]);
@@ -115,11 +115,11 @@ const server=createServer(async(req,res)=>{
    return redirect(res,url.toString(),{'Set-Cookie':googleStateCookie+'='+state+'; HttpOnly; Secure; SameSite=Lax; Path=/auth/google; Max-Age=600'});
   }
   if(pathname==='/auth/google/callback'&&req.method==='GET'){
-   const params=new URL(req.url,'http://localhost').searchParams;
+   const params=new URL(req.url!,'http://localhost').searchParams;
    const state=params.get('state'),code=params.get('code'),cookieState=parseCookies(req.headers.cookie)[googleStateCookie];
    if(!validCode(state)||!validCode(cookieState)||!code||code.length>4096||!timingSafeEqual(Buffer.from(state),Buffer.from(cookieState)))return googleError(res);
    const client=await pool.connect();
-   let loginCode;
+   let loginCode:string;
    try{
     await client.query('BEGIN');
     const transaction=await client.query('UPDATE account_google_login_attempts SET callback_used_at=now() WHERE state_hash=$1 AND callback_used_at IS NULL AND expires_at>now() RETURNING id',[hash(state)]);
@@ -133,14 +133,14 @@ const server=createServer(async(req,res)=>{
     await client.query('COMMIT');
    }catch(err){
     try{await client.query('ROLLBACK');}catch{}
-    console.error('Google callback failed:',err?.message);
+    console.error('Google callback failed:',(err as Error)?.message);
     return googleError(res);
    }finally{client.release();}
    return redirect(res,origin+'/app?login_code='+encodeURIComponent(loginCode),{'Set-Cookie':googleStateCookie+'=; HttpOnly; Secure; SameSite=Lax; Path=/auth/google; Max-Age=0'});
   }
   if(pathname==='/auth/google/exchange'&&req.method==='POST'){
    let body='';for await(const chunk of req){body+=chunk;if(body.length>8192)return json(res,413,{error:'Request too large'});}
-   let data;try{data=JSON.parse(body)}catch{return json(res,400,{error:'Invalid request'});}
+   let data:{loginCode?:unknown;verifier?:unknown};try{data=JSON.parse(body) as {loginCode?:unknown;verifier?:unknown}}catch{return json(res,400,{error:'Invalid request'});}
    if(!validCode(data.loginCode)||!validCode(data.verifier))return json(res,400,{error:'Invalid exchange'});
    const client=await pool.connect();
    try{
@@ -160,7 +160,7 @@ const server=createServer(async(req,res)=>{
   if(pathname==='/auth/logout'&&req.method==='POST'){const token=parseCookies(req.headers.cookie)[cookieName];if(token)await pool.query('DELETE FROM account_sessions WHERE token_hash=$1',[hash(token)]);return json(res,200,{ok:true},{'Set-Cookie':cookie('',0)});}
   if(pathname==='/auth/login'&&req.method==='POST'){
    let body='';for await(const chunk of req){body+=chunk;if(body.length>8192)return json(res,413,{error:'Request too large'});}
-   let data;try{data=JSON.parse(body)}catch{return json(res,400,{error:'Invalid request'})}
+   let data:{email?:unknown;password?:unknown};try{data=JSON.parse(body) as {email?:unknown;password?:unknown}}catch{return json(res,400,{error:'Invalid request'})}
    const email=String(data.email||'').trim().toLowerCase();const password=data.password;
    if(email.length>254||!email.includes('@')||typeof password!=='string'||password.length>1024||!password)return json(res,400,{error:'Invalid email or password'});
    const q=await pool.query('SELECT id,email,name,picture,password_hash,email_verified FROM account_users WHERE lower(email)=$1 LIMIT 1',[email]);
@@ -194,7 +194,7 @@ const server=createServer(async(req,res)=>{
    return json(res,200,{user:{id:user.id,email:user.email,name:user.name,picture:user.picture}},{'Set-Cookie':cookie(token,604800)});
   }
   return json(res,404,{error:'Not found'});
- }catch(err){console.error('v2 api error',err?.message);return json(res,500,{error:'Service unavailable'});}
+ }catch(err){console.error('v2 api error',(err as Error)?.message);return json(res,500,{error:'Service unavailable'});}
 });
 // Importing the router in isolated tests must not bind a live port. Direct
 // "node src/server.js" / Railway starts exactly as before.
