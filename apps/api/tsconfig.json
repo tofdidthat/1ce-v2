@@ -5,7 +5,7 @@
     "moduleResolution": "NodeNext",
     "rootDir": "src",
     "outDir": "dist",
-    "allowJs": true,
+    "allowJs": false,
     "checkJs": false,
     "strict": true,
     "noEmitOnError": true,

@@ -8,7 +8,7 @@ import {Readable} from 'node:stream';
 import {rateLimitExceeded,pruneExpiredRateLimits} from '../dist/api-rate-limits.js';
 import {accountStorageQuota,GIB} from '../dist/storage-plans.js';
 import {acquireCompletionLease,failPendingWithLease,discardPendingWithLease,promoteReadyWithLease} from '../dist/upload-leases.js';
-import {moveProjectToTrash,purgeTrashMetadata,handleTrash} from '../src/trash.js';
+import {moveProjectToTrash,purgeTrashMetadata,handleTrash} from '../dist/trash.js';
 
 const connectionString=process.env.S2_TEST_DATABASE_URL;
 if(!connectionString)throw new Error('S2_TEST_DATABASE_URL is required');

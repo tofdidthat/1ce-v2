@@ -2,13 +2,22 @@
 // Object deletion is driven by a transactional DB outbox, never a client key.
 import {randomUUID} from 'node:crypto';
 import {S3Client,DeleteObjectCommand} from '@aws-sdk/client-s3';
+import type {IncomingMessage,ServerResponse} from 'node:http';
+import type {ProjectKindV2,QueryableV2} from '../../../packages/shared/contracts.js';
+
+type TxClientV2=QueryableV2&{release():void};
+type TxPoolV2=QueryableV2&{connect():Promise<TxClientV2>};
+type AccountV2={id:number|string};
+type CurrentUserV2=(req:IncomingMessage)=>Promise<AccountV2|null>;
+type StorageV2={bucket:string;s3:S3Client};
+
 
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const safeKey=/^users\/[1-9]\d*\/assets\/(audio|cover|stems)\/verified\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(mp3|wav|jpg|jpeg|png|webp|zip)$/i;
-const tableFor=kind=>kind==='beat'?'library_beats':kind==='pack'?'library_packs':null;
-const respond=(res,status,payload)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(payload));};
+const tableFor=(kind:unknown):string|null=>kind==='beat'?'library_beats':kind==='pack'?'library_packs':null;
+const respond=(res:ServerResponse,status:number,payload:unknown)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(payload));};
 
-async function tx(pool,fn){
+async function tx<T>(pool:TxPoolV2,fn:(db:TxClientV2)=>Promise<T>):Promise<T>{
  const db=await pool.connect();
  try{
   await db.query('BEGIN');
@@ -18,19 +27,19 @@ async function tx(pool,fn){
  }catch(err){try{await db.query('ROLLBACK');}catch{}throw err;}
  finally{db.release();}
 }
-async function json(req){
+async function json(req:IncomingMessage):Promise<{confirmation?:unknown}|null>{
  let raw='';
  for await(const chunk of req){raw+=chunk;if(raw.length>1024)throw Error('Invalid confirmation');}
- try{return JSON.parse(raw)}catch{throw Error('Invalid confirmation')}
+ try{return JSON.parse(raw) as {confirmation?:unknown}|null}catch{throw Error('Invalid confirmation')}
 }
-function storage(){
+function storage():StorageV2|null{
  const {R2_ACCOUNT_ID:account,R2_ACCESS_KEY_ID:key,R2_SECRET_ACCESS_KEY:secret,R2_BUCKET_NAME:bucket}=process.env;
  if(!account||!key||!secret||!bucket)return null;
  return {bucket,s3:new S3Client({region:'auto',endpoint:'https://'+account+'.r2.cloudflarestorage.com',credentials:{accessKeyId:key,secretAccessKey:secret},forcePathStyle:true})};
 }
 
 // Must be called inside the existing project-actions transaction.
-export async function moveProjectToTrash(db,{owner,kind,id}){
+export async function moveProjectToTrash(db:QueryableV2,{owner,kind,id}:{owner:number;kind:ProjectKindV2;id:string}):Promise<boolean>{
  const table=tableFor(kind);
  if(!table||!uuid.test(id))return false;
  await db.query('SELECT pg_advisory_xact_lock($1::bigint)',[owner]);
@@ -40,7 +49,7 @@ export async function moveProjectToTrash(db,{owner,kind,id}){
  // last active pack. Keep standalone beats and beats used by any other live pack.
  // Use the pack's exact deletion timestamp as the cascade marker so restore
  // can tell these apart from beats the owner deleted manually earlier.
- let cascadeIds=[];
+ let cascadeIds:string[]=[];
  if(kind==='pack'){
   const cascaded=await db.query(`UPDATE library_beats b SET deleted_at=p.deleted_at
    FROM library_packs p JOIN library_pack_beats pb ON pb.pack_id=p.id
@@ -52,7 +61,7 @@ export async function moveProjectToTrash(db,{owner,kind,id}){
       WHERE shared.beat_id=b.id AND other.user_id=$1 AND other.deleted_at IS NULL
      )
    RETURNING b.id`,[owner,id]);
-  cascadeIds=cascaded.rows.map(row=>row.id);
+  cascadeIds=cascaded.rows.map(row=>row.id as string);
  }
  // Revoke every public, saved and shared edge for the pack AND its
  // automatically trashed members, atomically with the tombstones.
@@ -66,7 +75,7 @@ export async function moveProjectToTrash(db,{owner,kind,id}){
  return true;
 }
 
-export async function purgeTrashMetadata(db,owner){
+export async function purgeTrashMetadata(db:QueryableV2,owner:number):Promise<{removedProjects:number;queuedMedia:number}>{
  // Serialize purges for this account. Concurrent project INSERTs are also
  // protected by the FK references to library_files at the final DELETE.
  await db.query('SELECT pg_advisory_xact_lock($1::bigint)',[owner]);
@@ -83,16 +92,16 @@ export async function purgeTrashMetadata(db,owner){
   const q=await db.query("WITH retired AS (DELETE FROM library_files f WHERE f.user_id=$1 AND f.id=ANY($2::bigint[]) AND f.status='ready' AND f.object_key ~ ('^users/' || $1::text || '/assets/(audio|cover|stems)/verified/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}[.](mp3|wav|jpg|jpeg|png|webp|zip)$') AND NOT EXISTS (SELECT 1 FROM library_beats b WHERE b.audio_file_id=f.id OR b.cover_file_id=f.id OR b.stems_file_id=f.id) AND NOT EXISTS (SELECT 1 FROM library_packs p WHERE p.cover_file_id=f.id) RETURNING f.user_id,f.object_key), queued AS (INSERT INTO v2_r2_delete_jobs(user_id,object_key) SELECT user_id,object_key FROM retired ON CONFLICT (object_key) DO NOTHING RETURNING id) SELECT count(*)::int AS total FROM queued",[owner,assetIds]);
   queuedMedia=Number(q.rows[0]?.total||0);
  }
- return {removedProjects:beats.rowCount+packs.rowCount,queuedMedia};
+ return {removedProjects:(beats.rowCount??0)+(packs.rowCount??0),queuedMedia};
 }
 
-export async function processPendingTrashJobs(pool,{owner,s3,bucket,max=12}){
+export async function processPendingTrashJobs(pool:QueryableV2,{owner,s3,bucket,max=12}:{owner:number;s3:S3Client;bucket:string;max?:number}):Promise<{deletedMedia:number;failedMedia:number;pendingMedia:number}>{
  if(!s3||!bucket)throw Error('Storage unavailable');
  let deletedMedia=0,failedMedia=0;
  for(let n=0;n<max;n++){
   const token=randomUUID();
   const claim=await pool.query("WITH next AS (SELECT id FROM v2_r2_delete_jobs WHERE user_id=$1 AND completed_at IS NULL AND (claim_until IS NULL OR claim_until<now()) ORDER BY created_at,id LIMIT 1 FOR UPDATE SKIP LOCKED) UPDATE v2_r2_delete_jobs j SET claim_token=$2::uuid,claim_until=now()+interval '2 minutes',attempts=j.attempts+1 FROM next WHERE j.id=next.id RETURNING j.id,j.object_key",[owner,token]);
-  const job=claim.rows[0];
+  const job=claim.rows[0] as {id:number|string;object_key:string}|undefined;
   if(!job)break;
   if(!safeKey.test(job.object_key)||!job.object_key.startsWith('users/'+owner+'/')){
    await pool.query("UPDATE v2_r2_delete_jobs SET claim_token=NULL,claim_until=NULL,last_error='Unsafe key refused' WHERE id=$1 AND user_id=$2 AND claim_token=$3::uuid",[job.id,owner,token]);
@@ -113,9 +122,9 @@ export async function processPendingTrashJobs(pool,{owner,s3,bucket,max=12}){
  return {deletedMedia,failedMedia,pendingMedia:Number(pending.rows[0]?.pending||0)};
 }
 
-export async function handleTrash(req,res,pathname,pool,currentUser,{storageFactory=storage}={}){
+export async function handleTrash(req:IncomingMessage,res:ServerResponse,pathname:string,pool:TxPoolV2,currentUser:CurrentUserV2,{storageFactory=storage}:{storageFactory?:()=>StorageV2|null}={}):Promise<boolean>{
  if(!pathname.startsWith('/api/library/trash'))return false;
- if(!['GET','POST'].includes(req.method)){respond(res,405,{error:'Method not allowed'});return true;}
+ if(!['GET','POST'].includes(req.method||'')){respond(res,405,{error:'Method not allowed'});return true;}
  const user=await currentUser(req);
  if(!user){respond(res,401,{error:'Not authenticated'});return true;}
  const owner=Number(user.id),parts=pathname.split('/').filter(Boolean);
@@ -134,11 +143,11 @@ export async function handleTrash(req,res,pathname,pool,currentUser,{storageFact
    pool.query('SELECT count(*)::int AS pending FROM v2_r2_delete_jobs WHERE user_id=$1 AND completed_at IS NULL',[owner])
   ]);
   const items=[...beats.rows.map(x=>({...x,kind:'beat'})),...packs.rows.map(x=>({...x,kind:'pack'}))]
-   .sort((a,b)=>new Date(b.deleted_at)-new Date(a.deleted_at));
+   .sort((a,b)=>new Date((b as Record<string,unknown>).deleted_at as string|Date).getTime()-new Date((a as Record<string,unknown>).deleted_at as string|Date).getTime());
   respond(res,200,{items,pendingMedia:Number(pending.rows[0]?.pending||0),retentionDays:30});return true;
  }
  if(req.method==='POST'&&parts.length===6&&tableFor(parts[3])&&uuid.test(parts[4])&&parts[5]==='restore'){
-  const kind=parts[3],id=parts[4];
+  const kind=parts[3] as ProjectKindV2,id=parts[4];
   const found=await tx(pool,async db=>{
    await db.query('SELECT pg_advisory_xact_lock($1::bigint)',[owner]);
    if(kind==='pack'){
@@ -159,7 +168,7 @@ export async function handleTrash(req,res,pathname,pool,currentUser,{storageFact
        )`,[owner,id]);
    }
    const q=await db.query('UPDATE '+tableFor(kind)+" SET deleted_at=NULL WHERE user_id=$1 AND id=$2 AND deleted_at>=now()-interval '30 days' RETURNING id",[owner,id]);
-   return q.rowCount>0;
+   return (q.rowCount??0)>0;
   });
   respond(res,found?200:404,found?{restored:true,id,kind}:{error:'Project not found or recovery period ended'});return true;
  }
