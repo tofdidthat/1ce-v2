@@ -6,6 +6,8 @@ import useProjectFlagsV2 from './project-flags-v2';
 import {normalizeLibraryProjectsV2,type LibraryBeatV2,type LibraryPackV2,type ProfileProjectV2} from './project-read-v2';
 import {notifyV2DataChanged} from './data-refresh-v2';
 import {ProfileSocialLinksV2} from './profile-social-links-v2';
+import {isAccountUserV2,type AccountUserV2} from './account-identity-v2';
+import type {PublicProfileIdentityV2} from './profile-identity-v2';
 import './edit-profile-panel-v2.css';
 
 const api=import.meta.env.VITE_API_URL;
@@ -18,14 +20,16 @@ const validateUsername=(value:string)=>/^[a-z0-9][a-z0-9._]{1,22}[a-z0-9]$/.test
 async function jsonRequest(path:string,options:RequestInit){
  if(!api)throw Error('API is not configured');
  const response=await fetch(api+path,{...options,credentials:'include',cache:'no-store'});
- const data=await response.json().catch(()=>({}));
- if(!response.ok)throw Error(data.error||'Unable to save profile');
- return data;
+ const data:unknown=await response.json().catch(()=>null);
+ const result=data!==null&&typeof data==='object'&&!Array.isArray(data)?data as Record<string,unknown>:null;
+ if(!response.ok)throw Error(typeof result?.error==='string'?result.error:'Unable to save profile');
+ if(!isAccountUserV2(result?.user))throw Error('Invalid account update response');
+ return {user:result.user};
 }
 
 export default function EditProfilePanelV2({user,profile,catalog,onClose,onIdentityUpdated,onProfileUpdated}:{
- user:any;profile:any;catalog:ProfileProjectV2[];
- onClose:()=>void;onIdentityUpdated:(updated:any)=>void;onProfileUpdated:()=>void;
+ user:AccountUserV2|null;profile:PublicProfileIdentityV2|null;catalog:ProfileProjectV2[];
+ onClose:()=>void;onIdentityUpdated:(updated:AccountUserV2)=>void;onProfileUpdated:()=>void;
 }){
  const viewer=Number(user?.id);
  const [username,setUsername]=useState(String(profile?.username||user?.username||''));

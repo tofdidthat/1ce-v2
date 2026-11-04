@@ -290,3 +290,12 @@ A green TypeScript build, a passing source-pattern test and a visually correct s
 5. **Separate release statuses:** implemented, validated in CI, browser-tested, merged, deployed and manually verified are different states. Follow the gated batch/rollback protocol and never claim user-media safety solely from a green CI run.
 
 **Known debt beyond these PRs:** some existing frontend profile helpers still contain broad `any` types. These lots do not make every feature fully typed, and they do not establish full multi-account browser/R2 acceptance. Address such work in scoped, behavior-tested follow-ups, not unrelated refactors.
+
+
+### Tarefa 1 — typed profiles and playback contracts (branch review; no deploy)
+
+- Scope: remove remaining explicit frontend `any` in public profile, editor, avatar and public playback adapters; reuse the canonical `AccountUserV2` model.
+- The public profile response is verified at the browser boundary and invalid identity data cannot establish a successful profile load. User-initiated profile mutations must return a confirmed account object before the editor signals success.
+- The public playback manifest is validated as untrusted JSON, enforcing original project UUIDs, positive numeric audio-file IDs and matching ownership. Client-side validation never grants access: the API alone authorizes playback and byte streams. Public manifests deliberately omit stems from download metadata.
+- No SQL, R2 object, media duplication, OAuth, permissions, route or visual design changes are authorized in this lot. The new pure validation helpers receive negative regression tests.
+- CI typechecking/unit/source checks are necessary but not browser acceptance for two accounts, session refresh, player continuity or real R2 upload. Mark these statuses separately and request merge/deploy approval after review.

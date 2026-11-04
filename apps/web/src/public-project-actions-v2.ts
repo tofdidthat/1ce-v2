@@ -1,21 +1,16 @@
 // Shared public project read and authorized MP3 download; no new API routes.
-export type PlayableTrackV2={id:string;owner_id:number;title:string;audio_file_id:number;cover_file_id:number|null;stems_file_id:number|null};
-export type PlayableProjectV2={id:string;owner_id:number;kind:'beat'|'pack';title:string;cover_file_id:number|null;tracks:PlayableTrackV2[]};
+import {parsePlayableProjectV2,type PlayableTrackV2,type PlayableProjectV2} from './playable-manifest-v2';
+export type {PlayableTrackV2,PlayableProjectV2} from './playable-manifest-v2';
 const api=import.meta.env.VITE_API_URL;
 export async function fetchPlayableProjectV2(ownerId:number,kind:'beat'|'pack',id:string,signal?:AbortSignal):Promise<PlayableProjectV2>{
  if(!api||!Number.isSafeInteger(ownerId)||ownerId<1||!['beat','pack'].includes(kind)||!/^[0-9a-f-]{36}$/i.test(id))throw Error('Invalid project');
  const response=await fetch(api+'/api/public/play/'+ownerId+'/'+kind+'/'+id,{credentials:'include',cache:'no-store',signal});
- const payload=await response.json().catch(()=>({}));
- if(!response.ok)throw Error(payload.error||'Project not available');
- const project=payload.project;
- if(project?.owner_id!==ownerId||project.kind!==kind||project.id!==id||!Array.isArray(project.tracks))throw Error('Invalid project manifest');
- const tracks:PlayableTrackV2[]=project.tracks.map((t:any)=>({
-  id:String(t.id),owner_id:Number(t.owner_id),title:String(t.title||'Untitled'),
-  audio_file_id:Number(t.audio_file_id),cover_file_id:t.cover_file_id==null?null:Number(t.cover_file_id),
-  stems_file_id:null
- }));
- if(!tracks.length||tracks.some(t=>t.owner_id!==ownerId||!Number.isSafeInteger(t.audio_file_id)||t.audio_file_id<1))throw Error('No playable tracks');
- return {id,kind,owner_id:ownerId,title:String(project.title||'Untitled'),cover_file_id:project.cover_file_id??null,tracks};
+ const payload:unknown=await response.json().catch(()=>null);
+ if(!response.ok){
+  const failure=payload&&typeof payload==='object'&&!Array.isArray(payload)?payload as Record<string,unknown>:null;
+  throw Error(typeof failure?.error==='string'?failure.error:'Project not available');
+ }
+ return parsePlayableProjectV2(payload,{ownerId,kind,id});
 }
 export function publicProjectLinkV2(origin:string,ownerId:number,kind:'beat'|'pack',id:string):string{
  if(!Number.isSafeInteger(ownerId)||ownerId<1||!['beat','pack'].includes(kind)||!/^[0-9a-f-]{36}$/i.test(id))throw Error('Invalid project');

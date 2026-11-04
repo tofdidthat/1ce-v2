@@ -8,7 +8,7 @@ test('public profile has exactly one username line, without @ prefix or secondar
  assert.match(profile,/<h1>\{handle\?handle\.replace\(\/\^@\/,'\'\):name\}<\/h1>/);
  assert.doesNotMatch(profile,/<p className="onece-profile-display-name">/);
  assert.doesNotMatch(profile,/handle\?'@'\+handle/);
- assert.match(profile,/const handle=String\(shownUser\?\.username\|\|shownUser\?\.handle\|\|''\)/);
+ assert.match(profile,/const handle=String\(shownUser\?\.username\|\|''\)/);
  assert.match(profile,/className="onece-profile-avatar"/);
 });
 

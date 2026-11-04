@@ -1,5 +1,6 @@
 // Build the public avatar route from the current v2 API base; never expose R2 object keys.
-export function profilePictureV2(user: any): string {
+import type {AccountUserV2} from './account-identity-v2';
+export function profilePictureV2(user: AccountUserV2|null|undefined): string {
  if (!user) return '';
  if (user.has_avatar && user.id) {
   const api = import.meta.env.VITE_API_URL;
