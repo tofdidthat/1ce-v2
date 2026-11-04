@@ -7,7 +7,7 @@ import pg from 'pg';
 import {Readable} from 'node:stream';
 import {rateLimitExceeded,pruneExpiredRateLimits} from '../dist/api-rate-limits.js';
 import {accountStorageQuota,GIB} from '../dist/storage-plans.js';
-import {acquireCompletionLease,failPendingWithLease,discardPendingWithLease,promoteReadyWithLease} from '../src/upload-leases.js';
+import {acquireCompletionLease,failPendingWithLease,discardPendingWithLease,promoteReadyWithLease} from '../dist/upload-leases.js';
 import {moveProjectToTrash,purgeTrashMetadata,handleTrash} from '../src/trash.js';
 
 const connectionString=process.env.S2_TEST_DATABASE_URL;
