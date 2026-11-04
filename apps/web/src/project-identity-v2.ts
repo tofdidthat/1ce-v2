@@ -1,7 +1,7 @@
 // Canonical 1CE v2 project identity and viewer-flag normalization.
 // Pure functions: safe to test without browser, React or network dependencies.
-export type ProjectKindV2='beat'|'pack';
-export type ProjectIdentityV2={ownerId:number;kind:ProjectKindV2;projectId:string};
+import type {ProjectKindV2,ProjectIdentityV2} from '../../../packages/shared/contracts.js';
+export type {ProjectKindV2,ProjectIdentityV2} from '../../../packages/shared/contracts.js';
 export type ViewerProjectFlagsV2={
  viewerId:number;
  saved:ReadonlySet<string>;

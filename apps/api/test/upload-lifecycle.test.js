@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {Readable} from 'node:stream';
-import {handleLibraryFiles} from '../src/library-files.js';
+import {handleLibraryFiles} from '../dist/library-files.js';
 
 const checksum=bytes=>createHash('sha256').update(bytes).digest('hex');
 const mp3Frame=()=>{

@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Readable} from 'node:stream';
 import {readFileSync} from 'node:fs';
-import {normalizeProfileLinksV2,readProfileLinksV2} from '../src/profile-links.js';
-import {handleProfileIdentity} from '../src/profile-identity.js';
-import {handlePublicProfiles} from '../src/public-profiles.js';
+import {normalizeProfileLinksV2,readProfileLinksV2} from '../dist/profile-links.js';
+import {handleProfileIdentity} from '../dist/profile-identity.js';
+import {handlePublicProfiles} from '../dist/public-profiles.js';
 
 function fixture(){
  const state={username:'original',links:[],id:2},calls=[];

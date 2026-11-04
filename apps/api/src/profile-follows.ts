@@ -1,10 +1,20 @@
 // 1CE v2: social follow relationships are PostgreSQL-only; no project/media grant.
-const send=(res,status,data)=>{
+import type {QueryableV2} from '../../../packages/shared/contracts.js';
+
+type FollowRequest={method:string};
+type FollowResponse={
+ writeHead(status:number,headers:Record<string,string>):void;
+ end(body?:string):void;
+};
+type FollowViewer={id:number};
+type GetViewer=(request:FollowRequest)=>Promise<FollowViewer|null>;
+
+const send=(res:FollowResponse,status:number,data:unknown):void=>{
  res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});
  res.end(JSON.stringify(data));
 };
-let schemaPromise=null;
-function ready(pool){
+let schemaPromise:Promise<void>|null=null;
+function ready(pool:QueryableV2):Promise<void>{
  if(!schemaPromise)schemaPromise=(async()=>{
   await pool.query(`CREATE TABLE IF NOT EXISTS v2_profile_follows (
    follower_id INTEGER NOT NULL REFERENCES account_users(id) ON DELETE CASCADE,
@@ -18,7 +28,7 @@ function ready(pool){
  return schemaPromise;
 }
 
-export async function handleProfileFollows(req,res,pathname,pool,currentUser){
+export async function handleProfileFollows(req:FollowRequest,res:FollowResponse,pathname:string,pool:QueryableV2,currentUser:GetViewer):Promise<boolean>{
  const match=/^\/api\/public\/follows\/(\d+)$/.exec(pathname);
  if(!match)return false;
  if(!['GET','POST','DELETE'].includes(req.method)){send(res,405,{error:'Method not allowed'});return true;}
@@ -28,7 +38,7 @@ export async function handleProfileFollows(req,res,pathname,pool,currentUser){
  }
  const viewer=await currentUser(req);
  if(req.method!=='GET'&&!viewer){send(res,401,{error:'Sign in to follow'});return true;}
- if(req.method!=='GET'&&Number(viewer.id)===targetId){
+ if(req.method!=='GET'&&Number(viewer!.id)===targetId){
   send(res,400,{error:'You cannot follow yourself'});return true;
  }
  await ready(pool);
@@ -53,9 +63,9 @@ export async function handleProfileFollows(req,res,pathname,pool,currentUser){
   return true;
  }
  if(req.method==='POST'){
-  await pool.query('INSERT INTO v2_profile_follows(follower_id,followed_id) VALUES($1,$2) ON CONFLICT DO NOTHING',[viewer.id,targetId]);
+  await pool.query('INSERT INTO v2_profile_follows(follower_id,followed_id) VALUES($1,$2) ON CONFLICT DO NOTHING',[viewer!.id,targetId]);
  }else{
-  await pool.query('DELETE FROM v2_profile_follows WHERE follower_id=$1 AND followed_id=$2',[viewer.id,targetId]);
+  await pool.query('DELETE FROM v2_profile_follows WHERE follower_id=$1 AND followed_id=$2',[viewer!.id,targetId]);
  }
  const count=await pool.query('SELECT count(*)::int AS count FROM v2_profile_follows WHERE followed_id=$1',[targetId]);
  send(res,200,{ok:true,viewerFollows:req.method==='POST',followersCount:Number(count.rows[0]?.count||0)});

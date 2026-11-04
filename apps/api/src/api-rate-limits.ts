@@ -1,8 +1,9 @@
 // PostgreSQL-backed, atomic per-subject rolling windows. Shared by all API
 // replicas; never use process-local maps as a security boundary.
 import {createHash} from 'node:crypto';
+import type {QueryableV2} from '../../../packages/shared/contracts.js';
 
-export async function rateLimitExceeded(pool,scope,subject,limit,windowMinutes){
+export async function rateLimitExceeded(pool:QueryableV2,scope:string,subject:string|number,limit:number,windowMinutes:number):Promise<boolean>{
  if(!/^[a-z][a-z0-9-]{0,39}$/.test(scope)||
   !Number.isSafeInteger(limit)||limit<1||
   !Number.isSafeInteger(windowMinutes)||windowMinutes<1||windowMinutes>1440)
@@ -26,7 +27,7 @@ export const uploadLimits=Object.freeze({
  pendingMinutes:30
 });
 
-export async function pruneExpiredRateLimits(pool,{batchSize=500}={}){
+export async function pruneExpiredRateLimits(pool:QueryableV2,{batchSize=500}:{batchSize?:number}={}):Promise<number>{
  if(!Number.isSafeInteger(batchSize)||batchSize<1||batchSize>2000)
   throw new Error('Invalid rate-limit maintenance batch');
  const result=await pool.query(`WITH old AS (

@@ -6,6 +6,7 @@ on:
     paths:
       - 'apps/api/**'
       - 'apps/web/**'
+      - 'packages/**'
       - 'package.json'
       - 'pnpm-workspace.yaml'
       - 'pnpm-lock.yaml'
@@ -17,6 +18,7 @@ on:
     paths:
       - 'apps/api/**'
       - 'apps/web/**'
+      - 'packages/**'
       - 'package.json'
       - 'pnpm-workspace.yaml'
       - 'pnpm-lock.yaml'
@@ -71,6 +73,8 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - name: Install frozen workspace dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Compile TypeScript API for isolated migration smoke
+        run: pnpm --filter @1ce/api build
       - name: Check additive migration 010 on disposable PostgreSQL
         env:
           S2_TEST_DATABASE_URL: postgresql://s2_ci:isolated-ci-only@127.0.0.1:5432/onece_s2_ci
@@ -93,6 +97,8 @@ jobs:
         run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Run isolated API unit tests
         run: pnpm --filter @1ce/api test
+      - name: Syntax-check read-only orphan audit (do not execute)
+        run: node --check apps/api/scripts/s2-orphan-audit.mjs
       - name: Syntax-check opt-in real R2 preflight (do not execute or use secrets)
         run: node --check apps/api/scripts/s2-r2-smoke.mjs
       - name: Syntax-check bounded v2 rate-limit cleanup (do not execute)
@@ -113,8 +119,10 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - name: Install like Railpack with frozen workspace dependency graph
         run: pnpm install --frozen-lockfile --prefer-offline
-      - name: Verify Railway API-only build command
-        run: node --check apps/api/src/server.js
+      - name: Verify NodeNext source syntax and compiled TypeScript build
+        run: |
+          node --check apps/api/src/server.js
+          pnpm --filter @1ce/api build
       - name: Compile API candidate with TypeScript without switching production entry
         run: |
           pnpm --filter @1ce/api build

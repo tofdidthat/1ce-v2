@@ -1,7 +1,7 @@
 // Opt-in R2/DB orphan audit. Does not upload, delete or mutate objects.
 import pg from 'pg';
 import {S3Client,ListObjectsV2Command} from '@aws-sdk/client-s3';
-import {auditVerifiedOrphans,validAuditPrefix} from '../src/orphan-audit.js';
+import {auditVerifiedOrphans,validAuditPrefix} from '../dist/orphan-audit.js';
 
 if(process.env.V2_ORPHAN_AUDIT_ENABLED!=='true')
  throw new Error('Explicit V2_ORPHAN_AUDIT_ENABLED=true required');

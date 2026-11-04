@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Readable} from 'node:stream';
-import {handleProjectActions} from '../src/project-actions.js';
+import {handleProjectActions} from '../dist/project-actions.js';
 
 const beat='75f80bde-7b6a-4b18-8b1f-4e52eb98f776';
 const second='5fd06bbc-c6a7-43f6-9205-bac180ba9273';

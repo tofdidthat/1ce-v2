@@ -2,7 +2,23 @@
 // the original linked file BEFORE invoking this function.
 import {GetObjectCommand} from '@aws-sdk/client-s3';
 
-export function audioRange(range,byteSize){
+type AudioRange={status:200|206;start:number;end:number};
+type AudioFile={
+ byte_size:number|string;
+ content_type:string;
+ object_key:string;
+};
+type AudioRequest={headers:{range?:string}};
+type AudioResponse={
+ writeHead(status:number,headers:Record<string,string|number>):void;
+ write(chunk:Uint8Array):unknown;
+ end():void;
+};
+type StorageReader={
+ send(command:GetObjectCommand):Promise<{Body?:AsyncIterable<Uint8Array>}>;
+};
+
+export function audioRange(range:string|undefined,byteSize:number|string):AudioRange|null{
  const size=Number(byteSize);
  if(!Number.isSafeInteger(size)||size<1)return null;
  if(!range)return {status:200,start:0,end:size-1};
@@ -20,7 +36,7 @@ export function audioRange(range,byteSize){
  if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||start>end||start>=size)return null;
  return {status:206,start,end:Math.min(end,size-1)};
 }
-export async function streamAuthorizedAudio(req,res,{file,s3,bucket}){
+export async function streamAuthorizedAudio(req:AudioRequest,res:AudioResponse,{file,s3,bucket}:{file:AudioFile;s3:StorageReader;bucket:string}):Promise<void>{
  const range=audioRange(req.headers.range,file.byte_size);
  if(!range){
   res.writeHead(416,{'Content-Range':'bytes */'+file.byte_size,'Accept-Ranges':'bytes','Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'});
@@ -36,6 +52,6 @@ export async function streamAuthorizedAudio(req,res,{file,s3,bucket}){
   'X-Content-Type-Options':'nosniff',
   ...(status===206?{'Content-Range':'bytes '+start+'-'+end+'/'+file.byte_size}:{})
  });
- for await(const chunk of object.Body)res.write(chunk);
+ for await(const chunk of object.Body!)res.write(chunk);
  res.end();
 }

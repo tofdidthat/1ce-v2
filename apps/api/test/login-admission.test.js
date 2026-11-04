@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createPasswordWorkLimiter,passwordWorkPolicy} from '../src/login-admission.js';
+import {createPasswordWorkLimiter,passwordWorkPolicy} from '../dist/login-admission.js';
 
 test('password work admission has a strict burst and replenishes at a bounded rate',()=>{
  let time=0;

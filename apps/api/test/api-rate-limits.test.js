@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {uploadLimits} from '../src/api-rate-limits.js';
-import {accountStorageQuota,GIB} from '../src/storage-plans.js';
+import {uploadLimits} from '../dist/api-rate-limits.js';
+import {accountStorageQuota,GIB} from '../dist/storage-plans.js';
 
 test('storage entitlement falls back to seeded default for unassigned account',async()=>{
  const db={query:async(sql,args)=>{

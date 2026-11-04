@@ -4,23 +4,43 @@ import {createHash} from 'node:crypto';
 
 export const ORPHAN_AUDIT_GRACE_HOURS=72;
 const pattern=/^users\/[1-9]\d*\/assets\/(audio|cover|stems)\/verified\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(mp3|wav|jpg|jpeg|png|webp|zip)$/i;
-const extensions={
+const extensions:Record<'audio'|'cover'|'stems',ReadonlySet<string>>={
  audio:new Set(['mp3','wav']),
  cover:new Set(['jpg','jpeg','png','webp']),
  stems:new Set(['zip'])
 };
-export function isS2VerifiedKey(key){
+export function isS2VerifiedKey(key:unknown):boolean{
  const match=typeof key==='string'?pattern.exec(key):null;
- return !!match&&extensions[match[1].toLowerCase()].has(match[2].toLowerCase());
+ return !!match&&extensions[match[1].toLowerCase() as keyof typeof extensions].has(match[2].toLowerCase());
 }
-export function validAuditPrefix(prefix){
+export function validAuditPrefix(prefix:unknown):boolean{
  return typeof prefix==='string'&&/^users\/(?:[1-9]\d*\/)?$/.test(prefix);
 }
 
+type AuditedObject = {
+ Key?:unknown;
+ LastModified?:string|number|Date;
+ Size?:string|number;
+};
+type AuditPage = {
+ Contents?:AuditedObject[]|null;
+ IsTruncated?:boolean;
+ NextContinuationToken?:string;
+};
+type AuditOptions = {
+ listPage?: (args:{prefix:string;continuationToken:string|undefined;maxKeys:number})=>Promise<AuditPage|null|undefined>;
+ findReferences?: (keys:string[])=>Promise<unknown>;
+ prefix?:string;
+ now?:Date|string|number;
+ minAgeHours?:number;
+ maxPages?:number;
+ maxKeys?:number;
+ sampleLimit?:number;
+};
 export async function auditVerifiedOrphans({
  listPage,findReferences,prefix='users/',now=new Date(),
  minAgeHours=ORPHAN_AUDIT_GRACE_HOURS,maxPages=20,maxKeys=1000,sampleLimit=20
-}={}){
+}:AuditOptions={}){
  if(typeof listPage!=='function'||typeof findReferences!=='function')
   throw new Error('R2 listing and DB reference lookup are required');
  if(!validAuditPrefix(prefix))
@@ -37,22 +57,22 @@ export async function auditVerifiedOrphans({
  const stats={
   scope:prefix==='users/'?'all-users':'single-user',graceHours:minAgeHours,pages:0,objectsListed:0,
   verifiedObjects:0,notOldEnough:0,missingMetadata:0,referenced:0,
-  suspectedOrphans:0,suspectedBytes:0,sampleFingerprints:[]
+  suspectedOrphans:0,suspectedBytes:0,sampleFingerprints:[] as Array<{keyFingerprint:string;bytes:number;ageHours:number}>
  };
- let token,more=false;
- const seen=new Set();
+ let token:string|undefined,more=false;
+ const seen=new Set<string>();
  for(let page=0;page<maxPages;page++){
   const response=await listPage({prefix,continuationToken:token,maxKeys});
   if(!response||!Array.isArray(response.Contents??[]))
    throw new Error('Invalid R2 listing; audit cannot claim completion');
   stats.pages++;
-  const eligible=[];
+  const eligible:Array<{key:string;size:number;modified:number}>=[];
   for(const entry of response.Contents??[]){
    stats.objectsListed++;
    if(typeof entry.Key!=='string'||!entry.Key.startsWith(prefix)||!isS2VerifiedKey(entry.Key))
     continue;
    stats.verifiedObjects++;
-   const modified=new Date(entry.LastModified).getTime();
+   const modified=new Date(entry.LastModified as string|number|Date).getTime();
    const size=Number(entry.Size);
    if(!Number.isFinite(modified)||modified>current||
     !Number.isSafeInteger(size)||size<0){stats.missingMetadata++;continue;}

@@ -5,8 +5,8 @@ import {fileURLToPath} from 'node:url';
 import {resolve,dirname} from 'node:path';
 import pg from 'pg';
 import {Readable} from 'node:stream';
-import {rateLimitExceeded,pruneExpiredRateLimits} from '../src/api-rate-limits.js';
-import {accountStorageQuota,GIB} from '../src/storage-plans.js';
+import {rateLimitExceeded,pruneExpiredRateLimits} from '../dist/api-rate-limits.js';
+import {accountStorageQuota,GIB} from '../dist/storage-plans.js';
 import {acquireCompletionLease,failPendingWithLease,discardPendingWithLease,promoteReadyWithLease} from '../src/upload-leases.js';
 import {moveProjectToTrash,purgeTrashMetadata,handleTrash} from '../src/trash.js';
 

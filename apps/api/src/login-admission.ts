@@ -6,12 +6,17 @@ export const passwordWorkPolicy=Object.freeze({
  refillPerSecond:8,
  sharedPerMinute:480
 });
-
+export type PasswordWorkOptions={
+ capacity?:number;
+ refillPerSecond?:number;
+ now?:()=>number;
+};
+export type PasswordWorkLimiter=Readonly<{take():boolean}>;
 export function createPasswordWorkLimiter({
  capacity=passwordWorkPolicy.burst,
  refillPerSecond=passwordWorkPolicy.refillPerSecond,
  now=()=>performance.now()
-}={}){
+}:PasswordWorkOptions={}):PasswordWorkLimiter{
  if(!Number.isSafeInteger(capacity)||capacity<1||capacity>1000||
   !Number.isFinite(refillPerSecond)||refillPerSecond<=0||refillPerSecond>100)
   throw new Error('Invalid password-work admission policy');

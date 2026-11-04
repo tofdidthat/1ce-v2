@@ -2,7 +2,7 @@
 // table. No schedule or Railway service is provisioned by PR #27.
 // Run only from a separately authorized cron job with v2 DATABASE_URL.
 import pg from 'pg';
-import {pruneExpiredRateLimits} from '../src/api-rate-limits.js';
+import {pruneExpiredRateLimits} from '../dist/api-rate-limits.js';
 
 if(process.env.V2_RATE_LIMIT_CLEANUP_ENABLED!=='true')
  throw new Error('Explicit V2_RATE_LIMIT_CLEANUP_ENABLED=true required');
