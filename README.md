@@ -50,6 +50,7 @@ The GitHub workflow also tests the API startup and SQL migrations on disposable 
 
 - Keep the v1 stack untouched; work on the v2 branch and environment only.
 - Prefer existing components, CSS and TypeScript interfaces; avoid unnecessary files, duplication and unrelated refactors.
+- Source in `apps/api/src/` and `apps/web/src/` is TypeScript-only, with `strict:true`, `allowJs:false`, and a recursive CI guard. Generated `dist/*.js`, tests and operator scripts are expected.
 - Treat **implemented**, **merged**, **migrated**, **deployed** and **manually verified** as five different statuses.
 - Do not reapply historical migrations or delete real user media because an older runbook says to.
 - Review the relevant part of [the architecture and release guide](docs/architecture.md) before a change. Work in scoped batches, verify CI and get separate approval before production deploys or irreversible actions.

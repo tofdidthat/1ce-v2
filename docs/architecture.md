@@ -9,7 +9,7 @@
 - **UI labels and design:** Home is the former Library, World is the former Discover. The app UI is English. Reuse existing components, iconography and CSS. Do not split beats and packs into redundant Library sections. The music player/queue, waveform and current playback must survive navigation and data refresh.
 - **Original media, no copies:** packs reference their member beats; publication, saves and sharing create relationships rather than duplicate audio/cover/stems objects.
 - **Storage plan:** the provisional technical default is **10 GiB per account** in the database plan model; this does not authorize paid tiers, pricing, billing or Stripe integration.
-- **Files and operations:** prioritize safe, reversible batches, TypeScript in the frontend and explicit server-side ownership validation. The API is currently Node.js JavaScript; migrating it to TypeScript is an architectural option, **not** a completed step.
+- **Files and operations:** prioritize safe, reversible batches and explicit server-side ownership validation. Production API source is now TypeScript, compiled under `strict:true` and `allowJs:false` to `apps/api/dist/`.
 
 ## 2. Code map
 
@@ -23,16 +23,16 @@
 | Profile, follows, edit controls | `apps/web/src/public-profile-v2.tsx`, `edit-profile-panel-v2.tsx`, `profile-follows-v2.ts` |
 | Settings and Trash UI | `apps/web/src/account-settings-v2.tsx`, `trash-settings-v2.tsx` |
 | Frontend data refresh | `apps/web/src/data-refresh-v2.ts` |
-| API entry, auth/sessions/OAuth | `apps/api/src/server.js` |
-| Private uploads and Library files | `apps/api/src/library-files.js`, `upload-security.js`, `upload-leases.js` |
-| Project mutations | `apps/api/src/project-actions.js` |
-| Trash, restoration and R2 outbox | `apps/api/src/trash.js` |
-| Public profiles, saves, publications, links | `apps/api/src/public-profiles.js`, `profile-identity.js`, `profile-follows.js` |
-| Access-controlled media and ranges | `apps/api/src/project-media.js`, `audio-stream.js` |
-| Quotas and API rate limiting | `apps/api/src/storage-plans.js`, `api-rate-limits.js`, `login-admission.js` |
+| API entry, auth/sessions/OAuth | `apps/api/src/server.ts` |
+| Private uploads and Library files | `apps/api/src/library-files.ts`, `upload-security.ts`, `upload-leases.ts` |
+| Project mutations | `apps/api/src/project-actions.ts` |
+| Trash, restoration and R2 outbox | `apps/api/src/trash.ts` |
+| Public profiles, saves, publications, links | `apps/api/src/public-profiles.ts`, `profile-identity.ts`, `profile-follows.ts` |
+| Access-controlled media and ranges | `apps/api/src/project-media.ts`, `audio-stream.ts` |
+| Quotas and API rate limiting | `apps/api/src/storage-plans.ts`, `api-rate-limits.ts`, `login-admission.ts` |
 | SQL migrations and isolated smokes | `history/database/`, `apps/api/scripts/`, `apps/api/test/`, `apps/web/test/` |
 
-The entry point `apps/api/src/server.js` delegates to feature handlers, which must perform authorization **again on the server**. File IDs and project IDs are not interchangeable; project identity should include owner, kind and project ID. Preserve existing HTTP routes until frontend consumers have migrated and been regression-tested.
+The entry point `apps/api/src/server.ts` (emitted as `dist/server.js`) delegates to feature handlers, which must perform authorization **again on the server**. File IDs and project IDs are not interchangeable; project identity should include owner, kind and project ID. Preserve existing HTTP routes until frontend consumers have migrated and been regression-tested.
 
 ### Frontend behavior and media access
 
@@ -126,6 +126,8 @@ The v1 repo `tofdidthat/1ce` is read-only. For a requested visual reference, ins
 ---
 
 ## 8. Plano completo — migração gradual do backend para TypeScript (2026-11-04)
+
+> **Historical migration plan:** the 8.1 inventory describes the starting condition, not the current source tree. Current source paths are in §2; integration checkpoints are in §8.7.
 
 > **Fonte:** transcrição técnica consolidada da resposta e do planejamento aprovados para consulta nas próximas etapas. **Não é autorização de merge/deploy.** Este plano registra a ordem, o esforço, as integrações e as regras que devem ser verificadas antes de cada lote. Atualizar o andamento aqui, sem criar outros arquivos Markdown.
 
@@ -247,10 +249,17 @@ Maior dependência externa: **validação de comportamentos reais entre contas, 
 - **Fase 4C — publicada e verificada em produção:** [PR #38](https://github.com/tofdidthat/1ce-v2/pull/38), squash d06a0d20bbbcd629429ac0737677ce730d962c4c. library-files.ts protege quotas e locks por proprietário, deduplicação READY, referências únicas para beats/packs, staging PUT assinado, verified COPY condicional com ETag, verificação SHA, lease fencing e limpeza restrita. Testes cobrem permissões, ownership de capas/stems, beats existentes e visibilidade em packs. Integração em PostgreSQL 16 descartável verifica 11 inicializações concorrentes frente ao limite de 10, isolamento entre contas e referências sem cópias duplicadas. [CI PR 41778848610](https://github.com/tofdidthat/1ce-v2/actions/runs/41778848610): 7/7. [CI main 41903125266](https://github.com/tofdidthat/1ce-v2/actions/runs/41903125266): SUCCESS. Railway deployment 9647d629-07b9-449b-98ca-c8740f122c02: SUCCESS; GET /health e GET /health/db aprovados.
 - **Cloudflare R2 real da Fase 4C — PASS confirmado pelo operador em 2026-11-04:** teste local apps/api/scripts/s2-r2-smoke.mjs executado com token restrito ao bucket isolado onece-s2-smoke-27, sem acessar mídia de produção. O operador relatou saída PASS no PowerShell. O script valida PUT assinado, HEAD/ETag, CopyObject com CopySourceIfMatch, GET Range, SHA-256, isolamento de verified após sobrescrita de staging, rejeição de ETag antigo 412 e limpeza DELETE dos próprios objetos. A saída bruta não foi capturada pelo CI: registrar como validação real atestada pelo operador, NÃO como teste automatizado. Credenciais não foram inseridas no repositório. O job s2-local-s3-syntax-preflight continua APENAS sintático e distinto do teste real R2.
 - **Fase 5 — publicada e verificada em produção:** [PR #39](https://github.com/tofdidthat/1ce-v2/pull/39), squash a27835c93f1857a4644799c49589f47ade448d5a. trash.ts mantém restauração de 30 dias, cascata de tracks, retenção de arquivos compartilhados e outbox durável para exclusão, com fencing por proprietário/token. Checkpoints 5A 30e91af, 5B 588f30f e 5C f0519c5; testes negativos de ownership e concorrência. [CI PR 41780547080](https://github.com/tofdidthat/1ce-v2/actions/runs/41780547080): 6/6. [CI main 41903740692](https://github.com/tofdidthat/1ce-v2/actions/runs/41903740692): SUCCESS. Railway deployment 9960cd9a-21ac-4a26-af7e-14b381af31e5: SUCCESS; GET /health e GET /health/db aprovados, sem alterações de esquema ou mídia real durante testes.
-- **Fase 6 — [PR #40](https://github.com/tofdidthat/1ce-v2/pull/40), integração controlada:** server.js passa a server.ts com tipagens Node/PostgreSQL oficiais (@types/pg 8.15.5), preservando CORS, autenticação Google state/PKCE, sessão de código single-use, cookies Secure/HttpOnly/SameSite, login scrypt, rate limiting, /health, /health/db e porta do Railway. Testes de OAuth/sessões/seguidores e compilação devem passar no estado reconciliado com as fases 4C e 5. A reconciliação deve preservar os jobs PostgreSQL real e preflight S3 da 4C, garantir zero arquivos JavaScript em apps/api/src e atualizar tsconfig allowJs:false com strict:true. Após qualquer merge, verificar CI da main, Railway SUCCESS e os dois endpoints. O status do merge deve ser conferido no GitHub.
+- **Fase 6 — [PR #40](https://github.com/tofdidthat/1ce-v2/pull/40), merged 2026-11-04:** server.js passa a server.ts com tipagens Node/PostgreSQL oficiais (@types/pg 8.15.5), preservando CORS, autenticação Google state/PKCE, sessão de código single-use, cookies Secure/HttpOnly/SameSite, login scrypt, rate limiting, /health, /health/db e porta do Railway. Testes de OAuth/sessões/seguidores e compilação devem passar no estado reconciliado com as fases 4C e 5. A reconciliação deve preservar os jobs PostgreSQL real e preflight S3 da 4C, garantir zero arquivos JavaScript em apps/api/src e atualizar tsconfig allowJs:false com strict:true. Após qualquer merge, verificar CI da main, Railway SUCCESS e os dois endpoints. O status do merge deve ser conferido no GitHub.
 - **Composição previamente validada:** [PR #41](https://github.com/tofdidthat/1ce-v2/pull/41) é SOMENTE uma branch de verificação (NÃO MERGE); integrou em teste os três módulos 4C+5+6 com allowJs:false e [CI 41782458089](https://github.com/tofdidthat/1ce-v2/actions/runs/41782458089) 7/7. Serviu de referência para a reconciliação, não para deploy direto.
 - **Política TypeScript-first:** após a Fase 6, zero arquivos .js na pasta apps/api/src; a compilação usa allowJs:false e strict:true, com guarda CI. Scripts .mjs e testes .js fora da pasta src não são módulos da API de produção e podem permanecer. Manter arquitetura monorepo, v1 ativa, dados por proprietário no Cloudflare R2 e mídia deduplicada por referência.
 - **Limites e próxima validação de produto:** CI + /health + /health/db não equivalem a testes manuais completos de login Google, uploads reais, streaming, share links, permissões entre duas contas, restores/packs/stems e exclusão. Essas jornadas exigem validação adicional não destrutiva. Não realizar exclusões de produção para demonstrar comportamento.
 - **Protocolo de lotes e rollback:** consultar este guia antes de implementar; alterações em branches pequenas, build/testes, CI na HEAD da PR, merge individual somente quando autorizado, CI da main + Railway SUCCESS + HTTP health + banco conectados sem alertas antes da PR seguinte. Preservar rollback por commit e reduzir rebuilds Vercel desnecessários. Manter apenas README.md e docs/architecture.md como Markdown no repositório.
 
-**Gate de publicação:** Fases 4C e 5 já foram integradas, publicadas e verificadas sequencialmente, com smoke R2 atestado no bucket descartável. A Fase 6 deve preservar os checks anteriores e passar CI reconciliado antes de seu merge, seguido de checagem em produção. Nenhuma operação destrutiva em R2 de produção foi autorizada.
+**Status atual:** Fases 4C, 5 e 6 receberam merge individual (#38, #39, #40). A CI da PR #40 passou 7/7. A compilação `src/server.ts` → `dist/server.js` é intencional. A validação completa da interface e do armazenamento ainda não pode ser inferida do CI. Nenhuma operação destrutiva em R2 de produção foi autorizada.
+
+
+### TypeScript hardening follow-up (2026-11-04; PR branch, not a release)
+
+- All **production** modules in `apps/api/src/` use `.ts`; tests (`apps/api/test/*.js`) and maintenance scripts (`apps/api/scripts/*.mjs`) intentionally stay as JavaScript. NodeNext `.js` import specifiers inside TypeScript refer to compiled output and must not be renamed blindly.
+- `scripts/check-typescript-policy.mjs` recursively forbids JavaScript source under API/web `src/`, requires `strict:true` and `allowJs:false`, and rejects suppression directives. During the frontend typing follow-up, only `workspace-v1.tsx` and `library-upload-v1.tsx` have temporary `@ts-nocheck` exemptions. Both are to be removed in a subsequent reviewed PR.
+- Keep branch/CI checks required for merge (branch-protection settings must be verified through authorized GitHub administration). Check behavior after removing exemptions, especially navigation, audio player, uploads and identity refresh. No merge or deployment is implied by this documentation change.
