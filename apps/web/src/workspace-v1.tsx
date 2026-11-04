@@ -1,4 +1,3 @@
-// @ts-nocheck
 // Ported from v1 src/workspace/WorkspaceShell.jsx and src/playback.jsx.
 // Deliberately isolated from all v1 services, storage keys and databases.
 import React,{useEffect,useState,useRef} from 'react';
@@ -14,11 +13,13 @@ import {ProjectFlagsProviderV2} from './project-flags-v2';
 import {ProjectCoverCacheProviderV2} from './project-cover-v2';
 import AccountSettingsV2 from './account-settings-v2';
 import {profilePictureV2} from './profile-picture-v2';
+import {isAccountUserV2,type AccountUserV2} from './account-identity-v2';
+type WorkspaceView='library'|'discover'|'upload'|'account'|'edit-profile'|'profile';
 function HomeMark() {
   // Home navigation uses a house. The Catalog tab retains its own 3-stroke glyph.
   return <House className="w-5 h-5" size={22} strokeWidth={1.7} aria-hidden="true"/>;
 }
-function GlobeMark({ className = 'w-5 h-5' }) {
+function GlobeMark({ className = 'w-5 h-5' }:{className?:string}) {
   return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><ellipse cx="12" cy="12" rx="4" ry="9" /><path d="M3 12h18" /></svg>
 }
 function UploadMark() {
@@ -28,15 +29,14 @@ function AdjustMark() {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3v3m0 4v11M12 3v9m0 4v5M18 3v3m0 4v11" /><path d="M4 6h4v4H4zM10 12h4v4h-4zM16 6h4v4h-4z" /></svg>
 }
 
-function EditProfileMark(){return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L9 17l-4 1 1-4Z"/></svg>}
 function SettingsMark(){return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831 2.34 2.34 0 0 1 2.33-4.033 2.34 2.34 0 0 0 3.32-1.915" /><circle cx="12" cy="12" r="3" /></svg>}
 
-function CompactWorkspaceNav({ view, disabled, onNavigate }) {
+function CompactWorkspaceNav({ view, disabled, onNavigate }:{view:WorkspaceView;disabled:boolean;onNavigate:(next:WorkspaceView)=>void}) {
   const [open, setOpen] = useState(false)
-  const root = React.useRef(null)
-  const trigger = React.useRef(null)
-  const options = React.useRef([])
-  const items = [
+  const root = React.useRef<HTMLElement|null>(null)
+  const trigger = React.useRef<HTMLButtonElement|null>(null)
+  const options = React.useRef<Array<HTMLButtonElement|null>>([])
+  const items: Array<{id:WorkspaceView;label:string;icon:React.ReactNode}> = [
     { id: 'library', label: 'Home', icon: <HomeMark /> },
     { id: 'discover', label: 'World', icon: <GlobeMark /> },
     { id: 'upload', label: 'Upload', icon: <UploadMark /> },
@@ -51,10 +51,10 @@ function CompactWorkspaceNav({ view, disabled, onNavigate }) {
   useEffect(() => { if (disabled) setOpen(false) }, [disabled])
   useEffect(() => {
     if (!open) return
-    const outside = event => {
-      if (!root.current?.contains(event.target)) setOpen(false)
+    const outside = (event:PointerEvent) => {
+      if (!(event.target instanceof Node) || !root.current?.contains(event.target)) setOpen(false)
     }
-    const escape = event => {
+    const escape = (event:KeyboardEvent) => {
       if (event.key === 'Escape' && root.current?.contains(document.activeElement)) {
         event.preventDefault()
         suppressHover.current = true
@@ -70,11 +70,11 @@ function CompactWorkspaceNav({ view, disabled, onNavigate }) {
     }
   }, [open])
 
-  const focusOption = index => {
+  const focusOption = (index:number) => {
     setOpen(true)
     requestAnimationFrame(() => options.current[index]?.focus())
   }
-  const select = id => {
+  const select = (id:WorkspaceView) => {
     onNavigate(id)
     suppressHover.current = true
     setOpen(false)
@@ -170,7 +170,7 @@ function CompactWorkspaceNav({ view, disabled, onNavigate }) {
 }
 
 
-function HeaderV2({view,user,onNavigate,externalProfile}){
+function HeaderV2({view,user,onNavigate}:{view:WorkspaceView;user:AccountUserV2|null;onNavigate:(next:WorkspaceView)=>void}){
  const picture=profilePictureV2(user);
  return <>
  <style>{`.onece-workspace-header {
@@ -250,12 +250,12 @@ function HeaderV2({view,user,onNavigate,externalProfile}){
  {view==='profile'?null:<header className="onece-workspace-header" aria-label="Workspace header">
  <div className="onece-workspace-brand"><button type="button" className="onece-workspace-logo-home" aria-label="Go to Home" title="Home" onClick={()=>onNavigate('library')}><img src="/1ce-logo.png" alt="1CE"/></button></div>
  <div className="onece-workspace-actions">
- <button type="button" className="library-settings library-profile-trigger" title={view==='profile'&&!externalProfile?'Edit Profile':'My Profile'} aria-label={view==='profile'&&!externalProfile?'Edit Profile':'My Profile'} onClick={()=>onNavigate(view==='profile'&&!externalProfile?'edit-profile':'profile')}>
- {view==='profile'&&!externalProfile ? <EditProfileMark/> : picture ? <img src={picture} alt="" referrerPolicy="no-referrer"/> : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="7" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2Z"/></svg>}
+ <button type="button" className="library-settings library-profile-trigger" title="My Profile" aria-label="My Profile" onClick={()=>onNavigate('profile')}>
+ {picture ? <img src={picture} alt="" referrerPolicy="no-referrer"/> : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="7" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2Z"/></svg>}
  </button>
  <CompactWorkspaceNav view={view} disabled={false} onNavigate={onNavigate}/></div></header>}</>;
 }
-function EmptyLibrary({onUpload}){
+function EmptyLibrary({onUpload}:{onUpload:()=>void}){
  return <section className="beat-profile library-page onece-v2-library">
   <div className="beat-profile-content">
    <div className="library-items">
@@ -264,9 +264,9 @@ function EmptyLibrary({onUpload}){
   </div>
  </section>;
 }
-export default function WorkspaceV2({user,profileId}:{user:any;profileId?:string}){
+export default function WorkspaceV2({user,profileId}:{user:AccountUserV2|null;profileId?:string}){
  const navigate=useNavigate();const location=useLocation();
- const [account,setAccount]=useState(user);
+ const [account,setAccount]=useState<AccountUserV2|null>(user);
  useEffect(()=>setAccount(user),[user?.id]);
  // Revalidate identity when another tab updates the avatar/username, or
  // after returning from a different browser window. Never overwrite a
@@ -285,8 +285,8 @@ export default function WorkspaceV2({user,profileId}:{user:any;profileId?:string
     if(!response.ok)return;
     const data=await response.json();
     const updated=data.user||data;
-    if(alive&&request===generation&&String(updated?.id)===String(id)){
-     setAccount((current:any)=>String(current?.id)===String(id)?updated:current);
+    if(alive&&request===generation&&isAccountUserV2(updated)&&updated.id===id){
+     setAccount(current=>current?.id===id?updated:current);
     }
    }catch{ /* leave previous identity visible until the next revalidation */ }
   };
@@ -301,7 +301,7 @@ export default function WorkspaceV2({user,profileId}:{user:any;profileId?:string
  const [playback,setPlayback]=useState<{ownerId:number;kind:'beat'|'pack';id:string;playing:boolean}|null>(null);
  const requestPlayback=(ownerId:number,kind:'beat'|'pack',id:string)=>setPlayRequest(previous=>({ownerId,kind,id,nonce:(previous?.nonce||0)+1}));
  const requestQueue=(ownerId:number,kind:'beat'|'pack',id:string)=>setQueueRequest(previous=>({ownerId,kind,id,nonce:(previous?.nonce||0)+1}));
- const view=profileId?'profile':location.pathname==='/app/library'?'library':location.pathname.endsWith('/discover')?'discover':location.pathname.endsWith('/upload')?'upload':location.pathname.endsWith('/settings')?'account':location.pathname.endsWith('/profile/edit')?'edit-profile':'profile';
+ const view:WorkspaceView=profileId?'profile':location.pathname==='/app/library'?'library':location.pathname.endsWith('/discover')?'discover':location.pathname.endsWith('/upload')?'upload':location.pathname.endsWith('/settings')?'account':location.pathname.endsWith('/profile/edit')?'edit-profile':'profile';
  // Keep up to three recent profile read-models mounted, but without offscreen
  // cards/image leases. The one Workspace cover cache supplies immediate URLs
  // on Back; each returned profile still refetches authorized metadata.
@@ -320,17 +320,18 @@ export default function WorkspaceV2({user,profileId}:{user:any;profileId?:string
  },[account?.id]);
  const visibleProfileKeys=activeProfileKey&&!recentProfiles.includes(activeProfileKey)?
   [...recentProfiles.slice(-2),activeProfileKey]:recentProfiles;
- const onNavigate=(next)=>navigate(next==='library'?'/app/library':next==='account'?'/app/settings':next==='edit-profile'?'/app/profile/edit':'/app/'+next);
+ const onNavigate=(next:WorkspaceView)=>navigate(next==='library'?'/app/library':next==='account'?'/app/settings':next==='edit-profile'?'/app/profile/edit':'/app/'+next);
  useEffect(()=>{document.title=({library:'Home',discover:'World',upload:'Upload',account:'Settings',profile:'Profile','edit-profile':'Edit Profile'}[view]||'Home')+' — 1CE'},[view]);
  return <ProjectCoverCacheProviderV2 viewerId={Number(account?.id)||null}><ProjectFlagsProviderV2 viewerId={Number(account?.id)||null}><div className={'onece-workspace-shell'+(view==='library'?' onece-library-view':'')}>
  <style>{`.onece-library-inactive{position:static!important;padding:0!important;margin:0!important;min-height:0!important;height:0!important;overflow:visible!important}.onece-library-inactive>.beat-profile-content{display:none!important}`}</style>
- <HeaderV2 view={view} user={account} externalProfile={Boolean(profileId)} onNavigate={onNavigate}/>
+ <HeaderV2 view={view} user={account} onNavigate={onNavigate}/>
  <main className="onece-v2-workspace-main">
  <LibraryItemsV2 active={view==='library'} playRequest={playRequest} queueRequest={queueRequest} userId={account?.id} onUpload={()=>onNavigate('upload')} onPlayerVisibility={setPlayerVisible} onPlaybackChange={setPlayback}/>
  {visibleProfileKeys.map(profileKey=><PublicProfileV2 key={String(account?.id||'anonymous')+':'+profileKey}
   active={activeProfileKey===profileKey} user={account} profileId={profileKey==='own'?undefined:profileKey.slice('public:'.length)}
   playback={playback} onPlayProject={requestPlayback} onQueueProject={requestQueue}
   onIdentityUpdated={updated=>{
+   if(!isAccountUserV2(updated))return;
     const oldHandle=String(account?.username||'').toLowerCase();
     setAccount(updated);
     if(profileId&&oldHandle&&profileId.toLowerCase()===oldHandle&&updated?.username&&
@@ -344,9 +345,9 @@ export default function WorkspaceV2({user,profileId}:{user:any;profileId?:string
  {view==='library'||view==='profile'?null:
  view==='discover'?<WorldV2 userId={account?.id} onOpenProfile={identifier=>navigate('/u/'+encodeURIComponent(identifier))}/>:
  view==='upload'?<LibraryUploadV2 userId={account?.id}/>:
- view==='account'?<AccountSettingsV2 user={account} onUserChange={setAccount} onViewProfile={()=>onNavigate('profile')} onLogout={logout}/>:
+ view==='account'&&account?<AccountSettingsV2 user={account} onUserChange={setAccount} onViewProfile={()=>onNavigate('profile')} onLogout={logout}/>:
 view==='edit-profile'?<section className="onece-workspace-placeholder"><h1>Edit Profile</h1><p>Profile editing is not yet available in v2.</p></section>:
- <section className="onece-workspace-placeholder"><h1>{view==='account'?'Settings':view==='profile'?'Public Profile':'World'}</h1><p>{view==='profile'?'Public profile publishing is not yet enabled in v2.':view==='account'?'Account settings are not yet available in v2.':'World feed is not yet available in v2.'}</p></section>}
+ <section className="onece-workspace-placeholder"><h1>Settings</h1><p>Sign in to manage account settings.</p></section>}
  </main>
  {view==='library'&&!playerVisible&&<div className="onece-player-dock" aria-label="Add audio"><button type="button" className="onece-global-player" style={{display:'flex',justifyContent:'center',gap:10,width:'fit-content',maxWidth:'100%',marginInline:'auto',padding:'7px 26px',color:'inherit',font:'inherit',fontSize:13,cursor:'pointer'}} onClick={()=>onNavigate('upload')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>Add file</span></button></div>}
  </div></ProjectFlagsProviderV2></ProjectCoverCacheProviderV2>;

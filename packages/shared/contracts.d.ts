@@ -10,6 +10,16 @@ export type ProjectIdentityV2={
  kind:ProjectKindV2;
  projectId:ProjectIdV2;
 };
+// Authenticated user shape shared by web session and account settings.
+export type AccountUserV2={
+ id:AccountIdV2;
+ email?:string;
+ name?:string|null;
+ picture?:string|null;
+ username?:string|null;
+ has_avatar?:boolean;
+ avatar_updated_at?:string|null;
+};
 export type AccountSummaryV2={
  id:AccountIdV2;
  name:string|null;

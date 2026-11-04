@@ -1,4 +1,3 @@
-// @ts-nocheck
 // Visual/interaction port of v1 src/upload/LibraryUploadPage.jsx.
 // NO v1 backend, bearer session, uploads or external video publishing.
 import React,{useEffect,useMemo,useRef,useState} from 'react';
@@ -6,42 +5,42 @@ import {useNavigate} from 'react-router-dom';
 import './library-upload-v1.css';
 import {notifyV2DataChanged} from './data-refresh-v2';
 const audioPattern=/\.(mp3|wav)$/i;
-const fileTitle=file=>file.name.replace(/\.[^.]+$/,'').replace(/[-_]+/g,' ').trim();
-const formatSize=file=>(file.size/1024/1024).toFixed(2)+' MB';
+const fileTitle=(file:File)=>file.name.replace(/\.[^.]+$/,'').replace(/[-_]+/g,' ').trim();
+const formatSize=(file:File)=>(file.size/1024/1024).toFixed(2)+' MB';
 export default function LibraryUploadV2({userId}:{userId?:number}={}){
  const navigate=useNavigate();
- const [audioFiles,setAudioFiles]=useState([]);
- const [cover,setCover]=useState(null);
- const [stemsByAudio,setStemsByAudio]=useState({});
+ const [audioFiles,setAudioFiles]=useState<File[]>([]);
+ const [cover,setCover]=useState<File|null>(null);
+ const [stemsByAudio,setStemsByAudio]=useState<Record<string,File>>({});
  const [itemName,setItemName]=useState('');
  const [dragging,setDragging]=useState(false);
  const [error,setError]=useState('');
- const audioInput=useRef(null);
- const coverInput=useRef(null);
- const stemsInput=useRef(null);
- const [stemsTarget,setStemsTarget]=useState(null);
+ const audioInput=useRef<HTMLInputElement|null>(null);
+ const coverInput=useRef<HTMLInputElement|null>(null);
+ const stemsInput=useRef<HTMLInputElement|null>(null);
+ const [stemsTarget,setStemsTarget]=useState<string|null>(null);
  const [saving,setSaving]=useState(false);
  const [stage,setStage]=useState('');
  const isPack=audioFiles.length>1;
  const coverUrl=useMemo(()=>cover?URL.createObjectURL(cover):'',[cover]);
  useEffect(()=>()=>{if(coverUrl)URL.revokeObjectURL(coverUrl)},[coverUrl]);
- const addFiles=selected=>{
-  const valid=[],invalid=[];
+ const addFiles=(selected:FileList|File[]|null)=>{
+  const valid:File[]=[],invalid:File[]=[];
   for(const file of selected||[]){if(audioPattern.test(file.name))valid.push(file);else invalid.push(file)}
   setError(invalid.length?invalid.length+' file(s) skipped. Use MP3 or WAV audio.':'');
   if(!valid.length)return;
   setAudioFiles(current=>{const known=new Set(current.map(file=>file.name+':'+file.size));return [...current,...valid.filter(file=>!known.has(file.name+':'+file.size))]});
   if(!itemName&&valid.length===1)setItemName(fileTitle(valid[0]));
  };
- const fileKey=file=>file.name+':'+file.size;
- const removeFile=file=>{setAudioFiles(current=>current.filter(item=>item!==file));setStemsByAudio(current=>{const next={...current};delete next[fileKey(file)];return next;});setError('')};
- const chooseStems=file=>{setStemsTarget(fileKey(file));stemsInput.current?.click()};
+ const fileKey=(file:File)=>file.name+':'+file.size;
+ const removeFile=(file:File)=>{setAudioFiles(current=>current.filter(item=>item!==file));setStemsByAudio(current=>{const next={...current};delete next[fileKey(file)];return next;});setError('')};
+ const chooseStems=(file:File)=>{setStemsTarget(fileKey(file));stemsInput.current?.click()};
  const save=async()=>{
   if(saving||!audioFiles.length)return;
   const api=import.meta.env.VITE_API_URL;
   if(!api){setError('Upload API is not configured');return;}
   setSaving(true);setError('');
-  const upload=async(file,kind)=>{
+  const upload=async(file:File,kind:'audio'|'cover'|'stems'):Promise<number>=>{
    const mime=kind==='audio'?(file.name.toLowerCase().endsWith('.mp3')?'audio/mpeg':'audio/wav'):
     kind==='stems'?'application/zip':file.type;
    setStage('Checking existing '+kind+'…');
@@ -62,8 +61,8 @@ export default function LibraryUploadV2({userId}:{userId?:number}={}){
   try{
    let coverId=null;
    if(cover){setStage('Uploading shared cover…');coverId=await upload(cover,'cover');}
-   const beatIds=[];
-   const newBeatIds=[];
+   const beatIds:string[]=[];
+   const newBeatIds:string[]=[];
    for(const [index,file] of audioFiles.entries()){
     setStage('Uploading audio '+(index+1)+'/'+audioFiles.length+'…');
     const audioId=await upload(file,'audio');

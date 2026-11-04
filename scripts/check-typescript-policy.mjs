@@ -4,10 +4,7 @@ import {readFileSync,readdirSync} from 'node:fs';
 import {join,relative,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
-const temporaryExemptions=new Set([
- 'apps/web/src/workspace-v1.tsx',
- 'apps/web/src/library-upload-v1.tsx',
-]);
+const temporaryExemptions=new Set();
 function walk(dir){
  const found=[];
  for(const entry of readdirSync(dir,{withFileTypes:true})){
@@ -31,8 +28,8 @@ export function checkTypeScriptPolicy(root=process.cwd(),exemptions=temporaryExe
    if(/\.(?:js|jsx|mjs|cjs)$/i.test(path))errors.push(path+': JavaScript production source is forbidden');
    if(!/\.(?:ts|tsx)$/i.test(path))continue;
    const source=readFileSync(absolute,'utf8');
-   if(/\/\/\s*@ts-ignore\b/.test(source))errors.push(path+': @ts-ignore forbidden');
-   if(/\/\/\s*@ts-nocheck\b/.test(source)){
+   if(/(?:\/\/|\/\*)\s*@ts-ignore\b/.test(source))errors.push(path+': @ts-ignore forbidden');
+   if(/(?:\/\/|\/\*)\s*@ts-nocheck\b/.test(source)){
     encountered.add(path);
     if(!exemptions.has(path))errors.push(path+': @ts-nocheck forbidden');
    }
