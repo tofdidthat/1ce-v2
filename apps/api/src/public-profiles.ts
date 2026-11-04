@@ -6,6 +6,12 @@ import {resolveAuthorizedMediaFile,resolvePlayableProject} from './project-media
 import {streamAuthorizedAudio} from './audio-stream.js';
 import {readProfileLinksV2} from './profile-links.js';
 // 1CE v2 public profile catalog and public saves. Metadata only; R2 objects are never duplicated.
+// Compatibility signature for the still-JavaScript playback resolver. Phase 3A
+// types its optional viewer ID directly; this adapter changes no runtime behavior.
+const resolvePlayableWithViewer = resolvePlayableProject as unknown as (
+ pool:QueryableV2,
+ options:{ownerId:string;viewerId?:number|null;kind:ProjectKindV2;projectId:string}
+)=>ReturnType<typeof resolvePlayableProject>;
 type DatabaseClientV2=QueryableV2&{release():void};
 type DatabasePoolV2=QueryableV2&{connect():Promise<DatabaseClientV2>};
 type AccountV2={id:number};
@@ -79,7 +85,7 @@ export async function handlePublicProfiles(req:IncomingMessage,res:ServerRespons
   await streamAuthorizedAudio(req,res,{file,s3,bucket:cfg.bucket});return true;
  }
  if(parts.length===6&&parts[2]==='play'&&/^\d+$/.test(parts[3])&&['beat','pack'].includes(parts[4])&&uuid.test(parts[5])&&req.method==='GET'){
-  const project=await resolvePlayableProject(pool,{ownerId:parts[3],viewerId:user?.id,kind:parts[4] as ProjectKindV2,projectId:parts[5]});
+  const project=await resolvePlayableWithViewer(pool,{ownerId:parts[3],viewerId:user?.id,kind:parts[4] as ProjectKindV2,projectId:parts[5]});
   if(!project){send(res,404,{error:'Project not available for playback'});return true;}
   send(res,200,{project});return true;
  }
@@ -147,7 +153,7 @@ export async function handlePublicProfiles(req:IncomingMessage,res:ServerRespons
    const link=await db.query('SELECT owner_id,kind,project_id FROM v2_project_share_links WHERE token_hash=$1',[hash]);
    if(!link.rowCount)return ownerResult(404,{error:'Invalid share link'});
    const {owner_id,kind,project_id}=link.rows[0];
-   if(!['beat','pack'].includes(kind))return ownerResult(404,{error:'Invalid share link'});
+   if(!['beat','pack'].includes(kind as string))return ownerResult(404,{error:'Invalid share link'});
    const table=kind==='beat'?'library_beats':'library_packs';
    const exists=await db.query('SELECT 1 FROM '+table+' WHERE user_id=$1 AND id=$2 AND deleted_at IS NULL',[owner_id,project_id]);
    if(!exists.rowCount)return ownerResult(404,{error:'Project not found'});
