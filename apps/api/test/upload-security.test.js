@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {Readable} from 'node:stream';
-import {InvalidMedia,VerificationUnavailable,verifyUploadedObject} from '../src/upload-security.js';
+import {InvalidMedia,VerificationUnavailable,verifyUploadedObject} from '../dist/upload-security.js';
 
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 const file=(bytes,kind='stems',content_type='application/zip')=>({

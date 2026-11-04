@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {resolveAuthorizedMediaFile} from '../src/project-media.js';
+import {resolveAuthorizedMediaFile} from '../dist/project-media.js';
 
 // An isolated, deterministic PG adapter. It evaluates the intended fixture
 // relationships and captures the production queries without using R2 or v1.

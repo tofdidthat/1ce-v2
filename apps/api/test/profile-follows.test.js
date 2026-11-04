@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {handleProfileFollows} from '../src/profile-follows.js';
+import {handleProfileFollows} from '../dist/profile-follows.js';
 
 function fixture(){
  const users=new Map([[1,{id:1,username:'one',name:'One',picture:null,has_avatar:false,avatar_updated_at:null}],[2,{id:2,username:'two',name:'Two',picture:null,has_avatar:false,avatar_updated_at:null}],[3,{id:3,username:'three',name:'Three',picture:null,has_avatar:false,avatar_updated_at:null}]]);

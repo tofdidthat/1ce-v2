@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Readable} from 'node:stream';
-import {normalizeUsername,detectAvatar,handleProfileIdentity} from '../src/profile-identity.js';
+import {normalizeUsername,detectAvatar,handleProfileIdentity} from '../dist/profile-identity.js';
 
 const png=Buffer.from([137,80,78,71,13,10,26,10,0,0,0,0,0,0,0,0]);
 function request(method,body=Buffer.alloc(0),headers={}){

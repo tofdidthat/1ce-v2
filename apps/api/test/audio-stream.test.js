@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Readable} from 'node:stream';
-import {audioRange,streamAuthorizedAudio} from '../src/audio-stream.js';
+import {audioRange,streamAuthorizedAudio} from '../dist/audio-stream.js';
 
 test('byte ranges preserve full, partial, suffix and open-ended audio streams',()=>{
  assert.deepEqual(audioRange(undefined,100),{status:200,start:0,end:99});

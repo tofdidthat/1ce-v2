@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash,scryptSync} from 'node:crypto';
 import {Readable} from 'node:stream';
-import {apiServer,apiPool} from '../src/server.js';
-import {passwordWorkPolicy} from '../src/login-admission.js';
+import {apiServer,apiPool} from '../dist/server.js';
+import {passwordWorkPolicy} from '../dist/login-admission.js';
 
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const shaBase64=value=>createHash('sha256').update(value).digest('base64url');

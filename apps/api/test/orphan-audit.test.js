@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {auditVerifiedOrphans,isS2VerifiedKey,validAuditPrefix} from '../src/orphan-audit.js';
+import {auditVerifiedOrphans,isS2VerifiedKey,validAuditPrefix} from '../dist/orphan-audit.js';
 
 const now=new Date('2026-11-03T12:00:00Z');
 const uuid='123e4567-e89b-42d3-a456-426614174000';

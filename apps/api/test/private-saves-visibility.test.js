@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Readable} from 'node:stream';
-import {handlePublicProfiles} from '../src/public-profiles.js';
+import {handlePublicProfiles} from '../dist/public-profiles.js';
 
 const beat='75f80bde-7b6a-4b18-8b1f-4e52eb98f776';
 const sharedToken='A'.repeat(43);

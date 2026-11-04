@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Readable} from 'node:stream';
-import {handleTrash,processPendingTrashJobs} from '../src/trash.js';
+import {handleTrash,processPendingTrashJobs} from '../dist/trash.js';
 
 const owner=42;
 const beat='75f80bde-7b6a-4b18-8b1f-4e52eb98f776';

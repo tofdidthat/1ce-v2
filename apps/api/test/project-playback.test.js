@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {resolvePlayableProject} from '../src/project-media.js';
+import {resolvePlayableProject} from '../dist/project-media.js';
 
 const beatId='bbf80bde-7b6a-4b18-8b1f-4e52eb98f776';
 const extraBeatId='aa01aa01-7b6a-4b18-8b1f-4e52eb98f776';
