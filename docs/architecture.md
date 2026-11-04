@@ -261,5 +261,13 @@ Maior dependência externa: **validação de comportamentos reais entre contas, 
 ### TypeScript hardening follow-up (2026-11-04; PR branch, not a release)
 
 - All **production** modules in `apps/api/src/` use `.ts`; tests (`apps/api/test/*.js`) and maintenance scripts (`apps/api/scripts/*.mjs`) intentionally stay as JavaScript. NodeNext `.js` import specifiers inside TypeScript refer to compiled output and must not be renamed blindly.
-- `scripts/check-typescript-policy.mjs` recursively forbids JavaScript production source under API/web `src/` and `packages/shared/`, requires `strict:true` and `allowJs:false`, and rejects suppression directives. During the frontend typing follow-up, only `workspace-v1.tsx` and `library-upload-v1.tsx` have temporary `@ts-nocheck` exemptions. Both are to be removed in a subsequent reviewed PR.
+- `scripts/check-typescript-policy.mjs` recursively forbids JavaScript production source under API/web `src/` and `packages/shared/`, requires `strict:true` and `allowJs:false`, and rejects suppression directives. The frontend typing follow-up removes both temporary `@ts-nocheck` exemptions. All future exceptions require an explicit architecture decision rather than silently weakening checks.
 - Keep branch/CI checks required for merge (branch-protection settings must be verified through authorized GitHub administration). Check behavior after removing exemptions, especially navigation, audio player, uploads and identity refresh. No merge or deployment is implied by this documentation change.
+
+
+### Contract-oriented frontend typing review (draft Lot B)
+
+- `AccountUserV2` belongs to shared contracts and network identity JSON is validated by `isAccountUserV2` before state is updated. The API remains the sole authority for sessions, access and media.
+- Workspace navigation uses known route targets. A dead edit-profile action in the normal workspace header is removed because that header never renders on profile routes; the actual profile toolbar remains unchanged.
+- Upload file IDs are numbers, beat/pack project IDs are UUID strings, and neither are converted across categories. Upload/R2, dedup, player, queue, pack visibility and playback flow are preserved.
+- CI compilation cannot substitute for manual browser acceptance of navigation, account sessions and private media operations.

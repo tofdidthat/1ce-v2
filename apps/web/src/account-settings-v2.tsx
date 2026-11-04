@@ -1,22 +1,22 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {profilePictureV2} from './profile-picture-v2';
+import {isAccountUserV2,type AccountUserV2} from './account-identity-v2';
 import './account-settings-v2.css';
 import {notifyV2DataChanged} from './data-refresh-v2';
 import TrashSettingsV2 from './trash-settings-v2';
 
 const api=import.meta.env.VITE_API_URL;
-type AccountUser={id:number;username?:string|null;picture?:string|null;has_avatar?:boolean;avatar_updated_at?:string|null;email?:string;[key:string]:unknown};
-async function request(path:string,options:RequestInit):Promise<AccountUser>{
+async function request(path:string,options:RequestInit):Promise<AccountUserV2>{
  const response=await fetch(api+path,{...options,credentials:'include',cache:'no-store'});
  const data=await response.json().catch(()=>({}));
  if(!response.ok)throw new Error(data.error||'Unable to save your account changes.');
- if(!data.user)throw new Error('Account update was not confirmed.');
- return data.user as AccountUser;
+ if(!isAccountUserV2(data.user))throw new Error('Account update was not confirmed.');
+ return data.user;
 }
 function isValidUsername(value:string){
  return /^[a-z0-9][a-z0-9._]{1,22}[a-z0-9]$/.test(value)&&!value.includes('..')&&!/^[0-9]+$/.test(value);
 }
-export default function AccountSettingsV2({user,onUserChange,onViewProfile,onLogout}:{user:AccountUser;onUserChange:(user:AccountUser)=>void;onViewProfile:()=>void;onLogout:()=>Promise<void>}){
+export default function AccountSettingsV2({user,onUserChange,onViewProfile,onLogout}:{user:AccountUserV2;onUserChange:(user:AccountUserV2)=>void;onViewProfile:()=>void;onLogout:()=>Promise<void>}){
  const [editing,setEditing]=useState(false);
  const [trashOpen,setTrashOpen]=useState(false);
  useEffect(()=>{if(new URLSearchParams(window.location.search).get('edit')==='profile')setEditing(true);},[]);

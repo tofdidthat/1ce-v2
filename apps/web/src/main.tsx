@@ -5,6 +5,7 @@ import './styles.css';
 import { TermsPage, PrivacyPage } from './legal';
 import { LoginPage } from './login';
 import WorkspaceV2 from './workspace-v1';
+import {isAccountUserV2,type AccountUserV2} from './account-identity-v2';
 import {notifyV2DataChanged} from './data-refresh-v2';
 import {setProjectSavedV2} from './project-requests-v2';
 
@@ -37,7 +38,7 @@ function WorkspaceRoute(){
  const {id}=useParams();
  const location=useLocation();
  const publicProfile=location.pathname.startsWith('/u/');
- const [session,setSession]=useState<{status:'checking'|'ready';viewer:any}>({status:'checking',viewer:null});
+ const [session,setSession]=useState<{status:'checking'|'ready';viewer:AccountUserV2|null}>({status:'checking',viewer:null});
  useEffect(()=>{
   const api=import.meta.env.VITE_API_URL;
   if(!api){setSession({status:'ready',viewer:null});return;}
@@ -48,7 +49,7 @@ function WorkspaceRoute(){
      const response=await fetch(api+'/auth/me',{credentials:'include',signal:controller.signal,cache:'no-store'});
      if(response.ok||response.status===401){
       const result=response.ok?await response.json():null;
-      if(!controller.signal.aborted)setSession({status:'ready',viewer:result?.user||null});
+      if(!controller.signal.aborted)setSession({status:'ready',viewer:isAccountUserV2(result?.user)?result.user:null});
       return;
      }
     }catch{if(controller.signal.aborted)return;}
