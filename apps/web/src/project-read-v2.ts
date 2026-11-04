@@ -15,6 +15,12 @@ export type ProfileProjectV2=ProjectIdentityV2 & {
  cover_file_id:number|null;track_count:number|null;published_at:string;
 };
 export type ProfileProjectsV2={catalog:ProfileProjectV2[];saves:ProfileProjectV2[]};
+export type PlayableTrackV2={
+ id:string;owner_id:number;title:string;audio_file_id:number;cover_file_id:number|null;stems_file_id:number|null;
+};
+export type PlayableProjectV2={
+ id:string;owner_id:number;kind:ProjectKindV2;title:string;cover_file_id:number|null;tracks:PlayableTrackV2[];
+};
 
 const rows=(value:unknown):unknown[]=>Array.isArray(value)?value:[];
 const record=(value:unknown):Record<string,unknown>|null=>
@@ -84,6 +90,35 @@ export function normalizeProfileProjectsV2(payload:unknown):ProfileProjectsV2{
  };
  return {catalog:rows(raw.catalog).map(normalize).filter((row):row is ProfileProjectV2=>row!==null),
   saves:rows(raw.saves).map(normalize).filter((row):row is ProfileProjectV2=>row!==null)};
+}
+
+
+const uuidV2=/^[a-f0-9-]{36}$/i;
+const strictPositiveIdV2=(value:unknown):value is number=>
+ typeof value==='number'&&Number.isSafeInteger(value)&&value>0;
+const validCoverIdV2=(value:unknown):value is number|null=>
+ value===null||strictPositiveIdV2(value);
+// Authorized playback metadata must never be silently coerced into an unrelated file ID.
+// The API re-authorizes the actual media stream separately, for every byte request.
+export function normalizePlayableProjectV2(payload:unknown,ownerId:number,kind:ProjectKindV2,id:string):PlayableProjectV2{
+ const root=record(payload),project=record(root?.project);
+ if(!project||!strictPositiveIdV2(ownerId)||!uuidV2.test(id)||
+    project.owner_id!==ownerId||project.kind!==kind||project.id!==id||
+    typeof project.title!=='string'||!validCoverIdV2(project.cover_file_id)||
+    !Array.isArray(project.tracks)||!project.tracks.length)throw Error('Invalid project manifest');
+ const tracks:PlayableTrackV2[]=[];
+ for(const item of project.tracks){
+  const track=record(item);
+  if(!track||typeof track.id!=='string'||!uuidV2.test(track.id)||
+     track.owner_id!==ownerId||typeof track.title!=='string'||
+     !strictPositiveIdV2(track.audio_file_id)||!validCoverIdV2(track.cover_file_id)){
+   throw Error('Invalid project manifest');
+  }
+  tracks.push({id:track.id,owner_id:ownerId,title:track.title||'Untitled',
+   audio_file_id:track.audio_file_id,cover_file_id:track.cover_file_id,stems_file_id:null});
+ }
+ return {id,owner_id:ownerId,kind,title:project.title||'Untitled',
+  cover_file_id:project.cover_file_id,tracks};
 }
 
 // Do not sort: backend already orders pack member IDs by library_pack_beats.position.

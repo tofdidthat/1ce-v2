@@ -10,6 +10,7 @@ import ProjectActionDialogV2,{type ContextProject,type ProjectAction,type Change
 import {subscribeV2DataChanges,subscribeV2Resume,notifyV2DataChanged} from './data-refresh-v2';
 import useProjectFlagsV2 from './project-flags-v2';
 import {profilePictureV2} from './profile-picture-v2';
+import {isPublicProfileUserV2,type AccountUserV2,type PublicProfileUserV2} from './account-identity-v2';
 import {normalizeProfileProjectsV2,normalizeLibraryProjectsV2,type ProfileProjectV2} from './project-read-v2';
 import {savedProjectKeyV2} from './project-identity-v2';
 import {getProfileFollowsV2,setProfileFollowV2,type ProfileFollowsV2} from './profile-follows-v2';
@@ -23,7 +24,7 @@ function CatalogLibraryIcon({size=17}:{size?:number}){
 const api=import.meta.env.VITE_API_URL;
 type PublicProject=ProfileProjectV2;
 type ProfileTab='catalog'|'saves'|'following';
-export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,onOpenProfile,profileId,onPlayProject,onQueueProject,playback,active=true}:{user:any;active?:boolean;onIdentityUpdated:(updated:any)=>void;onBack:()=>void;onLogin:()=>void;onOpenProfile:(identifier:string)=>void;profileId?:string;onPlayProject?:(ownerId:number,kind:'beat'|'pack',id:string)=>void;onQueueProject?:(ownerId:number,kind:'beat'|'pack',id:string)=>void;playback?:{ownerId:number;kind:'beat'|'pack';id:string;playing:boolean}|null}){
+export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,onOpenProfile,profileId,onPlayProject,onQueueProject,playback,active=true}:{user:AccountUserV2|null;active?:boolean;onIdentityUpdated:(updated:AccountUserV2)=>void;onBack:()=>void;onLogin:()=>void;onOpenProfile:(identifier:string)=>void;profileId?:string;onPlayProject?:(ownerId:number,kind:'beat'|'pack',id:string)=>void;onQueueProject?:(ownerId:number,kind:'beat'|'pack',id:string)=>void;playback?:{ownerId:number;kind:'beat'|'pack';id:string;playing:boolean}|null}){
  const [tab,setTab]=useState<ProfileTab>('catalog');
  const [editorOpen,setEditorOpen]=useState(false);
  const [projects,setProjects]=useState<{catalog:PublicProject[];saves:PublicProject[]}>({catalog:[],saves:[]});
@@ -34,7 +35,7 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
  const downloadRequest=React.useRef<AbortController|null>(null);
  const [actionDialog,setActionDialog]=useState<{project:ContextProject;action:ProjectAction}|null>(null);
  const [ownerPacks,setOwnerPacks]=useState<{id:string;title:string;track_count:number}[]>([]);
- const [profileUser,setProfileUser]=useState<any>(null);
+ const [profileUser,setProfileUser]=useState<PublicProfileUserV2|null>(null);
  const lastVerifiedProfileKey=React.useRef('');
  const [loadState,setLoadState]=useState<{key:string;status:'loading'|'ready'|'error'}>({key:'',status:'loading'});
  const [error,setError]=useState('');
@@ -117,11 +118,17 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
      }
      return response.json();
     })
-    .then(result=>{
+    .then((result:unknown)=>{
      if(controller.signal.aborted)return;
+     const raw=result&&typeof result==='object'&&!Array.isArray(result)?result as Record<string,unknown>:null;
+     if(!isPublicProfileUserV2(raw?.profile)){
+      lastVerifiedProfileKey.current='';
+      setProjects({catalog:[],saves:[]});setProfileUser(null);
+      throw Error('Invalid profile response');
+     }
      lastVerifiedProfileKey.current=requestKey;
      setProjects(normalizeProfileProjectsV2(result));
-     setProfileUser(result.profile||null);
+     setProfileUser(raw.profile);
      setLoadState({key:requestKey,status:'ready'});
     }).catch(e=>{if(!controller.signal.aborted){setError(e instanceof Error?e.message:'Unable to load profile');setLoadState({key:requestKey,status:'error'});}});
    return()=>controller.abort();
@@ -247,8 +254,8 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
   return()=>{window.removeEventListener('pointerdown',dismiss);window.removeEventListener('scroll',dismiss,true);window.removeEventListener('keydown',dismiss)};
  },[menu]);
  const shownUser=visibleProfileUser||user;
- const name=String(shownUser?.displayName||shownUser?.name||shownUser?.username||'Profile');
- const handle=String(shownUser?.username||shownUser?.handle||'');
+ const name=String(visibleProfileUser?.displayName||shownUser?.name||shownUser?.username||'Profile');
+ const handle=String(shownUser?.username||visibleProfileUser?.handle||'');
  const picture=profilePictureV2(shownUser);
  const tabs:{id:ProfileTab;label:string;icon:React.ReactNode}[]=[
   {id:'catalog',label:'Catalog',icon:<CatalogLibraryIcon/>},
@@ -283,7 +290,7 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
    <div className="onece-profile-name">
     <h1>{handle?handle.replace(/^@/,''):name}</h1>
    </div>
-   <ProfileSocialLinksV2 compact links={Array.isArray(shownUser?.links)?shownUser.links:[]}/>
+   <ProfileSocialLinksV2 compact links={visibleProfileUser?.links||[]}/>
   </div>
   <nav className="onece-profile-tabs" role="tablist" aria-label="Profile sections">
    {tabs.map(t=><button key={t.id} id={'onece-tab-'+t.id} type="button" role="tab" aria-selected={tab===t.id} aria-controls="onece-profile-tab-panel" className={tab===t.id?'is-active':''} onClick={()=>setTab(t.id)} aria-label={t.label} title={t.label}>{t.icon}</button>)}
@@ -335,7 +342,7 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
    </section>
   </div>}
   {actionDialog&&<ProjectActionDialogV2 key={actionDialog.action+':'+actionDialog.project.id} project={actionDialog.project} action={actionDialog.action} packs={ownerPacks} userId={user?.id} onClose={()=>setActionDialog(null)} onChanged={onProjectChanged}/>}
-  {editorOpen&&isOwner&&<EditProfilePanelV2 key={String(user.id)} user={user} profile={visibleProfileUser||user} catalog={visibleProjects.catalog}
+  {editorOpen&&isOwner&&user&&visibleProfileUser&&<EditProfilePanelV2 key={String(user.id)} user={user} profile={visibleProfileUser} catalog={visibleProjects.catalog}
     onClose={()=>setEditorOpen(false)} onIdentityUpdated={onIdentityUpdated} onProfileUpdated={()=>setRefreshRevision(v=>v+1)}/>}
   </section>
 }

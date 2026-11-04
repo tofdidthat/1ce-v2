@@ -290,3 +290,12 @@ A green TypeScript build, a passing source-pattern test and a visually correct s
 5. **Separate release statuses:** implemented, validated in CI, browser-tested, merged, deployed and manually verified are different states. Follow the gated batch/rollback protocol and never claim user-media safety solely from a green CI run.
 
 **Known debt beyond these PRs:** some existing frontend profile helpers still contain broad `any` types. These lots do not make every feature fully typed, and they do not establish full multi-account browser/R2 acceptance. Address such work in scoped, behavior-tested follow-ups, not unrelated refactors.
+
+
+### Next technical task — Task 1 of 5: remove explicit any and validate external contracts (draft)
+
+- Branch `refactor/task1-typed-profile-contracts` stacks on PR #45 (which stacks on #44 and #43). These parent PRs remain unmerged; do **not** cherry-pick this child directly onto main or deploy it.
+- Public profiles use the shared `PublicProfileUserV2` read model, distinct from authenticated `AccountUserV2`. Profile JSON and successful identity mutations are validated before updating cached identity/UI state. Invalid public profile data clears verified profile views rather than being accepted as authorized metadata.
+- The canonical playback read adapter validates owner, project UUID, track UUID, numeric audio/cover file IDs and array shape. It must reject malformed manifests rather than coercing a bad ID into one that could be used for a different file. Per-request server media authorization remains mandatory.
+- Avatar URL construction accepts only the structural identity fields and never exposes R2 storage object keys. No backend routes, SQL, R2 objects, player queue mechanics, upload flows or visual styles are intentionally changed.
+- CI and negative contract tests are required, but real multi-account browser/streaming tests remain a separate acceptance gate before production rollout. Status: implemented in a draft candidate, **not merged, not deployed, not manually accepted**.

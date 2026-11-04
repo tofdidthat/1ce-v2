@@ -20,6 +20,19 @@ export type AccountUserV2={
  has_avatar?:boolean;
  avatar_updated_at?:string|null;
 };
+// Public profile metadata returned by GET /api/public/profile/:id-or-username.
+// Unlike AccountUserV2, its social links and avatar information are always present.
+export type PublicProfileUserV2={
+ id:AccountIdV2;
+ name:string|null;
+ picture:string|null;
+ username:string|null;
+ has_avatar:boolean;
+ avatar_updated_at:string|null;
+ links:string[];
+ displayName?:string|null;
+ handle?:string|null;
+};
 export type AccountSummaryV2={
  id:AccountIdV2;
  name:string|null;

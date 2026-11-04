@@ -1,6 +1,7 @@
 import React,{useEffect,useMemo,useRef,useState} from 'react';
 import {Check,ChevronRight,Link2,Plus,Search,Trash2,X,Camera} from 'lucide-react';
 import {profilePictureV2} from './profile-picture-v2';
+import {isAccountUserV2,type AccountUserV2,type PublicProfileUserV2} from './account-identity-v2';
 import ProjectCoverV2 from './project-cover-v2';
 import useProjectFlagsV2 from './project-flags-v2';
 import {normalizeLibraryProjectsV2,type LibraryBeatV2,type LibraryPackV2,type ProfileProjectV2} from './project-read-v2';
@@ -15,17 +16,19 @@ const emptyLibrary:LibraryState={viewerId:null,status:'idle',items:[],error:''};
 const projectKey=(p:{kind:'beat'|'pack';id:string})=>p.kind+':'+p.id;
 const validateUsername=(value:string)=>/^[a-z0-9][a-z0-9._]{1,22}[a-z0-9]$/.test(value)&&!value.includes('..')&&!/^\d+$/.test(value);
 
-async function jsonRequest(path:string,options:RequestInit){
+async function jsonRequest(path:string,options:RequestInit):Promise<{user:AccountUserV2}>{
  if(!api)throw Error('API is not configured');
  const response=await fetch(api+path,{...options,credentials:'include',cache:'no-store'});
- const data=await response.json().catch(()=>({}));
- if(!response.ok)throw Error(data.error||'Unable to save profile');
- return data;
+ const data:unknown=await response.json().catch(()=>({}));
+ const raw=data&&typeof data==='object'&&!Array.isArray(data)?data as Record<string,unknown>:null;
+ if(!response.ok)throw Error(typeof raw?.error==='string'?raw.error:'Unable to save profile');
+ if(!isAccountUserV2(raw?.user))throw Error('Invalid account update response');
+ return {user:raw.user};
 }
 
 export default function EditProfilePanelV2({user,profile,catalog,onClose,onIdentityUpdated,onProfileUpdated}:{
- user:any;profile:any;catalog:ProfileProjectV2[];
- onClose:()=>void;onIdentityUpdated:(updated:any)=>void;onProfileUpdated:()=>void;
+ user:AccountUserV2;profile:PublicProfileUserV2;catalog:ProfileProjectV2[];
+ onClose:()=>void;onIdentityUpdated:(updated:AccountUserV2)=>void;onProfileUpdated:()=>void;
 }){
  const viewer=Number(user?.id);
  const [username,setUsername]=useState(String(profile?.username||user?.username||''));
