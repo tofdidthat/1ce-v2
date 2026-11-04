@@ -11,11 +11,28 @@ import {setProjectSavedV2} from './project-requests-v2';
 function Header() { return <header className="site-header"><Link to="/" className="brand"><img src="/1ce-logo.png" alt="1CE" className="brand-logo"/></Link><nav><Link to="/">Home</Link><Link to="/login" className="button">Log in</Link></nav></header> }
 function Footer() { return <footer className="site-footer"><span>© 2026 1CE</span><nav><Link to="/terms">Terms of Service</Link><Link to="/privacy">Privacy Policy</Link></nav></footer> }
 function PublicPage({children}:{children:React.ReactNode}) { return <div className="site"><Header/><main className="main">{children}</main><Footer/></div> }
-function Landing() { return <PublicPage><div className="empty-landing" aria-label="Landing content reserved for future design"/></PublicPage> }
+function Landing() {
+ const [enter,setEnter]=useState(false);
+ useEffect(()=>{
+  const api=import.meta.env.VITE_API_URL;
+  if(!api)return;
+  const controller=new AbortController();
+  (async()=>{
+   for(let attempt=0;attempt<2;attempt++){
+    try{
+     const response=await fetch(api+'/auth/me',{credentials:'include',signal:controller.signal,cache:'no-store'});
+     if(response.ok){const result=await response.json();if(!controller.signal.aborted&&result?.user)setEnter(true);return;}
+     if(response.status===401)return;
+    }catch{if(controller.signal.aborted)return;}
+    if(attempt===0)await new Promise(resolve=>setTimeout(resolve,800));
+   }
+  })();
+  return()=>controller.abort();
+ },[]);
+ if(enter)return <Navigate to="/app/library" replace/>;
+ return <PublicPage><div className="empty-landing" aria-label="Landing content reserved for future design"/></PublicPage>;
+}
 function Register() { return <PublicPage><section className="auth-card"><h1>Create an account</h1><p>Registration will be enabled when the v2 authentication API is ready.</p><Link to="/login">Back to login</Link></section></PublicPage> }
-// One route component for private workspace pages and published public profiles.
-// React keeps this component (and the mounted Workspace/player/cover cache) alive
-// while the matching routes change. The API still authorizes each media read.
 function WorkspaceRoute(){
  const {id}=useParams();
  const location=useLocation();
@@ -25,13 +42,23 @@ function WorkspaceRoute(){
   const api=import.meta.env.VITE_API_URL;
   if(!api){setSession({status:'ready',viewer:null});return;}
   const controller=new AbortController();
-  fetch(api+'/auth/me',{credentials:'include',signal:controller.signal,cache:'no-store'})
-   .then(async response=>response.ok?response.json():null)
-   .then(result=>{if(!controller.signal.aborted)setSession({status:'ready',viewer:result?.user||result||null});})
-   .catch(()=>{if(!controller.signal.aborted)setSession({status:'ready',viewer:null});});
+  (async()=>{
+   for(let attempt=0;attempt<2;attempt++){
+    try{
+     const response=await fetch(api+'/auth/me',{credentials:'include',signal:controller.signal,cache:'no-store'});
+     if(response.ok||response.status===401){
+      const result=response.ok?await response.json():null;
+      if(!controller.signal.aborted)setSession({status:'ready',viewer:result?.user||null});
+      return;
+     }
+    }catch{if(controller.signal.aborted)return;}
+    if(attempt===0)await new Promise(resolve=>setTimeout(resolve,800));
+   }
+   if(!controller.signal.aborted)setSession({status:'ready',viewer:null});
+  })();
   return()=>controller.abort();
  },[]);
- if(session.status==='checking')return <div className="site"><main className="main">Checking session…</main></div>;
+ if(session.status==='checking')return null;
  if(!publicProfile&&!session.viewer)return <Navigate to="/login" replace/>;
  return <WorkspaceV2 user={session.viewer} profileId={publicProfile?id:undefined}/>;
 }
@@ -63,21 +90,6 @@ function SharedProjectPage(){
   <p><Link to="/app/profile">My profile</Link></p>
  </div>;
 }
-function GoogleReturn(){
- const [message,setMessage]=useState('Completing Google sign-in…');
- useEffect(()=>{
-  const loginCode=new URLSearchParams(window.location.search).get('login_code');
-  window.history.replaceState({},'',window.location.pathname);
-  const verifier=sessionStorage.getItem('onece_v2_google_verifier');
-  sessionStorage.removeItem('onece_v2_google_verifier');
-  const api=import.meta.env.VITE_API_URL;
-  if(!loginCode||!verifier||!api){setMessage('Google sign-in could not be completed. Please try again.');return;}
-  fetch(api+'/auth/google/exchange',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({loginCode,verifier})})
-   .then(async response=>{if(!response.ok)throw new Error('Exchange failed');const check=await fetch(api+'/auth/me',{credentials:'include'});if(!check.ok)throw new Error('Session unavailable');window.location.replace('/app/library');})
-   .catch(()=>setMessage('Google sign-in failed. Please try again.'));
- },[]);
- return <div className="site"><main className="main"><p role="status">{message}</p><Link to="/login">Back to login</Link></main></div>;
-}
 
-function App() { return <BrowserRouter><Routes><Route path="/" element={<Landing/>}/><Route path="/login" element={<LoginPage/>}/><Route path="/register" element={<Register/>}/><Route path="/terms" element={<TermsPage/>}/><Route path="/privacy" element={<PrivacyPage/>}/><Route path="/app" element={<GoogleReturn/>}/><Route path="/app/library" element={<WorkspaceRoute/>}/><Route path="/app/discover" element={<WorkspaceRoute/>}/><Route path="/app/upload" element={<WorkspaceRoute/>}/><Route path="/app/settings" element={<WorkspaceRoute/>}/><Route path="/app/profile" element={<WorkspaceRoute/>}/><Route path="/app/profile/edit" element={<WorkspaceRoute/>}/><Route path="/u/:id" element={<WorkspaceRoute/>}/><Route path="/shared/:token" element={<SharedProjectPage/>}/><Route path="*" element={<Navigate to="/" replace/>}/></Routes></BrowserRouter> }
+function App() { return <BrowserRouter><Routes><Route path="/" element={<Landing/>}/><Route path="/login" element={<LoginPage/>}/><Route path="/register" element={<Register/>}/><Route path="/terms" element={<TermsPage/>}/><Route path="/privacy" element={<PrivacyPage/>}/><Route path="/app" element={<LoginPage/>}/><Route path="/app/library" element={<WorkspaceRoute/>}/><Route path="/app/discover" element={<WorkspaceRoute/>}/><Route path="/app/upload" element={<WorkspaceRoute/>}/><Route path="/app/settings" element={<WorkspaceRoute/>}/><Route path="/app/profile" element={<WorkspaceRoute/>}/><Route path="/app/profile/edit" element={<WorkspaceRoute/>}/><Route path="/u/:id" element={<WorkspaceRoute/>}/><Route path="/shared/:token" element={<SharedProjectPage/>}/><Route path="*" element={<Navigate to="/" replace/>}/></Routes></BrowserRouter> }
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);
