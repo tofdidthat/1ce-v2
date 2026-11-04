@@ -271,3 +271,22 @@ Maior dependência externa: **validação de comportamentos reais entre contas, 
 - Workspace navigation uses known route targets. A dead edit-profile action in the normal workspace header is removed because that header never renders on profile routes; the actual profile toolbar remains unchanged.
 - Upload file IDs are numbers, beat/pack project IDs are UUID strings, and neither are converted across categories. Upload/R2, dedup, player, queue, pack visibility and playback flow are preserved.
 - CI compilation cannot substitute for manual browser acceptance of navigation, account sessions and private media operations.
+
+
+### Verified TypeScript audit criteria (draft Lot C)
+
+- Negative policy tests cover nested JavaScript source under API, web and shared contracts, compiler strictness, block and line comment suppressions, and stale exceptions.
+- The authenticated identity parser tests both minimal valid session objects and malformed user JSON; no client value replaces API ownership checks.
+- CI at the final branch head is necessary but not sufficient for browser-level sign-in, Home, uploads, profile navigation and player acceptance. Keep the PRs in Draft until explicit merge and release approval.
+
+### Permanent architecture-first acceptance criterion (1CE v2)
+
+A green TypeScript build, a passing source-pattern test and a visually correct screen are **insufficient** to mark any feature complete.
+
+1. **Domain ownership first:** identify the authoritative layer (web, API, database, R2) and the relevant behavioral contract in this guide before editing. Frontend state must not grant media access; all authorization belongs to the API. Saved, shared and published objects have distinct access semantics.
+2. **Preserve media identity:** beats/packs refer to original files without extra R2 copies; owner and project UUID relationships must remain explicit; numeric file IDs must not be substituted for project IDs; streams, uploads, leases, deletion outbox and Trash must preserve ownership/integrity.
+3. **Types must reflect runtime:** share canonical identity/project/media contracts, validate untrusted JSON at the boundary, avoid broad assertions and unchecked source. Do not leave unreachable branches solely to silence TS errors.
+4. **Prove behavior beyond presentation:** CI and unit/type tests plus negative permission cases, isolated PostgreSQL/R2 checks where applicable, and approved browser acceptance for authentication, player and queue continuity, project visibility, shares, uploads and Trash. Pattern tests alone prove only the specific source invariant.
+5. **Separate release statuses:** implemented, validated in CI, browser-tested, merged, deployed and manually verified are different states. Follow the gated batch/rollback protocol and never claim user-media safety solely from a green CI run.
+
+**Known debt beyond these PRs:** some existing frontend profile helpers still contain broad `any` types. These lots do not make every feature fully typed, and they do not establish full multi-account browser/R2 acceptance. Address such work in scoped, behavior-tested follow-ups, not unrelated refactors.
