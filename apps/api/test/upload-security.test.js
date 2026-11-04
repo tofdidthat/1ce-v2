@@ -150,3 +150,23 @@ test('matching SHA does not make a forged PNG or WAV signature acceptable',async
   }),InvalidMedia);
  }
 });
+
+test('correct ZIP bytes with a forged declared SHA cannot be promoted',async()=>{
+ const bytes=zip();
+ const metadata={...file(bytes),sha256:'0'.repeat(64)};
+ await assert.rejects(
+  ()=>verifyUploadedObject({s3:storage(bytes),bucket:'mock',key:'forged',file:metadata}),
+  /File checksum mismatch/
+ );
+});
+
+test('R2 that ignores byte ranges fails closed during central-directory verification',async()=>{
+ const bytes=zip();
+ const ignoringRanges={async send(){
+  return {Body:Readable.from([bytes]),ContentLength:bytes.length};
+ }};
+ await assert.rejects(
+  ()=>verifyUploadedObject({s3:ignoringRanges,bucket:'mock',key:'range-not-honored',file:file(bytes)}),
+  InvalidMedia
+ );
+});
