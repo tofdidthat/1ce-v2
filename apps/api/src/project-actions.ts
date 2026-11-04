@@ -56,7 +56,7 @@ async function attach(c:QueryableV2,targetId:string,beatIds:string[]):Promise<nu
 }
 export async function handleProjectActions(req:IncomingMessage,res:ServerResponse,pathname:string,pool:TxPoolV2,currentUser:CurrentUserV2):Promise<boolean>{
  if(!pathname.startsWith('/api/library/projects/'))return false;
- if(!['PATCH','DELETE','POST'].includes(req.method)){send(res,405,{error:'Method not allowed'});return true;}
+ if(!['PATCH','DELETE','POST'].includes(req.method||'')){send(res,405,{error:'Method not allowed'});return true;}
  const user=await currentUser(req);
  if(!user){send(res,401,{error:'Not authenticated'});return true;}
  const parts=pathname.split('/').filter(Boolean);
@@ -69,7 +69,7 @@ export async function handleProjectActions(req:IncomingMessage,res:ServerRespons
  if(req.method==='POST'&&parts.length===5&&parts[3]==='packs'&&parts[4]==='from'){
   const {sourceKind,sourceId}=body||{};
   const title=typeof body?.title==='string'?body.title.trim():'';
-  if(!['beat','pack'].includes(sourceKind)||!uuid.test((sourceId||'') as string)||!title||title.length>180){
+  if(!['beat','pack'].includes(sourceKind as string)||!uuid.test((sourceId||'') as string)||!title||title.length>180){
    send(res,400,{error:'Invalid new project'});return true;
   }
   const response=await transaction(pool,owner,async c=>{
@@ -86,7 +86,7 @@ export async function handleProjectActions(req:IncomingMessage,res:ServerRespons
  // POST /api/library/projects/pack/:targetId/add {sourceKind,sourceId}
  if(req.method==='POST'&&parts.length===6&&parts[3]==='pack'&&uuid.test(parts[4])&&parts[5]==='add'){
   const {sourceKind,sourceId}=body||{};
-  if(!['beat','pack'].includes(sourceKind)||!uuid.test((sourceId||'') as string)){
+  if(!['beat','pack'].includes(sourceKind as string)||!uuid.test((sourceId||'') as string)){
    send(res,400,{error:'Invalid source'});return true;
   }
   const response=await transaction(pool,owner,async c=>{
@@ -110,7 +110,7 @@ export async function handleProjectActions(req:IncomingMessage,res:ServerRespons
  if(req.method==='PATCH'){
   const hasTitle=Object.hasOwn(body||{},'title');
   const hasCover=Object.hasOwn(body||{},'coverFileId');
-  const title=hasTitle&&typeof body.title==='string'?body.title.trim():null;
+  const title=hasTitle&&typeof body?.title==='string'?body.title.trim():null;
   const cover=body?.coverFileId as number|null;
   if(hasTitle===hasCover||(hasTitle&&(!title||title.length>180))||
    (hasCover&&cover!==null&&(!Number.isSafeInteger(cover)||cover<1))){
