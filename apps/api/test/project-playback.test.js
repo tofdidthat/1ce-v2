@@ -126,5 +126,5 @@ test('malformed viewer identities never gain a private playback manifest',async(
   }),null);
  }
  assert.equal(pool.calls.length,6);
- assert.ok(pool.calls.every(c=>c.params[2]===null));
+ assert.ok(pool.calls.every(c=>c.args[2]===null));
 });
