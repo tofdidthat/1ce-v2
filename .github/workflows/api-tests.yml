@@ -115,6 +115,40 @@ jobs:
         run: pnpm install --frozen-lockfile --prefer-offline
       - name: Verify Railway API-only build command
         run: node --check apps/api/src/server.js
+      - name: Compile API candidate with TypeScript without switching production entry
+        run: |
+          pnpm --filter @1ce/api build
+          test -f apps/api/dist/server.js
+          test -f apps/api/dist/trash.js
+          test -f apps/api/dist/library-files.js
+          node --check apps/api/dist/server.js
+      - name: Smoke test compiled API with no external credentials or databases
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { apiServer, apiPool } from './apps/api/dist/server.js';
+          try {
+            await new Promise((resolve, reject) => {
+              apiServer.once('error', reject);
+              apiServer.listen(0, '127.0.0.1', resolve);
+            });
+            const url = `http://127.0.0.1:${apiServer.address().port}`;
+            const health = await fetch(`${url}/health`);
+            assert.equal(health.status, 200);
+            assert.match(health.headers.get('cache-control') ?? '', /no-store/i);
+            assert.deepEqual(await health.json(), {ok:true, service:'1ce-v2-api'});
+            const unauthorized = await fetch(`${url}/auth/me`);
+            assert.equal(unauthorized.status, 401);
+            const disallowedOrigin = await fetch(`${url}/auth/me`, {
+              headers: {Origin: 'https://untrusted.invalid'},
+            });
+            assert.equal(disallowedOrigin.status, 403);
+            console.log('Compiled API: HEALTHY, no-store, session required, origin enforced');
+          } finally {
+            await new Promise((resolve) => apiServer.close(resolve));
+            await apiPool.end();
+          }
+          NODE
       - name: Start API from monorepo root and verify health
         shell: bash
         env:
