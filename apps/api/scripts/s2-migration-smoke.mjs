@@ -9,6 +9,7 @@ import {rateLimitExceeded,pruneExpiredRateLimits} from '../dist/api-rate-limits.
 import {accountStorageQuota,GIB} from '../dist/storage-plans.js';
 import {acquireCompletionLease,failPendingWithLease,discardPendingWithLease,promoteReadyWithLease} from '../dist/upload-leases.js';
 import {moveProjectToTrash,purgeTrashMetadata,handleTrash} from '../dist/trash.js';
+import {resolvePlayableProject} from '../dist/project-media.js';
 
 const connectionString=process.env.S2_TEST_DATABASE_URL;
 if(!connectionString)throw new Error('S2_TEST_DATABASE_URL is required');
@@ -135,8 +136,21 @@ try{
  const audioOne=await makeFile('users/'+uid+'/assets/audio/verified/10000000-0000-4000-8000-000000000011.mp3','audio');
  const audioTwo=await makeFile('users/'+uid+'/assets/audio/verified/10000000-0000-4000-8000-000000000012.mp3','audio');
  await pool.query('INSERT INTO library_beats(id,user_id,title,audio_file_id,cover_file_id) VALUES($1,$2,\'first\',$3,$4),($5,$2,\'second\',$6,$4)',[beatOne,uid,audioOne,sharedCover,beatTwo,audioTwo]);
- await pool.query("INSERT INTO library_packs(id,user_id,title) VALUES($1,$2,'pack')",[packId,uid]);
+ await pool.query("INSERT INTO library_packs(id,user_id,title,cover_file_id) VALUES($1,$2,'pack',$3)",[packId,uid,sharedCover]);
  await pool.query('INSERT INTO library_pack_beats(pack_id,beat_id,position) VALUES($1,$2,0),($1,$3,1)',[packId,beatOne,beatTwo]);
+ // Real PostgreSQL/node-postgres returns BIGINT columns as decimal strings.
+ // Test the production playback decoder against actual DB rows, not only mocks.
+ const rawBigint=await pool.query('SELECT cover_file_id FROM library_packs WHERE id=$1',[packId]);
+ if(typeof rawBigint.rows[0]?.cover_file_id!=='string')throw Error('Expected pg BIGINT to be a decimal string');
+ const ownedPlayback=await resolvePlayableProject(pool,{ownerId:uid,viewerId:uid,kind:'pack',projectId:packId});
+ if(!ownedPlayback||ownedPlayback.cover_file_id!==Number(sharedCover)||
+    ownedPlayback.tracks.length!==2||
+    ownedPlayback.tracks[0].audio_file_id!==Number(audioOne)||
+    ownedPlayback.tracks[1].audio_file_id!==Number(audioTwo)||
+    ownedPlayback.tracks.some(track=>typeof track.audio_file_id!=='number'))
+  throw Error('Real PostgreSQL BIGINT playback manifest failed');
+ const deniedPlayback=await resolvePlayableProject(pool,{ownerId:uid,viewerId:other.rows[0].id,kind:'pack',projectId:packId});
+ if(deniedPlayback!==null)throw Error('Private pack playback leaked to an unauthorized viewer');
  const conn=await pool.connect();
  try{
   await conn.query('BEGIN');
