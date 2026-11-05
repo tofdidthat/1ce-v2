@@ -324,3 +324,13 @@ A green TypeScript build, a passing source-pattern test and a visually correct s
 - The profile-follows handler now uses the real request type through a generic callback contract; this removes a server-side forced cast while preserving anonymous GET, owner/other-account restrictions and PostgreSQL-only follows.
 - Errors remain fail-closed; negative tests check malformed token and userinfo data. Existing OAuth flow, CI and mock Postgres regression suites remain mandatory. This is stacked above #47 and #48, not merged and not deployed.
 - Deliberately retained noncritical Node callback-overload assertions and error-log narrowing are not external authorization shortcuts; address further changes only with scoped tests.
+
+
+### Reported Profile/Saves player and duplicate-queue defects (2026-11-04, proposed fix)
+
+- **Operator evidence:** Home audio plays, but Play from own and third-party profiles and Saves fails; Add to queue duplicates entries. Do not treat earlier navigation-only acceptance as a playback acceptance.
+- One persistent Workspace-owned audio player serves Home, Catalog, Saves and authorized shared projects. The player dock, audio node and errors render outside the offscreen, collapsed Home container without spawning a second player. Playback state should persist across navigation and reset on account changes.
+- Profile Play and Add to queue both call the existing server-authorized project manifest endpoint with the original project/owner identity, using the same runtime-validated parser. Do not derive audio-file ownership from the viewer, duplicate media or create new grants.
+- The queue has one entry per `owner_id + beat UUID`; repeated Add to queue cannot append duplicates. The active track is shown in the Now playing area rather than repeated as Up next. Pack ordering, cover fallback and queue-origin state survive Next/Previous/selection.
+- CI/unit tests verify cross-owner identities, manifest/cover/pack ordering, duplicates and integration source contracts. Manual browser acceptance is still required for own profile, foreign published profile, Saved projects, queue additions, browser audio policy and denial of unauthorized projects. Saves alone do not mint R2 media grants.
+- Scope: frontend, tests, this guide only. No API/SQL/R2/permission changes, merge or deploy without approval.
