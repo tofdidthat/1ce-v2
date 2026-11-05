@@ -24,7 +24,7 @@ test('Settings keeps original account operations within the wider reference-base
  assert.doesNotMatch(settings,/Subscriptions|Referrals|Try membership|Redeem code|fake plan/i);
 });
 test('Workspace header provides consistent brand geometry and back buttons across pages, including Profile',()=>{
- assert.match(workspace,/\{view!=='library'&&showBack&&<button type="button" className="library-settings onece-workspace-back"/);
+ assert.match(workspace,/\{view==='edit-profile'&&showBack&&<button type="button" className="library-settings onece-workspace-back"/);
  assert.match(workspace,/onClick=\{\(\)=>onNavigate\('library'\)\}><img src="\/1ce-logo.png" alt="1CE"\/>/);
  assert.match(workspace,/\.onece-workspace-brand \{ display: flex; align-items: center; gap: 14px/);
  assert.match(profile,/onece-workspace-brand onece-profile-header-brand/);
@@ -48,7 +48,7 @@ test('Home retains the original shared dropdown, not a direct Settings shortcut'
 test('Back is context-sensitive: Home origin hides the arrow, other origins preserve history navigation',()=>{
  assert.match(workspace,/const previousWorkspacePath=typeof location\.state\?\.oneceFromPath==='string'\?location\.state\.oneceFromPath:null/);
  assert.match(workspace,/const showContextBack=previousWorkspacePath!=='\/app\/library'/);
- assert.match(workspace,/view!=='library'&&showBack&&<button/);
+ assert.match(workspace,/view==='edit-profile'&&showBack&&<button/);
  assert.match(workspace,/<HeaderV2 view=\{view\} user=\{account\} onNavigate=\{onNavigate\} showBack=\{showContextBack\} onBack=\{onWorkspaceBack\}/);
  assert.match(workspace,/if\(previousWorkspacePath&&typeof window\.history\.state\?\.idx==='number'&&window\.history\.state\.idx>0\)navigate\(-1\)/);
  assert.match(workspace,/else onNavigate\('library'\)/);
@@ -57,4 +57,14 @@ test('Back is context-sensitive: Home origin hides the arrow, other origins pres
  assert.match(workspace,/showBack=\{showContextBack\} profileId=/);
  assert.match(profile,/onClick=\{onGoHome\}><img src="\/1ce-logo.png" alt="1CE"\/>/);
  assert.match(workspace,/onClick=\{\(\)=>onNavigate\('library'\)\}><img src="\/1ce-logo.png" alt="1CE"\/>/);
+});
+
+test('World, Upload and Settings show only the 1CE logo on the header left, regardless of origin',()=>{
+ assert.match(workspace,/\{view==='edit-profile'&&showBack&&<button type="button" className="library-settings onece-workspace-back"/);
+ assert.doesNotMatch(workspace,/\{view!=='library'&&showBack&&<button/);
+ assert.match(workspace,/onClick=\{\(\)=>onNavigate\('library'\)\}><img src="\/1ce-logo.png" alt="1CE"\/>/);
+ assert.match(workspace,/view==='profile'\?null:<header className="onece-workspace-header"/);
+ assert.match(workspace,/<CompactWorkspaceNav view=\{view\} disabled=\{false\} onNavigate=\{onNavigate\}\/>/);
+ assert.match(workspace,/showBack=\{showContextBack\} profileId=/);
+ assert.match(profile,/\{showBack&&<button type="button" className="library-settings onece-profile-nav-back"/);
 });
