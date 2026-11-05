@@ -6,6 +6,7 @@ import ProjectContextMenuV2 from './project-context-menu-v2';
 import ProjectCardV2 from './project-card-v2';
 import {createProjectShareLinkV2} from './project-requests-v2';
 import {fetchPlayableProjectV2,downloadAuthorizedMp3V2,publicProjectLinkV2,type PlayableTrackV2} from './public-project-actions-v2';
+import {downloadOwnedProjectV2} from './owner-download-v2';
 import ProjectActionDialogV2,{type ContextProject,type ProjectAction,type ChangedProject} from './project-action-dialog-v2';
 import {subscribeV2DataChanges,subscribeV2Resume,notifyV2DataChanged} from './data-refresh-v2';
 import useProjectFlagsV2 from './project-flags-v2';
@@ -223,6 +224,10 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
   downloadRequest.current?.abort();
   const controller=new AbortController();downloadRequest.current=controller;
   try{
+   if(ownerOf(project)){
+    await downloadOwnedProjectV2({kind:project.kind,id:project.id,title:project.title},controller.signal);
+    return;
+   }
    const manifest=await fetchPlayableProjectV2(project.owner_id,project.kind,project.id,controller.signal);
    if(controller.signal.aborted)return;
    if(project.kind==='pack'){
@@ -331,7 +336,7 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
    onSave={flagsStatus==='ready'||!user?.id?()=>{const project=menu.project;setMenu(null);if(!user?.id){onLogin();return;}void toggleSave(project)}:undefined}
    onShare={()=>void copyProjectLink(menu.project)}
    onQueue={onQueueProject?()=>{const project=menu.project;setMenu(null);onQueueProject(project.owner_id,project.kind,project.id)}:undefined}
-   onDownload={!ownerOf(menu.project)?()=>void beginDownload(menu.project):undefined}
+   onDownload={downloadBusy?undefined:()=>void beginDownload(menu.project)}
    onAction={action=>showProjectAction(action,menu.project)}/>}
   {downloadPicker&&<div className="onece-profile-download-overlay" onMouseDown={event=>{if(event.target===event.currentTarget&&!downloadBusy)setDownloadPicker(null);}}>
    <section className="onece-profile-download-dialog" role="dialog" aria-modal="true" aria-label="Choose MP3 from pack">

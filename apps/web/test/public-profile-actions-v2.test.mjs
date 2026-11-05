@@ -12,7 +12,9 @@ test('nonowner order: save, copy, queue, download',()=>{
  assert.ok(lines.every(n=>n>=0));
  assert.deepEqual(lines,[...lines].sort((a,b)=>a-b));
  assert.ok(menu.includes('!owner&&'));
- assert.ok(profile.includes('onDownload={!ownerOf(menu.project)'));
+ assert.ok(profile.includes('onDownload={downloadBusy?undefined:()=>void beginDownload(menu.project)}'));
+  assert.ok(profile.includes('if(ownerOf(project)){'));
+  assert.ok(profile.includes('downloadAuthorizedMp3V2(manifest.tracks[0]'));
 });
 test('queue appends authorized manifest tracks without replacing current audio',()=>{
  assert.ok(workspace.includes('queueRequest={queueRequest}'));

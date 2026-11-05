@@ -6,6 +6,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import {Readable} from 'node:stream';
 import pg from 'pg';
 import {handleLibraryFiles} from '../dist/library-files.js';
+import {handleProjectActions} from '../dist/project-actions.js';
 
 const connectionString=process.env.S2_TEST_DATABASE_URL;
 const address=connectionString?new URL(connectionString):null;
@@ -31,6 +32,18 @@ async function invoke(route,data,userId){
  const req=Readable.from([Buffer.from(JSON.stringify(data))]);req.method='POST';req.headers={};
  const res={status:0,body:null,writeHead(s){this.status=s;},end(raw){this.body=raw?JSON.parse(raw):null;}};
  assert.equal(await handleLibraryFiles(req,res,route,db,async()=>({id:userId}),opts),true);
+ return res;
+}
+async function patchProject(path,data,userId){
+ const req=Readable.from([Buffer.from(JSON.stringify(data))]);req.method='PATCH';req.headers={};
+ const res={status:0,body:null,writeHead(status){this.status=status;},end(raw){this.body=raw?JSON.parse(raw):null;}};
+ assert.equal(await handleProjectActions(req,res,'/api/library/projects/'+path,db,async()=>userId==null?null:{id:userId}),true);
+ return res;
+}
+async function getFile(path,userId){
+ const req=Readable.from([]);req.method='GET';req.headers={};
+ const res={status:0,body:null,writeHead(status){this.status=status;},end(raw){this.body=raw?JSON.parse(raw):null;}};
+ assert.equal(await handleLibraryFiles(req,res,'/api/library/files/'+path,db,async()=>userId==null?null:{id:userId},opts),true);
  return res;
 }
 async function ready(owner,kind,label,status='ready',bytes=800){
@@ -115,6 +128,44 @@ try{
  assert.equal(visible.get(beatTwo.body.id),false);
  assert.equal(await count('SELECT count(*)::int AS n FROM library_packs WHERE user_id=$1',[a]),1);
 
+ // PR #57 real PostgreSQL authorization: attach/replace/unlink stems on the
+ // canonical beat. Never write another beat, pack, library_file or R2 object.
+ const stemsA2=await ready(a,'stems','stems-replacement.zip');
+ const stemsB=await ready(b,'stems','foreign-stems.zip');
+ const stemsPending=await ready(a,'stems','pending-stems.zip','pending');
+ const path='beat/'+beatTwo.body.id;
+ const meta=async userId=>getFile('beat/'+beatTwo.body.id,userId);
+ assert.equal((await meta(a)).status,200);
+ assert.equal((await meta(b)).status,404,'Foreign beat IDs must be private');
+ assert.equal((await meta(null)).status,401,'Beat metadata must require login');
+ assert.equal((await getFile('stems/'+stemsA,b)).status,404,'Foreign stems file must be private');
+ assert.equal((await getFile('stems/'+stemsA,null)).status,401,'Stems file must require login');
+ for(const forbidden of [
+  {stemsFileId:stemsB},{stemsFileId:stemsPending},{stemsFileId:0},
+  {stemsFileId:'42'},{stemsFileId:stemsA2,title:'invalid combined mutation'}
+ ]){
+  const refused=await patchProject(path,forbidden,a);
+  assert.equal(refused.status,400,JSON.stringify({forbidden,response:refused.body}));
+ }
+ assert.equal((await patchProject('pack/'+good.body.id,{stemsFileId:stemsA2},a)).status,400);
+ assert.equal((await patchProject(path,{stemsFileId:stemsA2},b)).status,404);
+ assert.equal((await meta(a)).body.beat.stems_file_id,null,'Unauthorized PATCH must not change stems');
+ const attached=await patchProject(path,{stemsFileId:stemsA2},a);
+ assert.equal(attached.status,200,JSON.stringify(attached.body));
+ assert.equal(Number((await meta(a)).body.beat.stems_file_id),stemsA2);
+ const replacement=await patchProject(path,{stemsFileId:stemsA},a);
+ assert.equal(replacement.status,200,JSON.stringify(replacement.body));
+ assert.equal(Number((await meta(a)).body.beat.stems_file_id),stemsA);
+ assert.equal((await patchProject(path,{stemsFileId:null},a)).status,200);
+ assert.equal((await meta(a)).body.beat.stems_file_id,null,'Unlink must persist');
+ assert.equal(Number((await meta(a)).body.beat.audio_file_id),audioA2,'Audio reference must remain unchanged');
+ assert.equal(await count('SELECT count(*)::int AS n FROM library_files WHERE user_id=$1 AND kind=$2 AND status=$3',[a,'stems','ready']),2,
+  'Unlink must not delete original R2 file rows');
+ assert.equal(await count('SELECT count(*)::int AS n FROM library_pack_beats WHERE pack_id=$1',[good.body.id]),2,
+  'Stems edits must not change pack membership');
+ assert.equal(Number((await getFile('beat/'+beatOne.body.id,a)).body.beat.stems_file_id),stemsA,
+  'Existing beat and pack shared stems reference must remain unchanged');
+
  // Ready-only dedup: reinit a ready stored SHA reuses owner file without URL.
  const existing=await invoke('/api/library/files/init',{
   kind:'audio',name:'ready.mp3',contentType:'audio/mpeg',size:800,sha256:sha('audio-a.mp3')
@@ -122,5 +173,5 @@ try{
  assert.equal(existing.status,200);
  assert.deepEqual(existing.body,{id:String(audioA),reused:true});
  assert.equal(signed.length,11,'Reused READY asset must never issue a signed PUT');
- console.log('Phase 4C disposable PostgreSQL PASS: concurrent quota locks, READY dedup, per-owner file grants, pack membership, standalone visibility; R2 intentionally not used');
+ console.log('Phase 4C + PR57 disposable PostgreSQL PASS: concurrent quota locks, READY dedup, per-owner grants, pack membership, stems owner-only attach/replace/unlink persistence, foreign and anonymous access denied; R2 intentionally not used');
 }finally{await db.end();}
