@@ -139,6 +139,7 @@ try{
  assert.equal((await readPack(good.body.id,b)).status,404,'Foreign owner cannot enumerate pack members');
  assert.deepEqual((await readPack(good.body.id,b)).body,{error:'Pack not found'});
  assert.equal((await readPack(randomUUID(),a)).status,404,'Missing pack cannot look like an empty pack');
+ assert.equal((await readPack('f'.repeat(36),a)).status,404,'Malformed 36-character pack IDs must not reach a PostgreSQL UUID cast');
  const emptyPackId=randomUUID(),foreignPackId=randomUUID(),deletedPackId=randomUUID();
  await db.query('INSERT INTO library_packs(id,user_id,title) VALUES($1,$2,$3)',[emptyPackId,a,'Empty active pack']);
  await db.query('INSERT INTO library_packs(id,user_id,title) VALUES($1,$2,$3)',[foreignPackId,b,'Foreign private pack']);
