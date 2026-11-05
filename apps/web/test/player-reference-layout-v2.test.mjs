@@ -41,8 +41,9 @@ test('player remains one accessible portal with responsive waveform and upward v
  assert.match(css,/@media\(max-width:390px\)/);
  assert.match(css,/\.onece-player-volume \.v2-volume-popup\{/);
  assert.match(css,/writing-mode:vertical-lr/);
- assert.match(css,/bottom:-6px;right:-5px;width:46px/);
- assert.match(css,/padding:14px 6px 45px;gap:0;border-radius:23px/);
+ assert.match(css,/bottom:calc\(100% \+ 6px\);right:-5px;width:46px/);
+ assert.match(css,/padding:14px 6px;gap:0;border-radius:23px/);
+ assert.doesNotMatch(css,/bottom:-6px;right:-5px;width:46px/);
  assert.match(css,/\.v2-volume-track\{height:126px/);
  assert.match(css,/height:120px;width:18px;margin:0;padding:0;border:0;border-radius:0/);
  // The active single speaker icon still owns the volume toggle.
