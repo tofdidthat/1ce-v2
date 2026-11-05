@@ -143,7 +143,49 @@ test('invalid database beat and pack rows cannot become playable manifests',asyn
   throw Error('Unexpected secondary query');
  }});
  await assert.rejects(()=>resolve(dbFor({id:beatId,title:'Test',owner_id:2,audio_file_id:11,cover_file_id:null,stems_file_id:null}),'beat',beatId,1),/Invalid database beat metadata/);
- await assert.rejects(()=>resolve(dbFor({id:beatId,title:'Test',owner_id:1,audio_file_id:'11',cover_file_id:null,stems_file_id:null}),'beat',beatId,1),/Invalid database beat metadata/);
+ await assert.rejects(()=>resolve(dbFor({id:beatId,title:'Test',owner_id:1,audio_file_id:'11oops',cover_file_id:null,stems_file_id:null}),'beat',beatId,1),/Invalid database beat metadata/);
  await assert.rejects(()=>resolve(dbFor({id:packId,title:'Pack',owner_id:2,cover_file_id:null}),'pack',packId,1),/Invalid database pack metadata/);
- await assert.rejects(()=>resolve(dbFor({id:packId,title:'Pack',owner_id:1,cover_file_id:'30'}),'pack',packId,1),/Invalid database pack metadata/);
+ await assert.rejects(()=>resolve(dbFor({id:packId,title:'Pack',owner_id:1,cover_file_id:'30oops'}),'pack',packId,1),/Invalid database pack metadata/);
+});
+
+test('PostgreSQL BIGINT strings decode to safe numeric manifest IDs without weakening owner/grant checks',async()=>{
+ const pool=fixture({grants:[{kind:'pack',id:packId,viewer:2},{kind:'beat',id:beatId,viewer:2}]});
+ const realisticPg={
+  async query(sql,args){
+   const result=await pool.query(sql,args);
+   return {...result,rows:result.rows.map(row=>({
+    ...row,
+    ...(row.audio_file_id==null?{}:{audio_file_id:String(row.audio_file_id)}),
+    ...(row.cover_file_id==null?{}:{cover_file_id:String(row.cover_file_id)}),
+    ...(row.stems_file_id==null?{}:{stems_file_id:String(row.stems_file_id)})
+   }))};
+  }
+ };
+ const own=await resolve(realisticPg,'pack',packId,1);
+ assert.equal(own.cover_file_id,30);
+ assert.deepEqual(own.tracks.map(track=>track.audio_file_id),[11,21]);
+ assert.deepEqual(own.tracks.map(track=>track.cover_file_id),[12,null]);
+ assert.ok(own.tracks.every(track=>typeof track.audio_file_id==='number'));
+ const granted=await resolve(realisticPg,'pack',packId,2);
+ assert.equal(granted.cover_file_id,30);
+ assert.equal(granted.tracks[0].stems_file_id,null);
+ assert.equal(await resolve(realisticPg,'pack',packId,3),null);
+ const beat=await resolve(realisticPg,'beat',beatId,1);
+ assert.equal(beat.tracks[0].stems_file_id,13);
+ assert.equal((await resolve(realisticPg,'beat',beatId,2)).tracks[0].stems_file_id,null);
+ assert.equal(await resolve(realisticPg,'beat',beatId,3),null);
+});
+
+test('invalid and unsafe BIGINT representations fail closed without fabricating media access',async()=>{
+ const invalid=['', '0','01','-5','2.1','2e3','not-an-id','9007199254740993',Infinity,1.25,undefined];
+ for(const value of invalid){
+  const beat={id:beatId,title:'Beat',owner_id:1,audio_file_id:value,cover_file_id:null,stems_file_id:null};
+  const pool={async query(){return {rowCount:1,rows:[beat]}}};
+  await assert.rejects(()=>resolve(pool,'beat',beatId,1),/Invalid database beat metadata/);
+ }
+ for(const value of invalid){
+  const pack={id:packId,title:'Pack',owner_id:1,cover_file_id:value};
+  const pool={async query(){return {rowCount:1,rows:[pack]}}};
+  await assert.rejects(()=>resolve(pool,'pack',packId,1),/Invalid database pack metadata/);
+ }
 });

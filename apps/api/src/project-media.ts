@@ -40,8 +40,19 @@ type PlayableManifestV2={
 };
 const mediaKinds=new Set<MediaKindV2>(['audio','cover','stems']);
 
-const positiveFileId=(v:unknown):v is number=>typeof v==='number'&&Number.isSafeInteger(v)&&v>0;
-const optionalFileId=(v:unknown):v is number|null=>v===null||positiveFileId(v);
+// PostgreSQL BIGINT fields are returned as decimal strings by node-postgres.
+// Normalize only losslessly representable positive IDs; reject malformed/unsafe
+// values instead of converting them into a different file's ID.
+const positiveFileId=(value:unknown):number|null=>{
+ if(typeof value==='number')return Number.isSafeInteger(value)&&value>0?value:null;
+ if(typeof value==='string'&&/^[1-9][0-9]*$/.test(value)){
+  const id=Number(value);
+  return Number.isSafeInteger(id)&&id>0?id:null;
+ }
+ return null;
+};
+const optionalFileId=(value:unknown):number|null|undefined=>
+ value===null?null:(positiveFileId(value)??undefined);
 const dbRecord=(value:unknown):Record<string,unknown>=>{
  if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Invalid database media row');
  return value as Record<string,unknown>;
@@ -149,22 +160,25 @@ export async function resolveAuthorizedMediaFile(pool:QueryableV2,{ownerId,viewe
 const projectUuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function decodePlayablePackRow(value:unknown,owner:number):PlayablePackRowV2{
  const row=dbRecord(value);
+ const coverFileId=optionalFileId(row.cover_file_id);
  if(typeof row.id!=='string'||!projectUuid.test(row.id)||
   typeof row.title!=='string'||row.owner_id!==owner||
-  !optionalFileId(row.cover_file_id))
+  coverFileId===undefined)
   throw Error('Invalid database pack metadata');
- return {id:row.id,title:row.title,owner_id:owner,cover_file_id:row.cover_file_id};
+ return {id:row.id,title:row.title,owner_id:owner,cover_file_id:coverFileId};
 }
 function decodePlayableBeatRow(value:unknown,owner:number):PlayableDbRowV2{
  const row=dbRecord(value);
+ const audioFileId=positiveFileId(row.audio_file_id);
+ const coverFileId=optionalFileId(row.cover_file_id);
+ const stemsFileId=optionalFileId(row.stems_file_id);
  if(typeof row.id!=='string'||!projectUuid.test(row.id)||
   typeof row.title!=='string'||row.owner_id!==owner||
-  !positiveFileId(row.audio_file_id)||!optionalFileId(row.cover_file_id)||
-  !optionalFileId(row.stems_file_id))
+  audioFileId===null||coverFileId===undefined||stemsFileId===undefined)
   throw Error('Invalid database beat metadata');
  return {id:row.id,title:row.title,owner_id:owner,
-  audio_file_id:row.audio_file_id,cover_file_id:row.cover_file_id,
-  stems_file_id:row.stems_file_id};
+  audio_file_id:audioFileId,cover_file_id:coverFileId,
+  stems_file_id:stemsFileId};
 }
 const projectPermission=(alias:string,kind:ProjectKindV2)=>`
   ( ${alias}.user_id=$3::integer
