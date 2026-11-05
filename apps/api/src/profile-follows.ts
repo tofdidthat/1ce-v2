@@ -1,13 +1,13 @@
 // 1CE v2: social follow relationships are PostgreSQL-only; no project/media grant.
 import type {QueryableV2} from '../../../packages/shared/contracts.js';
 
-type FollowRequest={method:string};
+type FollowRequest={method?:string};
 type FollowResponse={
  writeHead(status:number,headers:Record<string,string>):void;
  end(body?:string):void;
 };
 type FollowViewer={id:number};
-type GetViewer=(request:FollowRequest)=>Promise<FollowViewer|null>;
+type GetViewer<Request extends FollowRequest>=(request:Request)=>Promise<FollowViewer|null>;
 
 const send=(res:FollowResponse,status:number,data:unknown):void=>{
  res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});
@@ -28,10 +28,10 @@ function ready(pool:QueryableV2):Promise<void>{
  return schemaPromise;
 }
 
-export async function handleProfileFollows(req:FollowRequest,res:FollowResponse,pathname:string,pool:QueryableV2,currentUser:GetViewer):Promise<boolean>{
+export async function handleProfileFollows<Request extends FollowRequest>(req:Request,res:FollowResponse,pathname:string,pool:QueryableV2,currentUser:GetViewer<Request>):Promise<boolean>{
  const match=/^\/api\/public\/follows\/(\d+)$/.exec(pathname);
  if(!match)return false;
- if(!['GET','POST','DELETE'].includes(req.method)){send(res,405,{error:'Method not allowed'});return true;}
+ if(!['GET','POST','DELETE'].includes(req.method||'')){send(res,405,{error:'Method not allowed'});return true;}
  const targetId=Number(match[1]);
  if(!Number.isSafeInteger(targetId)||targetId<1||targetId>2147483647){
   send(res,404,{error:'Profile not found'});return true;

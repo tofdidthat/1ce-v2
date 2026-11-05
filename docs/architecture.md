@@ -316,3 +316,11 @@ A green TypeScript build, a passing source-pattern test and a visually correct s
 - JSON parsing only accepts top-level objects, not unchecked arrays/strings. No changes to SQL, R2 object lifecycle, deduplication, endpoint routes, Trash, authorization or deletion are intended.
 - Operator reported manual navigation/functionality checks passing after PR #46 (2026-11-04). This does not prove cross-account permission negatives, R2 races or upload/delete integration; those require isolated acceptance.
 - This stacked PR is not merged and does not authorize deployment. Continue separate scrutiny of auth and remaining assertion-style casts, especially OAuth payloads and non-user-facing DB rows.
+
+
+### Tarefa 2 — auth boundary typing (third stacked draft, no release)
+
+- Google token/userinfo JSON is decoded from `unknown`: nonempty access tokens, verified email flag, user subject/email and optional name/picture shapes must pass runtime checks before any account linking or session creation. No changes to OAuth state, cookies, PKCE, database commands or URL paths are intended.
+- The profile-follows handler now uses the real request type through a generic callback contract; this removes a server-side forced cast while preserving anonymous GET, owner/other-account restrictions and PostgreSQL-only follows.
+- Errors remain fail-closed; negative tests check malformed token and userinfo data. Existing OAuth flow, CI and mock Postgres regression suites remain mandatory. This is stacked above #47 and #48, not merged and not deployed.
+- Deliberately retained noncritical Node callback-overload assertions and error-log narrowing are not external authorization shortcuts; address further changes only with scoped tests.

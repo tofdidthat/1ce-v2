@@ -13,8 +13,8 @@ import {handleTrash} from './trash.js';
 import { handlePublicProfiles } from './public-profiles.js';
 import { handleProfileFollows } from './profile-follows.js';
 import { handleProfileIdentity } from './profile-identity.js';
+import {parseGoogleAccessToken,parseVerifiedGoogleUser,type VerifiedGoogleV2} from './google-identity.js';
 type AccountV2={id:number;email:string;name:string|null;picture:string|null;username?:string|null;has_avatar?:boolean;avatar_updated_at?:string|null};
-type VerifiedGoogleV2={sub:string;email:string;email_verified:true;name?:string|null;picture?:string|null};
 type GoogleConfigV2={clientId:string|undefined;clientSecret:string|undefined;redirectUri:string|undefined};
 const scrypt=promisify(scryptCallback) as (password:string,salt:Buffer,size:number,options:{N:number;r:number;p:number})=>Promise<Buffer>;
 const pool=new pg.Pool({connectionString:process.env.DATABASE_URL,ssl:process.env.DATABASE_SSL==='true'?{rejectUnauthorized:true}:undefined});
@@ -49,13 +49,12 @@ const googleError=(res:ServerResponse)=>redirect(res,origin+'/app?login=error',{
 async function requestGoogleUser(code:string,config:GoogleConfigV2):Promise<VerifiedGoogleV2>{
  const tokenResponse=await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({code,client_id:config.clientId!,client_secret:config.clientSecret!,redirect_uri:config.redirectUri!,grant_type:'authorization_code'}),signal:AbortSignal.timeout(10000)});
  if(!tokenResponse.ok)throw new Error('Google token exchange failed');
- const token=await tokenResponse.json() as {access_token?:unknown};
- if(typeof token.access_token!=='string')throw new Error('Google access token missing');
- const userResponse=await fetch('https://openidconnect.googleapis.com/v1/userinfo',{headers:{Authorization:'Bearer '+token.access_token},signal:AbortSignal.timeout(10000)});
+ const tokenPayload:unknown=await tokenResponse.json();
+ const accessToken=parseGoogleAccessToken(tokenPayload);
+ const userResponse=await fetch('https://openidconnect.googleapis.com/v1/userinfo',{headers:{Authorization:'Bearer '+accessToken},signal:AbortSignal.timeout(10000)});
  if(!userResponse.ok)throw new Error('Google userinfo failed');
- const user=await userResponse.json() as {sub?:unknown;email?:unknown;email_verified?:unknown;name?:string|null;picture?:string|null};
- if(typeof user.sub!=='string'||!user.sub||typeof user.email!=='string'||user.email_verified!==true)throw new Error('Google identity not verified');
- return user as VerifiedGoogleV2;
+ const userPayload:unknown=await userResponse.json();
+ return parseVerifiedGoogleUser(userPayload);
 }
 async function linkGoogleUser(client:PoolClient,profile:VerifiedGoogleV2):Promise<number>{
  const email=profile.email.trim().toLowerCase();
@@ -97,7 +96,7 @@ const server=createServer(async(req,res)=>{
  try{
 
   if(await handleProfileIdentity(req,res,pathname,pool,currentUser))return;
-  if(await handleProfileFollows(req as Parameters<typeof handleProfileFollows>[0],res,pathname,pool,currentUser as Parameters<typeof handleProfileFollows>[4]))return;
+  if(await handleProfileFollows(req,res,pathname,pool,currentUser))return;
   if(await handlePublicProfiles(req,res,pathname,pool,currentUser))return;
   if(await handleTrash(req,res,pathname,pool,currentUser))return;
   if(await handleProjectActions(req,res,pathname,pool,currentUser))return;
