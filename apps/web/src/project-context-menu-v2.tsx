@@ -15,8 +15,8 @@ export default function ProjectContextMenuV2({project,x,y,owner,published,saved,
    <div className="v2-context-separator"/>
    {item('Rename',<Pencil size={17}/>,()=>onAction('rename'))}
    {item('Change cover',<ImageIcon size={17}/>,()=>onAction('cover'))}
-   {item(project.kind==='pack'?'Download ZIP':'Download MP3',<Download size={17}/>,undefined,true)}
-   {project.kind==='beat'&&item('Stems',<Layers size={17}/>,undefined,true)}
+   {item(project.kind==='pack'?'Download':'Download MP3',<Download size={17}/>,onDownload,!onDownload)}
+   {project.kind==='beat'&&item('Upload/Download Stems',<Layers size={17}/>,()=>onAction('stems'))}
    <div className="v2-context-separator"/>
    {item('Delete',<Trash2 size={17}/>,()=>onAction('delete'),false,true)}</>}
  </div>;
