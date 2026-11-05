@@ -307,3 +307,12 @@ A green TypeScript build, a passing source-pattern test and a visually correct s
 - Remove the historic public playback signature adapter and narrow project kind at the route. Keep owner/grant/publication/saves SQL, R2 keys, bytes, HTTP paths and deduplication behavior unchanged.
 - Reject malformed ready media metadata before streaming and reject corrupt/mismatched project rows instead of fabricating IDs. The private Library audio route passes the real typed HTTP request without casting.
 - Unit tests cover corrupt DB rows and inherited owner/visitor/media rules; mocks do not replace PostgreSQL/R2 acceptance. This draft makes no SQL, R2, OAuth, route or storage changes and requires separate permission for merge and deploy.
+
+
+### Tarefa 2 — upload metadata and private R2 stream boundaries (stacked draft)
+
+- Check actual AWS SDK GetObject Body at runtime with `isR2ReadableBody` before private cover streaming or bounded media verification. Invalid or absent streams fail closed without a falsely successful response.
+- PENDING upload rows are validated for the right owner's staging prefix, supported kind, SHA-256, file ID, nonempty content type and positive byte size **before** lease acquisition, verification or R2 commands. READY retries remain idempotent.
+- JSON parsing only accepts top-level objects, not unchecked arrays/strings. No changes to SQL, R2 object lifecycle, deduplication, endpoint routes, Trash, authorization or deletion are intended.
+- Operator reported manual navigation/functionality checks passing after PR #46 (2026-11-04). This does not prove cross-account permission negatives, R2 races or upload/delete integration; those require isolated acceptance.
+- This stacked PR is not merged and does not authorize deployment. Continue separate scrutiny of auth and remaining assertion-style casts, especially OAuth payloads and non-user-facing DB rows.

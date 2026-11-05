@@ -5,6 +5,7 @@ import {S3Client,GetObjectCommand} from '@aws-sdk/client-s3';
 import {resolveAuthorizedMediaFile,resolvePlayableProject} from './project-media.js';
 import {streamAuthorizedAudio} from './audio-stream.js';
 import {readProfileLinksV2} from './profile-links.js';
+import {isR2ReadableBody} from './r2-body.js';
 // 1CE v2 public profile catalog and public saves. Metadata only; R2 objects are never duplicated.
 // HTTP routing narrows the kind before calling the typed playback resolver.
 const isProjectKindV2=(value:string):value is ProjectKindV2=>value==='beat'||value==='pack';
@@ -93,8 +94,9 @@ export async function handlePublicProfiles(req:IncomingMessage,res:ServerRespons
   if(!cfg.account||!cfg.key||!cfg.secret||!cfg.bucket){send(res,503,{error:'Storage unavailable'});return true;}
   const s3=new S3Client({region:'auto',endpoint:'https://'+cfg.account+'.r2.cloudflarestorage.com',credentials:{accessKeyId:cfg.key,secretAccessKey:cfg.secret},forcePathStyle:true});
   const obj=await s3.send(new GetObjectCommand({Bucket:cfg.bucket,Key:file.object_key}));
+  if(!isR2ReadableBody(obj.Body)){send(res,503,{error:'Storage unavailable'});return true;}
   res.writeHead(200,{'Content-Type':file.content_type,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'});
-  for await(const chunk of (obj.Body as AsyncIterable<Uint8Array>))res.write(chunk);
+  for await(const chunk of obj.Body)res.write(chunk);
   res.end();return true;
  }
  if(parts.length===4&&parts[2]==='profile'&&req.method==='GET'){

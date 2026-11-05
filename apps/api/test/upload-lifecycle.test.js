@@ -577,3 +577,20 @@ test('per-account storage plan quota changes without modifying other account ent
  assert.equal((await h.invoke('/api/library/files/init',body,{id:99})).status,429);
  assert.equal(h.files.size,3);
 });
+
+test('pending upload metadata rejects corrupted or cross-owner staging fields before R2',async()=>{
+ for(const corrupted of [
+  {object_key:'staging/users/99/assets/audio/forged.mp3'},
+  {kind:'video'},
+  {byte_size:'invalid'},
+  {sha256:'not-a-hash'},
+  {content_type:null}
+ ]){
+  const h=setup(),response=await h.invoke('/api/library/files/init',uploaded());
+  assert.equal(response.status,200);
+  Object.assign(h.files.get(response.body.id),corrupted);
+  await assert.rejects(()=>h.invoke('/api/library/files/'+response.body.id+'/complete'),/Invalid pending upload metadata/);
+  assert.deepEqual(h.commands,[],'Invalid DB metadata must never start an R2 operation');
+  assert.equal(h.leases.size,0,'Invalid DB metadata must never acquire an R2 completion lease');
+ }
+});
