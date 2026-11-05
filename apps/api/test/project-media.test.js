@@ -183,3 +183,16 @@ test('malformed viewer identifiers never confer owner, saved or share access to 
  assert.equal(accessChecks.length,7);
  assert.ok(accessChecks.every(c=>c.params[3]===null));
 });
+
+test('malformed ready media database metadata fails closed before providing R2 keys',async()=>{
+ const cases=[
+  {object_key:null,content_type:'audio/mpeg',byte_size:100},
+  {object_key:'users/1/assets/audio/x',content_type:12,byte_size:100},
+  {object_key:'users/1/assets/audio/x',content_type:'audio/mpeg',byte_size:'nan'},
+  {object_key:'users/1/assets/audio/x',content_type:'audio/mpeg',byte_size:-1}
+ ];
+ for(const row of cases){
+  const db={async query(sql){assert.match(sql,/f.status='ready'/);return {rowCount:1,rows:[row]};}};
+  await assert.rejects(()=>read(db,'audio',11,1),/Invalid ready media metadata/);
+ }
+});

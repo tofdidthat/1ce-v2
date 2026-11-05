@@ -299,3 +299,11 @@ A green TypeScript build, a passing source-pattern test and a visually correct s
 - The public playback manifest is validated as untrusted JSON, enforcing original project UUIDs, positive numeric audio-file IDs and matching ownership. Client-side validation never grants access: the API alone authorizes playback and byte streams. Public manifests deliberately omit stems from download metadata.
 - No SQL, R2 object, media duplication, OAuth, permissions, route or visual design changes are authorized in this lot. The new pure validation helpers receive negative regression tests.
 - CI typechecking/unit/source checks are necessary but not browser acceptance for two accounts, session refresh, player continuity or real R2 upload. Mark these statuses separately and request merge/deploy approval after review.
+
+
+### Tarefa 2 — API DB types and compatibility adapters (draft, not deployed)
+
+- The API models pack metadata separately from playable beat rows; a pack has no audio/stems file ID. Validate PostgreSQL media/project rows at the API boundary rather than forcing unrelated shapes with `as unknown as`.
+- Remove the historic public playback signature adapter and narrow project kind at the route. Keep owner/grant/publication/saves SQL, R2 keys, bytes, HTTP paths and deduplication behavior unchanged.
+- Reject malformed ready media metadata before streaming and reject corrupt/mismatched project rows instead of fabricating IDs. The private Library audio route passes the real typed HTTP request without casting.
+- Unit tests cover corrupt DB rows and inherited owner/visitor/media rules; mocks do not replace PostgreSQL/R2 acceptance. This draft makes no SQL, R2, OAuth, route or storage changes and requires separate permission for merge and deploy.

@@ -129,7 +129,7 @@ export async function handleLibraryFiles(
   const id=segments[4];
   const file=await resolveAuthorizedMediaFile(pool,{ownerId:user.id,viewerId:user.id,fileId:id,kind:'audio'});
   if(!file){send(res,404,{error:'Audio not found'});return true;}
-  await streamAuthorizedAudio(req as unknown as Parameters<typeof streamAuthorizedAudio>[0],res,{file,s3,bucket:cfg.bucket});return true;
+  await streamAuthorizedAudio(req,res,{file,s3,bucket:cfg.bucket});return true;
  }
  if(req.method==='GET'&&segments.length===5&&segments[3]==='pack-tracks'&&/^[a-f0-9-]{36}$/i.test(segments[4])){
   const q=await pool.query(`SELECT b.id,b.title,b.audio_file_id,b.cover_file_id,b.stems_file_id

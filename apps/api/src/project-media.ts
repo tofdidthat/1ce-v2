@@ -28,6 +28,8 @@ type PlayableDbRowV2={
  cover_file_id:number|null;
  stems_file_id:number|null;
 };
+// Pack rows do not have audio or stems file IDs. Those belong to member beats.
+type PlayablePackRowV2=Pick<PlayableDbRowV2,'id'|'title'|'owner_id'|'cover_file_id'>;
 type PlayableManifestV2={
  owner_id:number;
  kind:ProjectKindV2;
@@ -37,6 +39,23 @@ type PlayableManifestV2={
  tracks:PlayableDbRowV2[];
 };
 const mediaKinds=new Set<MediaKindV2>(['audio','cover','stems']);
+
+const positiveFileId=(v:unknown):v is number=>typeof v==='number'&&Number.isSafeInteger(v)&&v>0;
+const optionalFileId=(v:unknown):v is number|null=>v===null||positiveFileId(v);
+const dbRecord=(value:unknown):Record<string,unknown>=>{
+ if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Invalid database media row');
+ return value as Record<string,unknown>;
+};
+function decodeReadyMediaRow(value:unknown):OwnedReadyMediaV2{
+ const row=dbRecord(value);
+ const bytes=row.byte_size;
+ const validSize=(typeof bytes==='number'&&Number.isSafeInteger(bytes)&&bytes>0)||
+  (typeof bytes==='string'&&/^[1-9]\d*$/.test(bytes));
+ if(typeof row.object_key!=='string'||!row.object_key||
+  typeof row.content_type!=='string'||!row.content_type||!validSize)
+  throw Error('Invalid ready media metadata');
+ return {object_key:row.object_key,content_type:row.content_type,byte_size:bytes as number|string};
+}
 
 const fileSql=`SELECT f.object_key,f.content_type,f.byte_size
  FROM library_files f
@@ -111,8 +130,9 @@ export async function resolveAuthorizedMediaFile(pool:QueryableV2,{ownerId,viewe
  const owner=Number(ownerId);
  const viewer=validId(viewerId)?Number(viewerId):null;
  const fileResult=await pool.query(fileSql,[Number(fileId),owner,kind]);
- const file=fileResult.rows[0] as unknown as OwnedReadyMediaV2|undefined;
- if(!file)return null;
+ const rawFile=fileResult.rows[0];
+ if(!rawFile)return null;
+ const file=decodeReadyMediaRow(rawFile);
 
  // A stored upload may not have been attached to a project yet. Owner-only
  // access remains supported by existing Library/upload routes.
@@ -127,6 +147,25 @@ export async function resolveAuthorizedMediaFile(pool:QueryableV2,{ownerId,viewe
 // A playable manifest refers to original project IDs and existing private
 // file IDs. It never creates media, grants access, or exposes R2 object keys.
 const projectUuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+function decodePlayablePackRow(value:unknown,owner:number):PlayablePackRowV2{
+ const row=dbRecord(value);
+ if(typeof row.id!=='string'||!projectUuid.test(row.id)||
+  typeof row.title!=='string'||row.owner_id!==owner||
+  !optionalFileId(row.cover_file_id))
+  throw Error('Invalid database pack metadata');
+ return {id:row.id,title:row.title,owner_id:owner,cover_file_id:row.cover_file_id};
+}
+function decodePlayableBeatRow(value:unknown,owner:number):PlayableDbRowV2{
+ const row=dbRecord(value);
+ if(typeof row.id!=='string'||!projectUuid.test(row.id)||
+  typeof row.title!=='string'||row.owner_id!==owner||
+  !positiveFileId(row.audio_file_id)||!optionalFileId(row.cover_file_id)||
+  !optionalFileId(row.stems_file_id))
+  throw Error('Invalid database beat metadata');
+ return {id:row.id,title:row.title,owner_id:owner,
+  audio_file_id:row.audio_file_id,cover_file_id:row.cover_file_id,
+  stems_file_id:row.stems_file_id};
+}
 const projectPermission=(alias:string,kind:ProjectKindV2)=>`
   ( ${alias}.user_id=$3::integer
     OR EXISTS(SELECT 1 FROM v2_public_projects pub
@@ -173,11 +212,12 @@ export async function resolvePlayableProject(pool:QueryableV2,{ownerId,viewerId=
  const viewer=validId(viewerId)?Number(viewerId):null;
  const query=kind==='beat'?playableBeatSql:playablePackSql;
  const result=await pool.query(query,[owner,projectId,viewer]);
- const project=result.rows[0] as unknown as PlayableDbRowV2|undefined;
- if(!project)return null;
- const tracks:PlayableDbRowV2[]=kind==='beat'?[project]:(await pool.query(playablePackMembersSql,[projectId,owner,viewer])).rows as unknown as PlayableDbRowV2[];
- return {owner_id:owner,kind,id:project.id,title:project.title,cover_file_id:project.cover_file_id??null,
-  tracks:tracks.map(track=>({id:track.id,title:track.title,owner_id:owner,
-   audio_file_id:track.audio_file_id,cover_file_id:track.cover_file_id??null,
-   stems_file_id:track.stems_file_id??null}))};
+ const rawProject=result.rows[0];
+ if(!rawProject)return null;
+ const project=kind==='beat'?decodePlayableBeatRow(rawProject,owner):decodePlayablePackRow(rawProject,owner);
+ const tracks:PlayableDbRowV2[]=kind==='beat'
+  ?[decodePlayableBeatRow(rawProject,owner)]
+  :(await pool.query(playablePackMembersSql,[projectId,owner,viewer])).rows.map(row=>decodePlayableBeatRow(row,owner));
+ return {owner_id:owner,kind,id:project.id,title:project.title,cover_file_id:project.cover_file_id,
+  tracks};
 }
