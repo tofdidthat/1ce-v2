@@ -57,7 +57,7 @@ test('player remains one accessible portal with responsive waveform and upward v
 });
 
 test('one persistent audio owner delegates only dock rendering and owner-scoped waveform data',()=>{
- assert.match(player,/<PlayerDockV2 current coverUrl waveBars/);
+ assert.match(player,/<PlayerDockV2 current=\{current\} coverUrl=\{coverUrl\} waveBars=\{waveBars\}/);
  assert.equal((player.match(/createPortal\(<audio ref=\{audioRef\}/g)||[]).length,1);
  assert.doesNotMatch(dock,/<audio\b|new Audio\(|useState\(|useEffect\(|createPortal\(/);
  assert.match(waveform,/String\(ownerId\)\+':'\+String\(fileId\)/);
