@@ -10,7 +10,7 @@ const menu=read('project-context-menu-v2.tsx');
 const copyIcon=read('copy-link-icon-v2.tsx');
 const library=read('library-items-v2.tsx');
 
-test('profile and other screens use exactly the same HeaderV2 geometry and subdued button styles',()=>{
+test('profile retains HeaderV2 controls and independently matches the reference desktop placement',()=>{
  assert.match(workspace,/<HeaderV2 view=\{view\} user=\{account\}/);
  assert.match(workspace,/\{view==='profile'\?null:<header className="onece-workspace-header"/);
  assert.match(profile,/<header className="onece-workspace-header onece-profile-navbar"/);
@@ -33,9 +33,13 @@ test('profile and other screens use exactly the same HeaderV2 geometry and subdu
  assert.match(workspace,/color: #aaa1b6/);
  assert.match(workspace,/width: 44px/);
  assert.match(workspace,/height: 44px/);
- // Don't reintroduce the out-of-alignment 30px inset or white-on-opaque control style.
+ // Desktop profile uses the reference-specific lower 44px controls and deeper
+ // side gutters, without moving other workspaces or changing mobile geometry.
+ assert.match(profileCss,/@media\(min-width:681px\)\{/);
+ assert.match(profileCss,/\.onece-workspace-header\.onece-profile-navbar\{\s*padding-left:max\(80px,env\(safe-area-inset-left\)\);\s*padding-right:max\(80px,env\(safe-area-inset-right\)\)/);
+ assert.match(profileCss,/\.onece-workspace-header\.onece-profile-navbar \.onece-workspace-brand,[\s\S]*?\.onece-workspace-header\.onece-profile-navbar \.onece-workspace-actions\{transform:translateY\(18px\)\}/);
+ assert.match(profileCss,/\.onece-workspace-header\.onece-profile-navbar \.onece-profile-nav-actions\{gap:8px\}/);
  assert.doesNotMatch(profileCss,/max\(30px/);
- assert.doesNotMatch(profileCss,/\.onece-profile-navbar\s*\{[^}]*padding/);
  assert.doesNotMatch(profileCss,/background:#242328;color:#f5f3f7/);
  assert.match(profileCss,/\.onece-workspace-header\.onece-profile-navbar \.library-settings\.onece-profile-nav-follow/);
 });
