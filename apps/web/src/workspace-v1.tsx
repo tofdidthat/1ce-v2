@@ -298,11 +298,13 @@ export default function WorkspaceV2({user,profileId}:{user:AccountUserV2|null;pr
  const [playerVisible,setPlayerVisible]=useState(false);
  const [playRequest,setPlayRequest]=useState<{ownerId:number;kind:'beat'|'pack';id:string;nonce:number}|null>(null);
  const [queueRequest,setQueueRequest]=useState<{ownerId:number;kind:'beat'|'pack';id:string;nonce:number}|null>(null);
+ const [openRequest,setOpenRequest]=useState<{ownerId:number;kind:'beat'|'pack';id:string;nonce:number}|null>(null);
  const [playback,setPlayback]=useState<{ownerId:number;kind:'beat'|'pack';id:string;playing:boolean}|null>(null);
  const requestPlayback=(ownerId:number,kind:'beat'|'pack',id:string)=>setPlayRequest(previous=>({ownerId,kind,id,nonce:(previous?.nonce||0)+1}));
  const requestQueue=(ownerId:number,kind:'beat'|'pack',id:string)=>setQueueRequest(previous=>({ownerId,kind,id,nonce:(previous?.nonce||0)+1}));
+ const requestOpen=(ownerId:number,kind:'beat'|'pack',id:string)=>setOpenRequest(previous=>({ownerId,kind,id,nonce:(previous?.nonce||0)+1}));
  // Cancel stale cross-page commands when a different account signs in.
- useEffect(()=>{setPlayRequest(null);setQueueRequest(null);setPlayback(null);},[account?.id]);
+ useEffect(()=>{setPlayRequest(null);setQueueRequest(null);setOpenRequest(null);setPlayback(null);},[account?.id]);
  const view:WorkspaceView=profileId?'profile':location.pathname==='/app/library'?'library':location.pathname.endsWith('/discover')?'discover':location.pathname.endsWith('/upload')?'upload':location.pathname.endsWith('/settings')?'account':location.pathname.endsWith('/profile/edit')?'edit-profile':'profile';
  // Keep up to three recent profile read-models mounted, but without offscreen
  // cards/image leases. The one Workspace cover cache supplies immediate URLs
@@ -328,10 +330,10 @@ export default function WorkspaceV2({user,profileId}:{user:AccountUserV2|null;pr
  <style>{`.onece-library-inactive{position:static!important;padding:0!important;margin:0!important;min-height:0!important;height:0!important;overflow:visible!important}.onece-library-inactive>.beat-profile-content{display:none!important}`}</style>
  <HeaderV2 view={view} user={account} onNavigate={onNavigate}/>
  <main className="onece-v2-workspace-main">
- <LibraryItemsV2 active={view==='library'} playRequest={playRequest} queueRequest={queueRequest} userId={account?.id} onUpload={()=>onNavigate('upload')} onPlayerVisibility={setPlayerVisible} onPlaybackChange={setPlayback}/>
+ <LibraryItemsV2 active={view==='library'} playRequest={playRequest} queueRequest={queueRequest} openRequest={openRequest} profileRouteKey={view==='profile'?(profileId||'own'):null} userId={account?.id} onUpload={()=>onNavigate('upload')} onPlayerVisibility={setPlayerVisible} onPlaybackChange={setPlayback}/>
  {visibleProfileKeys.map(profileKey=><PublicProfileV2 key={String(account?.id||'anonymous')+':'+profileKey}
   active={activeProfileKey===profileKey} user={account} profileId={profileKey==='own'?undefined:profileKey.slice('public:'.length)}
-  playback={playback} onPlayProject={requestPlayback} onQueueProject={requestQueue}
+  playback={playback} onPlayProject={requestPlayback} onQueueProject={requestQueue} onOpenProject={requestOpen}
   onIdentityUpdated={updated=>{
    if(!isAccountUserV2(updated))return;
     const oldHandle=String(account?.username||'').toLowerCase();

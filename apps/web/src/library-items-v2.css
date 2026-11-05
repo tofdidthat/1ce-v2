@@ -916,3 +916,25 @@
 .v2-context-action.v2-context-danger{color:#b77885}
 .v2-context-action.v2-context-danger:hover:not(:disabled){color:#e9a1af}
 @media(prefers-reduced-motion:reduce){.v2-context-action{transition:none}}
+
+
+/* Catalog/Saves use the exact Home pack detail, rendered above the public profile. */
+.v2-profile-project-detail-overlay{
+ position:fixed;inset:0;z-index:9500;display:flex;justify-content:center;align-items:flex-start;
+ overflow-y:auto;padding:clamp(20px,5vh,52px) 24px 110px;
+ background:rgba(0,0,0,.78);backdrop-filter:blur(8px);
+}
+.v2-profile-project-detail-sheet{
+ box-sizing:border-box;width:min(1050px,100%);min-height:180px;
+ border:1px solid rgba(255,255,255,.09);border-radius:22px;
+ background:#101014;color:#f5f3ff;padding:30px 26px;box-shadow:0 24px 70px rgba(0,0,0,.6);
+}
+.v2-profile-project-detail-sheet.beat-profile.library-page.onece-v2-library{min-height:180px;padding:30px 26px;background:#101014}
+.v2-profile-project-detail-sheet>.library-pack-back{
+ display:grid;place-items:center;width:44px;height:44px;border-radius:12px;
+ border:1px solid #ffffff0d;background:#ffffff0a;color:#f5f3ff;cursor:pointer;margin-bottom:20px
+}
+@media(max-width:680px){
+ .v2-profile-project-detail-overlay{padding:14px 12px 100px}
+ .v2-profile-project-detail-sheet.beat-profile.library-page.onece-v2-library{padding:20px 14px}
+}

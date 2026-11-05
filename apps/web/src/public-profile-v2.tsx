@@ -25,7 +25,7 @@ function CatalogLibraryIcon({size=17}:{size?:number}){
 const api=import.meta.env.VITE_API_URL;
 type PublicProject=ProfileProjectV2;
 type ProfileTab='catalog'|'saves'|'following';
-export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,onOpenProfile,profileId,onPlayProject,onQueueProject,playback,active=true}:{user:AccountUserV2|null;active?:boolean;onIdentityUpdated:(updated:AccountUserV2)=>void;onBack:()=>void;onLogin:()=>void;onOpenProfile:(identifier:string)=>void;profileId?:string;onPlayProject?:(ownerId:number,kind:'beat'|'pack',id:string)=>void;onQueueProject?:(ownerId:number,kind:'beat'|'pack',id:string)=>void;playback?:{ownerId:number;kind:'beat'|'pack';id:string;playing:boolean}|null}){
+export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,onOpenProfile,profileId,onPlayProject,onQueueProject,onOpenProject,playback,active=true}:{user:AccountUserV2|null;active?:boolean;onIdentityUpdated:(updated:AccountUserV2)=>void;onBack:()=>void;onLogin:()=>void;onOpenProfile:(identifier:string)=>void;profileId?:string;onPlayProject?:(ownerId:number,kind:'beat'|'pack',id:string)=>void;onQueueProject?:(ownerId:number,kind:'beat'|'pack',id:string)=>void;onOpenProject?:(ownerId:number,kind:'beat'|'pack',id:string)=>void;playback?:{ownerId:number;kind:'beat'|'pack';id:string;playing:boolean}|null}){
  const [tab,setTab]=useState<ProfileTab>('catalog');
  const [editorOpen,setEditorOpen]=useState(false);
  const [projects,setProjects]=useState<{catalog:PublicProject[];saves:PublicProject[]}>({catalog:[],saves:[]});
@@ -319,7 +319,8 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
      return <ProjectCardV2 key={key} id={'onece-project-'+project.kind+'-'+project.id} variant="profile" project={project} ownerId={project.owner_id}
        secondary={project.kind==='pack'?(project.track_count||0)+' beats':'Beat'} playing={isPlaying}
        onContextMenu={event=>{event.preventDefault();setMenu({project,x:event.clientX,y:event.clientY})}}
-       onPlay={onPlayProject?()=>onPlayProject(project.owner_id,project.kind,project.id):undefined}/>;
+       onPlay={onPlayProject?()=>onPlayProject(project.owner_id,project.kind,project.id):undefined}
+       onOpen={onOpenProject?()=>onOpenProject(project.owner_id,project.kind,project.id):undefined}/>;
     })}</div>:
     tab==='catalog'?<div className="onece-profile-empty"><CatalogLibraryIcon size={27}/><h2>No public releases yet</h2><p>Beats and packs will appear here when published. Private projects in Home are never displayed automatically.</p></div>:
     <div className="onece-profile-empty"><Bookmark size={27}/><h2>No saves yet</h2><p>Saved projects will appear here.</p></div>}
