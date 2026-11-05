@@ -167,7 +167,7 @@ export async function handleLibraryFiles(
   if(!q.rowCount){send(res,404,{error:'Beat not found'});return true;}
   send(res,200,{beat:q.rows[0]});return true;
  }
- if(req.method==='GET'&&segments.length===5&&segments[3]==='pack-tracks'&&/^[a-f0-9-]{36}$/i.test(segments[4])){
+ if(req.method==='GET'&&segments.length===5&&segments[3]==='pack-tracks'&&/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(segments[4])){
   // A live, owner-authorized pack must yield one row even with zero playable
   // tracks. Missing, deleted and other-owner packs yield no rows (same 404).
   // This single PostgreSQL snapshot avoids a check-then-read ownership race.
