@@ -110,11 +110,16 @@ export async function handleProjectActions(req:IncomingMessage,res:ServerRespons
  if(req.method==='PATCH'){
   const hasTitle=Object.hasOwn(body||{},'title');
   const hasCover=Object.hasOwn(body||{},'coverFileId');
+  const hasStems=Object.hasOwn(body||{},'stemsFileId');
   const title=hasTitle&&typeof body?.title==='string'?body.title.trim():null;
   const cover=body?.coverFileId as number|null;
-  if(hasTitle===hasCover||(hasTitle&&(!title||title.length>180))||
-   (hasCover&&cover!==null&&(!Number.isSafeInteger(cover)||cover<1))){
-   send(res,400,{error:'Specify one valid title or coverFileId'});return true;
+  const stems=body?.stemsFileId as number|null;
+  // Only a beat can reference stems. Each update modifies exactly one field.
+  if(Number(hasTitle)+Number(hasCover)+Number(hasStems)!==1||
+   (hasTitle&&(!title||title.length>180))||
+   (hasCover&&cover!==null&&(!Number.isSafeInteger(cover)||cover<1))||
+   (hasStems&&(kind!=='beat'||(stems!==null&&(!Number.isSafeInteger(stems)||stems<1))))){
+   send(res,400,{error:'Specify one valid title, coverFileId or beat stemsFileId'});return true;
   }
   const response=await transaction(pool,owner,async c=>{
    if(!await ownerProject(c,kind,id,owner))return result(404,{error:'Project not found'});
@@ -122,9 +127,14 @@ export async function handleProjectActions(req:IncomingMessage,res:ServerRespons
     const check=await c.query("SELECT id FROM library_files WHERE id=$1 AND user_id=$2 AND kind='cover' AND status='ready'",[cover,owner]);
     if(!check.rowCount)return result(400,{error:'Cover must be a ready image owned by you'});
    }
-   const field=hasTitle?'title':'cover_file_id';
-   const value=hasTitle?title:cover;
-   const changed=await c.query('UPDATE '+table+' SET '+field+'=$1 WHERE id=$2 AND user_id=$3 RETURNING id,title,cover_file_id',[value,id,owner]);
+   if(hasStems&&stems!==null){
+    const check=await c.query("SELECT id FROM library_files WHERE id=$1 AND user_id=$2 AND kind='stems' AND status='ready'",[stems,owner]);
+    if(!check.rowCount)return result(400,{error:'Stems must be a ready ZIP owned by you'});
+   }
+   const field=hasTitle?'title':hasCover?'cover_file_id':'stems_file_id';
+   const value=hasTitle?title:hasCover?cover:stems;
+   const returning=kind==='beat'?'id,title,cover_file_id,stems_file_id':'id,title,cover_file_id';
+   const changed=await c.query('UPDATE '+table+' SET '+field+'=$1 WHERE id=$2 AND user_id=$3 RETURNING '+returning,[value,id,owner]);
    return result(200,{project:changed.rows[0],kind});
   });
   send(res,response.status,response.data);return true;
