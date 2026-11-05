@@ -171,7 +171,7 @@ function CompactWorkspaceNav({ view, disabled, onNavigate }:{view:WorkspaceView;
 }
 
 
-function HeaderV2({view,user,onNavigate}:{view:WorkspaceView;user:AccountUserV2|null;onNavigate:(next:WorkspaceView)=>void}){
+function HeaderV2({view,user,onNavigate,showBack,onBack}:{view:WorkspaceView;user:AccountUserV2|null;onNavigate:(next:WorkspaceView)=>void;showBack:boolean;onBack:()=>void}){
  const picture=profilePictureV2(user);
  return <>
  <style>{`.onece-workspace-header {
@@ -251,7 +251,7 @@ function HeaderV2({view,user,onNavigate}:{view:WorkspaceView;user:AccountUserV2|
 }
 `}</style>
  {view==='profile'?null:<header className="onece-workspace-header" aria-label="Workspace header">
- <div className="onece-workspace-brand">{view!=='library'&&<button type="button" className="library-settings onece-workspace-back" aria-label="Back to Home" title="Back to Home" onClick={()=>onNavigate('library')}><ChevronLeft aria-hidden="true"/></button>}<button type="button" className="onece-workspace-logo-home" aria-label="Go to Home" title="Home" onClick={()=>onNavigate('library')}><img src="/1ce-logo.png" alt="1CE"/></button></div>
+ <div className="onece-workspace-brand">{view!=='library'&&showBack&&<button type="button" className="library-settings onece-workspace-back" aria-label="Go back" title="Back" onClick={onBack}><ChevronLeft aria-hidden="true"/></button>}<button type="button" className="onece-workspace-logo-home" aria-label="Go to Home" title="Home" onClick={()=>onNavigate('library')}><img src="/1ce-logo.png" alt="1CE"/></button></div>
  <div className="onece-workspace-actions">
  <button type="button" className="library-settings library-profile-trigger" title="My Profile" aria-label="My Profile" onClick={()=>onNavigate('profile')}>
  {picture ? <img src={picture} alt="" referrerPolicy="no-referrer"/> : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="7" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2Z"/></svg>}
@@ -327,15 +327,23 @@ export default function WorkspaceV2({user,profileId}:{user:AccountUserV2|null;pr
  },[account?.id]);
  const visibleProfileKeys=activeProfileKey&&!recentProfiles.includes(activeProfileKey)?
   [...recentProfiles.slice(-2),activeProfileKey]:recentProfiles;
- const onNavigate=(next:WorkspaceView)=>navigate(next==='library'?'/app/library':next==='account'?'/app/settings':next==='edit-profile'?'/app/profile/edit':'/app/'+next);
+ // The logo already returns Home, so an extra Back arrow adds no value
+ // when this history entry was opened directly from Home.
+ const previousWorkspacePath=typeof location.state?.oneceFromPath==='string'?location.state.oneceFromPath:null;
+ const showContextBack=previousWorkspacePath!=='/app/library';
+ const onNavigate=(next:WorkspaceView)=>navigate(next==='library'?'/app/library':next==='account'?'/app/settings':next==='edit-profile'?'/app/profile/edit':'/app/'+next,{state:{oneceFromPath:location.pathname}});
+ const onWorkspaceBack=()=>{
+  if(previousWorkspacePath&&typeof window.history.state?.idx==='number'&&window.history.state.idx>0)navigate(-1);
+  else onNavigate('library');
+ };
  useEffect(()=>{document.title=({library:'Home',discover:'World',upload:'Upload',account:'Settings',profile:'Profile','edit-profile':'Edit Profile'}[view]||'Home')+' — 1CE'},[view]);
  return <ProjectCoverCacheProviderV2 viewerId={Number(account?.id)||null}><ProjectFlagsProviderV2 viewerId={Number(account?.id)||null}><div className={'onece-workspace-shell'+(view==='library'?' onece-library-view':'')}>
  <style>{`.onece-library-inactive{position:static!important;padding:0!important;margin:0!important;min-height:0!important;height:0!important;overflow:visible!important}.onece-library-inactive>.beat-profile-content{display:none!important}`}</style>
- <HeaderV2 view={view} user={account} onNavigate={onNavigate}/>
+ <HeaderV2 view={view} user={account} onNavigate={onNavigate} showBack={showContextBack} onBack={onWorkspaceBack}/>
  <main className="onece-v2-workspace-main">
  <LibraryItemsV2 active={view==='library'} playRequest={playRequest} queueRequest={queueRequest} openRequest={openRequest} profileRouteKey={view==='profile'?(profileId||'own'):null} userId={account?.id} onUpload={()=>onNavigate('upload')} onPlayerVisibility={setPlayerVisible} onPlaybackChange={setPlayback}/>
  {visibleProfileKeys.map(profileKey=><PublicProfileV2 key={String(account?.id||'anonymous')+':'+profileKey}
-  active={activeProfileKey===profileKey} user={account} profileId={profileKey==='own'?undefined:profileKey.slice('public:'.length)}
+  active={activeProfileKey===profileKey} user={account} showBack={showContextBack} profileId={profileKey==='own'?undefined:profileKey.slice('public:'.length)}
   playback={playback} onPlayProject={requestPlayback} onQueueProject={requestQueue} onOpenProject={requestOpen}
   onIdentityUpdated={updated=>{
    if(!isAccountUserV2(updated))return;
@@ -348,9 +356,9 @@ export default function WorkspaceV2({user,profileId}:{user:AccountUserV2|null;pr
    }}
   onBack={()=>{const index=window.history.state?.idx;if(typeof index==='number'&&index>0)navigate(-1);else navigate(account?.id?'/app/library':'/');}}
   onLogin={()=>navigate('/login')}
-  onOpenProfile={identifier=>navigate('/u/'+encodeURIComponent(identifier))} onGoHome={()=>onNavigate('library')}/>)} 
+  onOpenProfile={identifier=>navigate('/u/'+encodeURIComponent(identifier),{state:{oneceFromPath:location.pathname}})} onGoHome={()=>onNavigate('library')}/>)} 
  {view==='library'||view==='profile'?null:
- view==='discover'?<WorldV2 userId={account?.id} onOpenProfile={identifier=>navigate('/u/'+encodeURIComponent(identifier))}/>:
+ view==='discover'?<WorldV2 userId={account?.id} onOpenProfile={identifier=>navigate('/u/'+encodeURIComponent(identifier),{state:{oneceFromPath:location.pathname}})}/>:
  view==='upload'?<LibraryUploadV2 userId={account?.id}/>:
  view==='account'&&account?<AccountSettingsV2 user={account} onUserChange={setAccount} onViewProfile={()=>onNavigate('profile')} onLogout={logout}/>:
 view==='edit-profile'?<section className="onece-workspace-placeholder"><h1>Edit Profile</h1><p>Profile editing is not yet available in v2.</p></section>:
