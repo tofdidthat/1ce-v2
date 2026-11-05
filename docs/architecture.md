@@ -83,6 +83,41 @@ The v2 Home component is a **persistent playback coordinator**, not just a page.
 
 **Separate phase dependency:** Do not mix this API refactor with OAuth, social publishing, domain cutover, Create Video or new storage plans. First lock current contracts; publication workers and job queues require their own architecture and separate acceptance criteria.
 
+#### Phase API-A — read-only inventory and characterization (PR #65; not released)
+
+The current `apps/api/src/library-files.ts` exports **one stable** `handleLibraryFiles` dispatcher. The `server.ts` gateway performs origin/CORS handling and invokes multiple feature handlers; **do not** expose these private owner-only routes through `/api/public/*`. The dispatcher first checks path/method, then the session via `currentUser(req)`, then R2 configuration, and only then dispatches. Unknown GETs return 404 JSON. JSON helper responses set `Cache-Control: no-store` and `Content-Type: application/json; charset=utf-8`. Unsupported methods on this prefix return 405 before user lookups; anonymous requests on valid methods return 401 before database/storage operations.
+
+**GET route inventory — current contracts, not a proposal to change them:**
+
+| Method and relative path under `/api/library/files` | Authorization and owner scope | Response / R2 behavior |
+| --- | --- | --- |
+| `GET /` | Authenticated owner; `library_files.user_id=$1 AND status='ready'` | `200 {files:[{id,kind,original_name,content_type,byte_size,created_at}]}`; limit 100, `no-store`; **no object keys** |
+| `GET /items` | Authenticated owner; filtered nondeleted beats/packs; beats require READY audio | `200 {beats:[],packs:[]}`; up to 200 beats/100 packs; beats include `library_visible`, optional asset IDs and pack_count; `no-store` |
+| `GET /beat/:uuid` | Authenticated beat owner, nondeleted and READY audio | `200 {beat:{id,title,audio_file_id,stems_file_id}}` or `404 {error:'Beat not found'}`; stems ID is owner-only metadata, **not** a public stems permission |
+| `GET /pack-tracks/:uuid` | Authenticated pack owner, nondeleted pack/beat, READY member audio; ordered by `pb.position ASC` | `200 {beats:[{id,title,audio_file_id,cover_file_id,stems_file_id}]}`; **unowned or missing pack currently responds `200 {beats:[]}`**, not 404 |
+| `GET /audio/:positive-id` | Authenticated owner, original READY audio through `resolveAuthorizedMediaFile` | `200` or `206` private stream, `416` invalid range; missing/inaccessible `404`; `private, no-store`, `nosniff` and Range headers; R2 GET only after auth |
+| `GET /stems/:positive-id` | Authenticated owner, original READY stems; **never public** | Same streaming statuses/cache/range and generic `404 {error:'Stems not found'}` if denied |
+| `GET /cover/:positive-id` | Authenticated owner, original READY cover; never broad/anonymous | `200` private bytes, `private, max-age=300`, `nosniff`; `404` denied or `503` unreadable R2 body |
+| Other GET on exact prefix | Authenticated owner | `404 {error:'Not found'}` JSON, `no-store` |
+
+**POST inventory — preserve unchanged in the test-first stage:**
+
+| Method and relative route | Validation, transactions and R2 safety | Current primary outcomes |
+| --- | --- | --- |
+| `POST /beats` | Owner advisory lock + READY owner audio/cover/stems; reused audio beat links one original file; trashed beat cannot be recreated | `201 {id}`, `200 {id,reused:true}`, 400 malformed/foreign/not READY, 409 trashed |
+| `POST /packs` | Owner advisory lock; 2–100 distinct owned live beat UUIDs; optional READY owned cover; preserve `pb.position`, hide only `newBeatIds` | `201 {id}`, 400 invalid, 403 foreign beat or cover |
+| `POST /init` | Bounded JSON, validated extension/MIME/kind/size/hash, rate limits, owner advisory lock, 10-GiB default quota incl. recent pending, READY-only owner/kind/hash reuse | `200 {id,uploadUrl,expiresIn:300}` (temporary staging PUT), `200 {id,reused:true}`, 400 invalid, 429 limits/quota; no client can sign a READY key |
+| `POST /:positive-id/complete` | Owner scoped pending file, 30-min validity, rate limit, fenced lease; R2 staging HEAD, ETag-gated CopySourceIfMatch, verify final signature/size/hash, promote READY with same lease token, clean staging only after safe outcome | `200 {ok:true,id}` or dedup `{ok:true,id,reused:true}`; 404 missing, 409 in-progress/changed, 410 expired, 422 invalid bytes, 429 rate, 503 verification unavailable |
+
+**Existing related modules:** `project-media.ts` decides owner/public/share/save audio-cover entitlements; `audio-stream.ts` implements `200/206/416`; `upload-security.ts` validates byte contents and ZIP limits; `upload-leases.ts` fences concurrent finalize transitions; `storage-plans.ts` accounts quota; `api-rate-limits.ts` throttles requests. **Do not extract or duplicate the security policy** into a second helper during the read phase.
+
+**New baseline tests in PR #65:** `apps/api/test/library-read-contracts.test.js` characterizes the existing JSON shapes, cache/no-sniff headers, two viewers, READY-only metadata, pack order, generic 404, private media and byte ranges, using an R2 **in-memory stub** with zero real writes. `apps/api/scripts/s2-pg-library-integration.mjs` extends the isolated CI PostgreSQL exercise with two-account read results, pending exclusion, pack-only/standalone visibility and anonymous denial, without touching live PostgreSQL or R2. Existing `upload-lifecycle.test.js`, `upload-leases.test.js`, `upload-security.test.js`, and isolated S3 syntactic smoke are untouched.
+
+**Remaining security-review checkpoints before extracting GET:** examine the `pack-tracks` SQL join from member audio to `library_files` (currently checks READY state, while owner filters are on pack and beat); prove cross-owner row isolation with real relationships. Verify every response header and out-of-scope paths, two sessions with session revocation, query cancellations, read errors and streamed R2 interruption; retain old statuses even when unusual (for example the unowned pack's `200 {beats:[]}`). These are review notes, **not** permission to modify the server contract without user approval.
+
+**Gate:** This PR is **test/docs-only**; do not merge or deploy to Railway before independent CI green, reviewed fixture fidelity and user authorization. Next independent branch may extract only GET handlers behind the original dispatcher after API-A passes. Upload init and completion stay untouched.
+
+
 
 ## 3. Database, storage and migrations
 
