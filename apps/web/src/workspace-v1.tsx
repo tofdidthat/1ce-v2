@@ -241,6 +241,15 @@ function HeaderV2({view,user,onNavigate,showBack,onBack}:{view:WorkspaceView;use
 .onece-nav-list { min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 12px; }
 .onece-workspace-shell .library-page > .library-header { visibility: hidden; pointer-events: none; }
 .onece-workspace-shell:not(.onece-library-view) > main { padding-top: calc(80px + env(safe-area-inset-top)); }
+/* Apply the approved Profile reference geometry to all desktop workspaces. */
+@media (min-width: 681px) {
+  .onece-workspace-header {
+    padding-left: max(80px, env(safe-area-inset-left));
+    padding-right: max(80px, env(safe-area-inset-right));
+  }
+  .onece-workspace-brand, .onece-workspace-actions { transform: translateY(18px); }
+  .onece-workspace-actions { gap: 8px; }
+}
 @media (max-width: 600px) {
   .onece-workspace-header { height: calc(76px + env(safe-area-inset-top)); padding: calc(16px + env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 16px max(16px, env(safe-area-inset-left)); gap: 12px; }
   .onece-workspace-shell:not(.onece-library-view) > main { padding-top: calc(76px + env(safe-area-inset-top)); }
@@ -253,9 +262,9 @@ function HeaderV2({view,user,onNavigate,showBack,onBack}:{view:WorkspaceView;use
  {view==='profile'?null:<header className="onece-workspace-header" aria-label="Workspace header">
  <div className="onece-workspace-brand">{view==='edit-profile'&&showBack&&<button type="button" className="library-settings onece-workspace-back" aria-label="Go back" title="Back" onClick={onBack}><ChevronLeft aria-hidden="true"/></button>}<button type="button" className="onece-workspace-logo-home" aria-label="Go to Home" title="Home" onClick={()=>onNavigate('library')}><img src="/1ce-logo.png" alt="1CE"/></button></div>
  <div className="onece-workspace-actions">
- <button type="button" className="library-settings library-profile-trigger" title="My Profile" aria-label="My Profile" onClick={()=>onNavigate('profile')}>
+ {view!=='account'&&<button type="button" className="library-settings library-profile-trigger" title="My Profile" aria-label="My Profile" onClick={()=>onNavigate('profile')}>
  {picture ? <img src={picture} alt="" referrerPolicy="no-referrer"/> : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="7" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2Z"/></svg>}
- </button>
+ </button>}
  <CompactWorkspaceNav view={view} disabled={false} onNavigate={onNavigate}/></div></header>}</>;
 }
 function EmptyLibrary({onUpload}:{onUpload:()=>void}){
