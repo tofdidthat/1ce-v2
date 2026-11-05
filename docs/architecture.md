@@ -390,3 +390,12 @@ A green TypeScript build, a passing source-pattern test and a visually correct s
 - Home already uses logo-only on the left; Profile has its own header and retains contextual Back behavior from PR #54; the independent `edit-profile` placeholder route may retain contextual Back when applicable.
 - Keep the `oneceFromPath` origin tracking for contextual Profile behavior and browser history; only change the left workspace header arrow visibility. No API, R2, database, auth, upload or playback changes.
 - This is a UI-only regression fix. Confirm builds and tests before merge, then verify actual Vercel deployment and browser navigation.
+
+
+### Profile visual hierarchy and shared Home card wrapping (2026-11-05)
+
+- Visual reference supplied: profile photo and username should appear lower beneath the fixed header, with Catalog/Saves/Following tabs slightly wider, taller, and larger in icon size. The visual proportions apply equally to own and third-party profiles.
+- Desktop profile top: 120px avatar, top padding 58px, section min-height 330px; tabs width up to 560px, 56px hit height, 20px icons. Mobile keeps centered identity with 108px avatar and a smaller vertical offset. Content below tabs has 38px top padding.
+- Catalog and Saves must follow **the Home grid geometry**, not a separate fixed 6/4/3-column grid: flex-wrap, center alignment, fixed 160px card width, 32px desktop gap and 960px maximum content width. At <=600px the same Home breakpoints apply: 20px vertical / 14px horizontal gap, up to two fluid cards per row with 160px maximum width. Short lists naturally center with the same gaps as Home. Remove the profile-specific is-compact branch.
+- ProjectCardV2 remains the single semantic card for both contexts with original kind/owner/UUID; covers, project opening, playback, Save, context menus, access rules and player instance do not change. Following remains an independent narrow list and the Profile navbar is not changed.
+- Scope frontend visual styles and regression tests only. No migrations, API, auth, R2, player behavior, or deployment without separate authorization. Validate desktop/mobile browser views after builds.
