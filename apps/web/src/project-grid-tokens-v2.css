@@ -1,0 +1,11 @@
+/* Shared geometry for the SAME ProjectCardV2 on Home and Public Profile.
+   Changes here affect both views; never silently diverge their grids. */
+:root{
+ --onece-project-card-size:216px;
+ --onece-project-grid-gap:32px;
+ --onece-project-mobile-gap:20px 14px;
+ --onece-project-mobile-card-size:min(216px,calc((100% - 14px)/2));
+ --onece-project-grid-max-width:960px;
+ --onece-project-cover-radius:14px;
+ --onece-project-title-size:14px;
+}
