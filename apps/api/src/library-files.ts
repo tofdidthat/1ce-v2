@@ -168,12 +168,33 @@ export async function handleLibraryFiles(
   send(res,200,{beat:q.rows[0]});return true;
  }
  if(req.method==='GET'&&segments.length===5&&segments[3]==='pack-tracks'&&/^[a-f0-9-]{36}$/i.test(segments[4])){
-  const q=await pool.query(`SELECT b.id,b.title,b.audio_file_id,b.cover_file_id,b.stems_file_id
-   FROM library_packs p JOIN library_pack_beats pb ON pb.pack_id=p.id
-   JOIN library_beats b ON b.id=pb.beat_id AND b.user_id=p.user_id
-   JOIN library_files f ON f.id=b.audio_file_id AND f.status='ready'
-   WHERE p.id=$1 AND p.user_id=$2 AND p.deleted_at IS NULL AND b.deleted_at IS NULL ORDER BY pb.position ASC`,[segments[4],user.id]);
-  send(res,200,{beats:q.rows});return true;
+  // A live, owner-authorized pack must yield one row even with zero playable
+  // tracks. Missing, deleted and other-owner packs yield no rows (same 404).
+  // This single PostgreSQL snapshot avoids a check-then-read ownership race.
+  const q=await pool.query(`SELECT p.id AS pack_id,
+    tracks.id,tracks.title,tracks.audio_file_id,tracks.cover_file_id,tracks.stems_file_id
+   FROM library_packs p
+   LEFT JOIN LATERAL (
+    SELECT b.id,b.title,b.audio_file_id,
+      cover.id AS cover_file_id,stems.id AS stems_file_id,pb.position
+    FROM library_pack_beats pb
+    JOIN library_beats b ON b.id=pb.beat_id AND b.user_id=p.user_id AND b.deleted_at IS NULL
+    JOIN library_files audio ON audio.id=b.audio_file_id
+      AND audio.user_id=p.user_id AND audio.kind='audio' AND audio.status='ready'
+    LEFT JOIN library_files cover ON cover.id=b.cover_file_id
+      AND cover.user_id=p.user_id AND cover.kind='cover' AND cover.status='ready'
+    LEFT JOIN library_files stems ON stems.id=b.stems_file_id
+      AND stems.user_id=p.user_id AND stems.kind='stems' AND stems.status='ready'
+    WHERE pb.pack_id=p.id
+   ) tracks ON true
+   WHERE p.id=$1 AND p.user_id=$2 AND p.deleted_at IS NULL
+   ORDER BY tracks.position ASC`,[segments[4],user.id]);
+  if(!q.rows.length){send(res,404,{error:'Pack not found'});return true;}
+  const beats=q.rows.filter(row=>row.id!=null).map(row=>({
+   id:row.id,title:row.title,audio_file_id:row.audio_file_id,
+   cover_file_id:row.cover_file_id,stems_file_id:row.stems_file_id
+  }));
+  send(res,200,{beats});return true;
  }
  if(req.method==='GET'&&segments.length===4&&segments[3]==='items'){
   const [beats,packs]=await Promise.all([
