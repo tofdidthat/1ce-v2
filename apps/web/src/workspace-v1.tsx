@@ -251,7 +251,7 @@ function HeaderV2({view,user,onNavigate,showBack,onBack}:{view:WorkspaceView;use
 }
 `}</style>
  {view==='profile'?null:<header className="onece-workspace-header" aria-label="Workspace header">
- <div className="onece-workspace-brand">{view!=='library'&&showBack&&<button type="button" className="library-settings onece-workspace-back" aria-label="Go back" title="Back" onClick={onBack}><ChevronLeft aria-hidden="true"/></button>}<button type="button" className="onece-workspace-logo-home" aria-label="Go to Home" title="Home" onClick={()=>onNavigate('library')}><img src="/1ce-logo.png" alt="1CE"/></button></div>
+ <div className="onece-workspace-brand">{view==='edit-profile'&&showBack&&<button type="button" className="library-settings onece-workspace-back" aria-label="Go back" title="Back" onClick={onBack}><ChevronLeft aria-hidden="true"/></button>}<button type="button" className="onece-workspace-logo-home" aria-label="Go to Home" title="Home" onClick={()=>onNavigate('library')}><img src="/1ce-logo.png" alt="1CE"/></button></div>
  <div className="onece-workspace-actions">
  <button type="button" className="library-settings library-profile-trigger" title="My Profile" aria-label="My Profile" onClick={()=>onNavigate('profile')}>
  {picture ? <img src={picture} alt="" referrerPolicy="no-referrer"/> : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="7" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2Z"/></svg>}
