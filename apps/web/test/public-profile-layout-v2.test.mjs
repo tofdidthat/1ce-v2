@@ -10,7 +10,10 @@ test('avatar moves down while Catalog/Saves/Following move up toward the referen
  assert.match(css,/\.onece-profile-top\{[^}]*justify-content:flex-start;[^}]*min-height:294px;padding:68px 0 5px/);
  assert.match(css,/\.onece-profile-avatar\{[^}]*width:120px;height:120px;flex:0 0 120px/);
  assert.match(css,/\.onece-profile-name\{[^}]*margin-top:20px/);
- assert.match(css,/\.onece-profile-top \.onece-social-links\.is-compact\{[^}]*margin-top:20px/);
+ assert.match(css,/\.onece-profile-top \.onece-social-links\.is-compact\{[^}]*margin-top:8px/);
+ // The profile top keeps its fixed min-height, so reducing the link margin
+ // only centers the links; username, avatar and tab bar remain fixed.
+ assert.match(css,/\.onece-profile-top\{[^}]*min-height:294px;padding:68px 0 5px/);
  assert.match(css,/\.onece-profile-tabs\{[^}]*width:min\(620px,100%\);margin:-20px auto 0/);
  assert.match(css,/\.onece-profile-tabs button\{[^}]*min-height:56px/);
  assert.match(css,/\.onece-profile-tabs button svg\{width:24px;height:24px/);
