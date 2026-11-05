@@ -1,27 +1,4 @@
-/* Original v1 GlobalPlayer dock and Library styling selectively ported, no v1 backend. */
-.onece-player-dock {
-  position: fixed;
-  z-index: 80;
-  bottom: max(24px, env(safe-area-inset-bottom));
-  left: 50%;
-  transform: translateX(-50%);
-  width: min(860px, calc(100% - 32px));
-  color: #f5f3ff;
-}
-.onece-global-player {
-  display: grid;
-  grid-template-columns: 42px minmax(90px, 150px) minmax(90px, 1fr) auto auto;
-  align-items: center;
-  gap: 12px;
-  min-height: 58px;
-  padding: 7px 14px 7px 7px;
-  box-sizing: border-box;
-  border: 1px solid #ffffff0b;
-  border-radius: 999px;
-  background: linear-gradient(180deg, #302e35 0%, #25232b 100%);
-  box-shadow: 0 16px 44px #0009, 0 4px 12px #0006, inset 0 1px 0 #ffffff08;
-}
-
+/* Lower player layout is styled once in library-items-v2.css and shared across pages. */
 .onece-workspace-shell{min-height:100vh;background:#09080e;color:#f5f3ff}
 .onece-v2-workspace-main{min-height:100vh;padding-top:80px;padding-bottom:130px}
 .onece-v2-workspace-main .beat-profile.library-page{padding:28px 24px 130px;background:#09080e;min-height:calc(100vh - 80px)}

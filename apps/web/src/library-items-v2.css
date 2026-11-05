@@ -33,7 +33,7 @@
 .v2-player-notice{position:fixed;bottom:100px;left:50%;transform:translateX(-50%);z-index:95;background:#241c32;padding:10px 16px;border-radius:8px}
 @media(max-width:600px){.v2-active-player .v2-player-inner{gap:6px;padding:10px}.v2-player-info{max-width:90px}.v2-player-time{display:none}.v2-player-controls button{width:24px}.v2-player-close{width:20px}}
 
-/* Exact v1 GlobalPlayer visual styles, copied read-only from v1. */
+/* v1/reference player: compact waveform and clearly spaced controls, shared everywhere. */
 .onece-player-dock {
   position: fixed;
   z-index: 80;
@@ -45,9 +45,10 @@
 }
 .onece-global-player {
   display: grid;
-  grid-template-columns: 42px minmax(90px, 150px) minmax(90px, 1fr) auto auto;
+  grid-template-columns: 42px minmax(110px, 145px) minmax(150px, 190px) auto auto;
+  justify-content: space-between;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   min-height: 58px;
   padding: 7px 14px 7px 7px;
   box-sizing: border-box;
@@ -62,7 +63,7 @@
 .onece-player-title, .onece-player-author { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .onece-player-title { font-size: 12px; font-weight: 550; line-height: 1.25; }
 .onece-player-author { font-size: 10px; color: #aaa5b6; line-height: 1.25; }
-.onece-player-wave { position: relative; height: 38px; min-width: 0; border-radius: 4px; }
+.onece-player-wave { position: relative; height: 38px; min-width: 0; width: 100%; max-width: 190px; border-radius: 4px; }
 .onece-wave-bars { display: flex; align-items: center; gap: 1px; height: 100%; overflow: hidden; }
 .onece-wave-bars span { flex: 1; min-width: 1px; border-radius: 1px; background: #69646f; }
 .onece-wave-bars span.is-played { background: #a78bfa; }
@@ -70,9 +71,10 @@
 .onece-wave-cursor { position: absolute; top: 0; bottom: 0; left: clamp(0px, var(--played), calc(100% - 2px)); width: 2px; background: #c4b5fd; pointer-events: none; }
 .onece-player-wave input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
 .onece-player-wave:focus-within { outline: 2px solid #c4b5fd; outline-offset: 4px; }
-.onece-player-time { font: 10px ui-monospace, monospace; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.onece-player-time { font: 10px ui-monospace, monospace; font-variant-numeric: tabular-nums; white-space: nowrap; min-width: 68px; text-align: center; }
 .onece-player-time span { color: #8e8799; }
-.onece-player-controls { display: flex; align-items: center; gap: 5px; }
+.onece-player-controls { display: flex; align-items: center; justify-self: end; gap: 13px; }
+.onece-player-transport,.onece-player-options { display: flex; align-items: center; gap: 6px; }
 .onece-player-icon { position: relative; display: grid; place-items: center; flex: 0 0 32px; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: #b7b1c1; cursor: pointer; transition: color 150ms ease, background 150ms ease; }
 .onece-player-icon svg { width: 17px; height: 17px; stroke-width: 1.8; }
 .onece-player-icon:hover:not(:disabled) { color: #fff; background: #ffffff09; }
@@ -106,8 +108,8 @@
   .onece-player-cover { width: 38px; height: 38px; grid-column: 1; grid-row: 1; }
   .onece-player-meta { grid-column: 2; grid-row: 1; }
   .onece-player-time { grid-column: 3; grid-row: 1; }
-  .onece-player-wave { grid-column: 1 / -1; grid-row: 2; height: 28px; }
-  .onece-player-controls { grid-column: 1 / -1; grid-row: 3; justify-content: space-between; gap: 4px; }
+  .onece-player-wave { grid-column: 1 / -1; grid-row: 2; height: 28px; max-width: none; }
+  .onece-player-controls { grid-column: 1 / -1; grid-row: 3; justify-self: stretch; justify-content: space-between; gap: 4px; }
   .onece-player-icon { width: 36px; height: 36px; flex-basis: 36px; }
 }
 @media (prefers-reduced-motion: reduce) { .onece-player-icon { transition: none; } }
@@ -587,29 +589,29 @@
 
 /* Playback skip buttons: preserve the v1 32px circular hit area, 17px icons,
    muted resting color, and gentle transparent hover instead of button flashes. */
-.v2-active-player .onece-player-controls>.onece-player-icon{
- width:32px;height:32px;flex:0 0 32px;padding:0;
+.v2-active-player .onece-player-controls .onece-player-icon{
+ width:40px;height:40px;flex:0 0 40px;padding:0;
  border:0;border-radius:50%;background:transparent;
  color:#b7b1c1;opacity:1;
  transition:color 220ms ease-in-out,background-color 220ms ease-in-out,opacity 220ms ease-in-out;
 }
-.v2-active-player .onece-player-controls>.onece-player-icon svg{
+.v2-active-player .onece-player-controls .onece-player-icon svg{
  width:17px;height:17px;stroke-width:1.8;
 }
-.v2-active-player .onece-player-controls>.onece-player-icon:hover:not(:disabled){
+.v2-active-player .onece-player-controls .onece-player-icon:hover:not(:disabled){
  color:#fff;background:rgba(255,255,255,.035);
 }
-.v2-active-player .onece-player-controls>.onece-player-icon:disabled{
+.v2-active-player .onece-player-controls .onece-player-icon:disabled{
  opacity:.28;cursor:default;background:transparent;
 }
-.v2-active-player .onece-player-controls>.onece-player-play{
+.v2-active-player .onece-player-controls .onece-player-play{
  color:#f5f3ff;
 }
-.v2-active-player .onece-player-controls>.onece-player-play svg{
+.v2-active-player .onece-player-controls .onece-player-play svg{
  width:19px;height:19px;fill:currentColor;stroke-width:1.2;
 }
 @media(prefers-reduced-motion:reduce){
- .v2-active-player .onece-player-controls>.onece-player-icon{transition:none}
+ .v2-active-player .onece-player-controls .onece-player-icon{transition:none}
 }
 
 /* Match v1 pack track typography and active purple state. */
@@ -937,4 +939,22 @@
 @media(max-width:680px){
  .v2-profile-project-detail-overlay{padding:14px 12px 100px}
  .v2-profile-project-detail-sheet.beat-profile.library-page.onece-v2-library{padding:20px 14px}
+}
+
+/* Keep buttons and seek bar proportional on laptops and mobile screens. */
+@media(min-width:761px) and (max-width:960px){
+ .onece-global-player{grid-template-columns:42px minmax(90px,120px) minmax(115px,170px) auto auto;gap:7px}
+ .onece-player-controls{gap:7px}
+ .onece-player-transport,.onece-player-options{gap:2px}
+ .v2-active-player .onece-player-controls .onece-player-icon{width:34px;height:34px;flex-basis:34px}
+}
+@media(max-width:760px){
+ .onece-player-transport,.onece-player-options{gap:4px}
+ .v2-active-player .onece-player-controls .onece-player-icon{width:36px;height:36px;flex-basis:36px}
+}
+@media(max-width:390px){
+ .onece-player-transport,.onece-player-options{gap:0}
+ .onece-player-controls{gap:3px}
+ .v2-active-player .onece-player-controls .onece-player-icon{width:32px;height:32px;flex-basis:32px}
+ .v2-active-player .onece-player-controls .onece-player-play{width:36px;height:36px;flex-basis:36px}
 }

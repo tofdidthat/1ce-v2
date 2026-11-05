@@ -363,3 +363,13 @@ A green TypeScript build, a passing source-pattern test and a visually correct s
 - The UI must **not invent join dates, subscription state, memberships, purchases, referrals or billing counters** absent from the authoritative account model. The avatar fallback is visual only; avatar edit, username save and trash confirmation remain unchanged.
 - Every authenticated workspace view—Home, World, Upload, Settings and public/own Profile—uses the same anchored 1CE logo and consistent subdued rounded icon controls. Subviews include an actionable back control; the Profile keeps its own Back, Follow, Copy and Edit actions. Preserve the persistent player and existing nav-menu semantics; do not turn a real option into an inert icon merely to imitate the reference.
 - Changes are purely layout/interaction and retain existing auth, API, asset ownership and authorization. The profile-card opening fix in this PR remains separate from the visual treatment; both require build/regression checks and browser review before merge or production deployment.
+
+
+### PR #53 — restore Home menu and align lower player to v1 reference
+
+- Home again uses the same `CompactWorkspaceNav` and dropdown as World/Upload/Settings. Do not replace the Home menu trigger with a direct Settings shortcut; retain Home, World, Upload and Settings as real navigation destinations.
+- Player screenshot comparison (reference vs 1CE): the **reference waveform is shorter** and the transport/option buttons are **more evenly spaced**. Preserve the reference capsule maximum width of 860px, but bound the waveform to a roughly 150–190px desktop column and give the seven controls adequate hit areas instead of squeezing them together.
+- Keep the established order: Previous, Play/Pause, Next, Shuffle, Repeat, Playback queue, Volume. Group the first three transport actions separately from the last four utility actions in the single persistent player; do not create a second player or modify any callback.
+- At <=760px retain the v1-inspired three-row mobile layout with waveform stretching across its own row; a compact intermediate breakpoint avoids overflow on narrower laptops. The purple vertical Volume popup must still open upwards.
+- Eliminate duplicate `.onece-player-dock` and `.onece-global-player` declarations in `workspace-v1.css`; `library-items-v2.css` is the single player stylesheet. Audio decoding, seek, volume, order, queue identity, access permissions, R2, SQL, API and navigation routes remain unchanged.
+- This is a **visual/layout correction** with source-contract tests; CI and builds do not replace browser acceptance of desktop, laptop, and mobile spacing/seek/volume. No merge or deploy without explicit authorization.
