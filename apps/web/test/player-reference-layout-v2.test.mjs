@@ -1,0 +1,46 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+
+const read=name=>readFileSync(new URL('../src/'+name,import.meta.url),'utf8');
+const player=read('library-items-v2.tsx');
+const css=read('library-items-v2.css');
+const shellCss=read('workspace-v1.css');
+
+test('player matches the reference capsule proportions, not a longer waveform',()=>{
+ assert.match(css,/width: min\(860px, calc\(100% - 32px\)\)/);
+ assert.match(css,/grid-template-columns: 42px minmax\(110px, 145px\) minmax\(150px, 190px\) auto auto/);
+ assert.match(css,/\.onece-player-wave \{[^}]*max-width: 190px/);
+ assert.match(css,/\.onece-player-transport,\.onece-player-options \{ display: flex; align-items: center; gap: 6px; \}/);
+ assert.match(css,/\.v2-active-player \.onece-player-controls \.onece-player-icon\{\s*width:40px;height:40px/);
+ assert.doesNotMatch(shellCss,/\.onece-player-dock\s*\{/);
+ assert.doesNotMatch(shellCss,/\.onece-global-player\s*\{/);
+});
+test('transport and auxiliary buttons are grouped without changing their order/actions',()=>{
+ const start=player.indexOf('<div className="onece-player-controls">');
+ const end=player.indexOf('  {playerError&&<p className="onece-player-error"',start);
+ assert.ok(start>=0&&end>start);
+ const controls=player.slice(start,end);
+ assert.match(controls,/className="onece-player-transport" role="group" aria-label="Transport controls"/);
+ assert.match(controls,/className="onece-player-options" role="group" aria-label="Playback options"/);
+ const labels=['title="Previous"',"title={playing?'Pause':'Play'}",'title="Next"','title="Shuffle"', "title={'Repeat: '+repeat}",'title="Playback queue"','title="Volume"'];
+ const locations=labels.map(x=>controls.indexOf(x));
+ assert.ok(locations.every(x=>x>=0),'all seven original buttons must remain');
+ assert.deepEqual(locations,[...locations].sort((a,b)=>a-b),'reference order must stay unchanged');
+ for(const callback of ['onClick={previous}','onClick={toggle}','onClick={next}','onClick={()=>setShuffle(v=>!v)}',"onClick={()=>setPopup(v=>v==='queue'?null:'queue')}","onClick={()=>setPopup(v=>v==='volume'?null:'volume')}"])
+  assert.ok(controls.includes(callback),callback);
+ assert.match(controls,/onClick=\{\(\)=>setRepeat\(/);
+});
+test('player remains one accessible portal with responsive waveform and upward vertical volume',()=>{
+ assert.match(player,/current&&createPortal\(<div className="onece-player-dock/);
+ assert.match(player,/current&&createPortal\(<audio ref=\{audioRef\}/);
+ assert.match(player,/aria-label="Playback position"/);
+ assert.match(player,/upcomingQueueV2\(queue,current\)/);
+ assert.match(css,/@media\(max-width:760px\)/);
+ assert.match(css,/\.onece-player-wave \{ grid-column: 1 \/ -1; grid-row: 2; height: 28px; max-width: none; \}/);
+ assert.match(css,/@media\(max-width:390px\)/);
+ assert.match(css,/\.onece-player-volume \.v2-volume-popup\{/);
+ assert.match(css,/writing-mode:vertical-lr/);
+ assert.match(css,/bottom:calc\(100% \+ 2px\)/);
+ assert.match(css,/#a78bfa/);
+});
