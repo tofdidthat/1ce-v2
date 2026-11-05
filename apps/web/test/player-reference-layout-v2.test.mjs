@@ -41,6 +41,10 @@ test('player remains one accessible portal with responsive waveform and upward v
  assert.match(css,/@media\(max-width:390px\)/);
  assert.match(css,/\.onece-player-volume \.v2-volume-popup\{/);
  assert.match(css,/writing-mode:vertical-lr/);
- assert.match(css,/bottom:calc\(100% \+ 2px\)/);
+ assert.match(css,/bottom:-13px;right:-5px;width:46px/);
+ assert.match(css,/padding:14px 6px 73px;gap:0;border-radius:23px/);
+ assert.match(css,/\.onece-player-volume > \.onece-player-icon \{ position: relative; z-index: 2; \}/);
+ assert.match(css,/bottom: max\(32px, env\(safe-area-inset-bottom\)\)/);
+ assert.doesNotMatch(css,/bottom:calc\(100% \+ 2px\)/);
  assert.match(css,/#a78bfa/);
 });
