@@ -158,6 +158,15 @@ export async function handleLibraryFiles(
   if(!file){send(res,404,{error:'Audio not found'});return true;}
   await streamAuthorizedAudio(req,res,{file,s3,bucket:cfg.bucket});return true;
  }
+ // Owner-only metadata for a single original beat; never expose stems to public viewers.
+ if(req.method==='GET'&&segments.length===5&&segments[3]==='beat'&&/^[0-9a-f-]{36}$/i.test(segments[4])){
+  const q=await pool.query(`SELECT b.id,b.title,b.audio_file_id,b.stems_file_id
+   FROM library_beats b JOIN library_files audio ON audio.id=b.audio_file_id
+    AND audio.user_id=b.user_id AND audio.kind='audio' AND audio.status='ready'
+   WHERE b.id=$1 AND b.user_id=$2 AND b.deleted_at IS NULL LIMIT 1`,[segments[4],user.id]);
+  if(!q.rowCount){send(res,404,{error:'Beat not found'});return true;}
+  send(res,200,{beat:q.rows[0]});return true;
+ }
  if(req.method==='GET'&&segments.length===5&&segments[3]==='pack-tracks'&&/^[a-f0-9-]{36}$/i.test(segments[4])){
   const q=await pool.query(`SELECT b.id,b.title,b.audio_file_id,b.cover_file_id,b.stems_file_id
    FROM library_packs p JOIN library_pack_beats pb ON pb.pack_id=p.id
