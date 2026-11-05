@@ -7,7 +7,7 @@ const dialog=readFileSync(new URL('../src/project-action-dialog-v2.tsx',import.m
 const main=readFileSync(new URL('../src/main.tsx',import.meta.url),'utf8');
 
 test('Settings places Trash directly before Terms while preserving Privacy and Logout',()=>{
- const a=settings.indexOf('>Trash <span');
+ const a=settings.indexOf('onece-account-trash-link');
  const b=settings.indexOf('href="/terms"');
  const c=settings.indexOf('href="/privacy"');
  const d=settings.indexOf('onece-account-logout');

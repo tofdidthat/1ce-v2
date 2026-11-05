@@ -354,3 +354,12 @@ A green TypeScript build, a passing source-pattern test and a visually correct s
 - Close/Back returns to the same Profile, including Saves. Profile identity changes or account changes close stale details and abort pending requests, without interrupting authorized ongoing audio.
 - Cover click or keyboard Enter/Space opens detail; Play remains a separate action; right-click menu remains unchanged. Regression tests protect shared ID, original media references and same UI renderer. CI cannot substitute authenticated two-account browser acceptance.
 - This proposed fix modifies frontend/tests/docs only. No SQL, API, R2, permissions, uploads, copy, new media route or merge/deploy without explicit release authorization.
+
+
+### Settings reference layout and consistent workspace top chrome (same proposed PR #52)
+
+- **Reference:** user's first screenshot supplies relative column width, alignment, rounded card groupings and discreet top controls. The current 1CE screenshot is the before-state. Apply the composition, not a clone of another service's subscription, referral, payment or marketing features.
+- Settings desktop column widths are **230px / 308px** with a **58px gap**, centered beneath the shared workspace header; the left account card has a larger avatar and clear username/edit link; the right side groups the existing functional Profile, Trash, Terms, Privacy and Logout actions. Responsive layout collapses to one column with the same real actions.
+- The UI must **not invent join dates, subscription state, memberships, purchases, referrals or billing counters** absent from the authoritative account model. The avatar fallback is visual only; avatar edit, username save and trash confirmation remain unchanged.
+- Every authenticated workspace view—Home, World, Upload, Settings and public/own Profile—uses the same anchored 1CE logo and consistent subdued rounded icon controls. Subviews include an actionable back control; the Profile keeps its own Back, Follow, Copy and Edit actions. Preserve the persistent player and existing nav-menu semantics; do not turn a real option into an inert icon merely to imitate the reference.
+- Changes are purely layout/interaction and retain existing auth, API, asset ownership and authorization. The profile-card opening fix in this PR remains separate from the visual treatment; both require build/regression checks and browser review before merge or production deployment.

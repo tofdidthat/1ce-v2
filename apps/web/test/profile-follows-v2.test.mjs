@@ -47,6 +47,7 @@ test('Following tab lists actual profiles and navigates by public handle',()=>{
  assert.match(profile,/followData\.followingUsers\.map\(person/);
  assert.match(profile,/onOpenProfile\(person\.username\|\|String\(person\.id\)\)/);
  assert.match(workspace,/onOpenProfile=\{identifier=>navigate\('\/u\/'\+encodeURIComponent\(identifier\)\)\}/);
+ assert.match(workspace,/onGoHome=\{\(\)=>onNavigate\('library'\)\}/);
  assert.match(profile,/getProfileFollowsV2\(resolvedTargetId,controller\.signal\)/);
  assert.match(profile,/controller\.abort\(\)/);
  assert.match(refresh,/\|'follows'/);
