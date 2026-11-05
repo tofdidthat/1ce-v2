@@ -36,6 +36,14 @@ test('Workspace header provides consistent brand geometry and back buttons acros
  assert.match(workspace,/<LibraryItemsV2 active=\{view==='library'\}/);
 });
 
+test('Settings hides the header profile shortcut but keeps logo and shared navigation',()=>{
+ const sharedHeader=workspace.slice(workspace.indexOf("function HeaderV2("),workspace.indexOf("function EmptyLibrary("));
+ assert.match(sharedHeader,/\{view!=='account'&&<button type="button" className="library-settings library-profile-trigger"/);
+ assert.match(sharedHeader,/onClick=\{\(\)=>onNavigate\('profile'\)\}/);
+ assert.match(sharedHeader,/<CompactWorkspaceNav view=\{view\} disabled=\{false\} onNavigate=\{onNavigate\}\/\>/);
+ assert.match(sharedHeader,/onClick=\{\(\)=>onNavigate\('library'\)\}><img src="\/1ce-logo.png" alt="1CE"\/>/);
+ assert.match(settings,/onClick=\{onViewProfile\}/,'Settings content must retain profile access');
+});
 test('Home retains the original shared dropdown, not a direct Settings shortcut',()=>{
  assert.match(workspace,/<CompactWorkspaceNav view=\{view\} disabled=\{false\} onNavigate=\{onNavigate\}\/>/);
  assert.doesNotMatch(workspace,/onece-home-settings-trigger/);
