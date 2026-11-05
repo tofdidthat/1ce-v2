@@ -2,6 +2,7 @@
 // Deliberately isolated from all v1 services, storage keys and databases.
 import React,{useEffect,useState,useRef} from 'react';
 import {House} from 'lucide-react';
+import {ChevronLeft} from 'lucide-react';
 import {useNavigate,useLocation} from 'react-router-dom';
 import './workspace-v1.css';
 import LibraryUploadV2 from './library-upload-v1';
@@ -204,9 +205,9 @@ function HeaderV2({view,user,onNavigate}:{view:WorkspaceView;user:AccountUserV2|
     backdrop-filter: blur(10px);
   }
 }
-.onece-workspace-brand { display: flex; align-items: center; width: 140px; height: 48px; min-width: 0; flex: 0 1 140px; transform: translateY(6px); }
-.onece-workspace-brand img { display: block; width: 140px; height: 48px; max-width: 100%; object-fit: contain; object-position: left center; }
-.onece-workspace-logo-home { display: flex; align-items: center; justify-content: flex-start; width: 100%; height: 100%; padding: 0; margin: 0; border: 0; background: transparent; color: inherit; cursor: pointer; }
+.onece-workspace-brand { display: flex; align-items: center; gap: 14px; width: auto; height: 48px; min-width: 0; flex: 0 1 auto; transform: translateY(6px); }
+.onece-workspace-brand img { display: block; width: 120px; height: 44px; max-width: 100%; object-fit: contain; object-position: left center; }
+.onece-workspace-logo-home { display: flex; align-items: center; justify-content: flex-start; width: 120px; max-width: min(120px, 30vw); height: 48px; padding: 0; margin: 0; border: 0; background: transparent; color: inherit; cursor: pointer; }
 .onece-workspace-logo-home:focus-visible { outline: 2px solid #a78bfa; outline-offset: 4px; border-radius: 4px; }
 .onece-workspace-actions { display: flex; align-items: center; flex: 0 0 auto; gap: 12px; height: 48px; transform: translateY(6px); }
 .onece-workspace-header .library-settings {
@@ -220,13 +221,15 @@ function HeaderV2({view,user,onNavigate}:{view:WorkspaceView;user:AccountUserV2|
   padding: 0;
   margin: 0;
   border: 1px solid #ffffff0b;
-  border-radius: 14px;
-  background: #ffffff05;
+  border-radius: 15px;
+  background: #ffffff09;
   color: #aaa1b6;
   cursor: pointer;
   transition: background 160ms ease, color 160ms ease;
 }
-.onece-workspace-header .library-settings:hover:not(:disabled) { background: #ffffff0b; color: #f5f3ff; }
+.onece-workspace-header .library-settings:hover:not(:disabled) { background: #ffffff13; color: #f5f3ff; }
+ .onece-workspace-header .onece-workspace-back { color:#e0dce8; }
+ .onece-workspace-header .onece-workspace-back svg { width:19px;height:19px; }
 .onece-workspace-header .library-settings:focus-visible { outline: 2px solid #a78bfa; outline-offset: 4px; }
 .onece-workspace-header .library-settings:disabled { opacity: .35; cursor: default; }
 .onece-workspace-header .library-settings svg { display: block; width: 22px; height: 22px; flex-shrink: 0; }
@@ -248,12 +251,14 @@ function HeaderV2({view,user,onNavigate}:{view:WorkspaceView;user:AccountUserV2|
 }
 `}</style>
  {view==='profile'?null:<header className="onece-workspace-header" aria-label="Workspace header">
- <div className="onece-workspace-brand"><button type="button" className="onece-workspace-logo-home" aria-label="Go to Home" title="Home" onClick={()=>onNavigate('library')}><img src="/1ce-logo.png" alt="1CE"/></button></div>
+ <div className="onece-workspace-brand">{view!=='library'&&<button type="button" className="library-settings onece-workspace-back" aria-label="Back to Home" title="Back to Home" onClick={()=>onNavigate('library')}><ChevronLeft aria-hidden="true"/></button>}<button type="button" className="onece-workspace-logo-home" aria-label="Go to Home" title="Home" onClick={()=>onNavigate('library')}><img src="/1ce-logo.png" alt="1CE"/></button></div>
  <div className="onece-workspace-actions">
  <button type="button" className="library-settings library-profile-trigger" title="My Profile" aria-label="My Profile" onClick={()=>onNavigate('profile')}>
  {picture ? <img src={picture} alt="" referrerPolicy="no-referrer"/> : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="7" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2Z"/></svg>}
  </button>
- <CompactWorkspaceNav view={view} disabled={false} onNavigate={onNavigate}/></div></header>}</>;
+ {view==='library'
+  ?<button type="button" className="library-settings onece-home-settings-trigger" title="Settings" aria-label="Settings" onClick={()=>onNavigate('account')}><SettingsMark/></button>
+  :<CompactWorkspaceNav view={view} disabled={false} onNavigate={onNavigate}/>}</div></header>}</>;
 }
 function EmptyLibrary({onUpload}:{onUpload:()=>void}){
  return <section className="beat-profile library-page onece-v2-library">
@@ -298,11 +303,13 @@ export default function WorkspaceV2({user,profileId}:{user:AccountUserV2|null;pr
  const [playerVisible,setPlayerVisible]=useState(false);
  const [playRequest,setPlayRequest]=useState<{ownerId:number;kind:'beat'|'pack';id:string;nonce:number}|null>(null);
  const [queueRequest,setQueueRequest]=useState<{ownerId:number;kind:'beat'|'pack';id:string;nonce:number}|null>(null);
+ const [openRequest,setOpenRequest]=useState<{ownerId:number;kind:'beat'|'pack';id:string;nonce:number}|null>(null);
  const [playback,setPlayback]=useState<{ownerId:number;kind:'beat'|'pack';id:string;playing:boolean}|null>(null);
  const requestPlayback=(ownerId:number,kind:'beat'|'pack',id:string)=>setPlayRequest(previous=>({ownerId,kind,id,nonce:(previous?.nonce||0)+1}));
  const requestQueue=(ownerId:number,kind:'beat'|'pack',id:string)=>setQueueRequest(previous=>({ownerId,kind,id,nonce:(previous?.nonce||0)+1}));
+ const requestOpen=(ownerId:number,kind:'beat'|'pack',id:string)=>setOpenRequest(previous=>({ownerId,kind,id,nonce:(previous?.nonce||0)+1}));
  // Cancel stale cross-page commands when a different account signs in.
- useEffect(()=>{setPlayRequest(null);setQueueRequest(null);setPlayback(null);},[account?.id]);
+ useEffect(()=>{setPlayRequest(null);setQueueRequest(null);setOpenRequest(null);setPlayback(null);},[account?.id]);
  const view:WorkspaceView=profileId?'profile':location.pathname==='/app/library'?'library':location.pathname.endsWith('/discover')?'discover':location.pathname.endsWith('/upload')?'upload':location.pathname.endsWith('/settings')?'account':location.pathname.endsWith('/profile/edit')?'edit-profile':'profile';
  // Keep up to three recent profile read-models mounted, but without offscreen
  // cards/image leases. The one Workspace cover cache supplies immediate URLs
@@ -328,10 +335,10 @@ export default function WorkspaceV2({user,profileId}:{user:AccountUserV2|null;pr
  <style>{`.onece-library-inactive{position:static!important;padding:0!important;margin:0!important;min-height:0!important;height:0!important;overflow:visible!important}.onece-library-inactive>.beat-profile-content{display:none!important}`}</style>
  <HeaderV2 view={view} user={account} onNavigate={onNavigate}/>
  <main className="onece-v2-workspace-main">
- <LibraryItemsV2 active={view==='library'} playRequest={playRequest} queueRequest={queueRequest} userId={account?.id} onUpload={()=>onNavigate('upload')} onPlayerVisibility={setPlayerVisible} onPlaybackChange={setPlayback}/>
+ <LibraryItemsV2 active={view==='library'} playRequest={playRequest} queueRequest={queueRequest} openRequest={openRequest} profileRouteKey={view==='profile'?(profileId||'own'):null} userId={account?.id} onUpload={()=>onNavigate('upload')} onPlayerVisibility={setPlayerVisible} onPlaybackChange={setPlayback}/>
  {visibleProfileKeys.map(profileKey=><PublicProfileV2 key={String(account?.id||'anonymous')+':'+profileKey}
   active={activeProfileKey===profileKey} user={account} profileId={profileKey==='own'?undefined:profileKey.slice('public:'.length)}
-  playback={playback} onPlayProject={requestPlayback} onQueueProject={requestQueue}
+  playback={playback} onPlayProject={requestPlayback} onQueueProject={requestQueue} onOpenProject={requestOpen}
   onIdentityUpdated={updated=>{
    if(!isAccountUserV2(updated))return;
     const oldHandle=String(account?.username||'').toLowerCase();
@@ -343,7 +350,7 @@ export default function WorkspaceV2({user,profileId}:{user:AccountUserV2|null;pr
    }}
   onBack={()=>{const index=window.history.state?.idx;if(typeof index==='number'&&index>0)navigate(-1);else navigate(account?.id?'/app/library':'/');}}
   onLogin={()=>navigate('/login')}
-  onOpenProfile={identifier=>navigate('/u/'+encodeURIComponent(identifier))}/>)}
+  onOpenProfile={identifier=>navigate('/u/'+encodeURIComponent(identifier))} onGoHome={()=>onNavigate('library')}/>)} 
  {view==='library'||view==='profile'?null:
  view==='discover'?<WorldV2 userId={account?.id} onOpenProfile={identifier=>navigate('/u/'+encodeURIComponent(identifier))}/>:
  view==='upload'?<LibraryUploadV2 userId={account?.id}/>:

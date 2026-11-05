@@ -14,7 +14,9 @@ test('profile and other screens use exactly the same HeaderV2 geometry and subdu
  assert.match(workspace,/<HeaderV2 view=\{view\} user=\{account\}/);
  assert.match(workspace,/\{view==='profile'\?null:<header className="onece-workspace-header"/);
  assert.match(profile,/<header className="onece-workspace-header onece-profile-navbar"/);
- assert.match(profile,/<div className="onece-workspace-brand">/);
+ assert.match(profile,/<div className="onece-workspace-brand onece-profile-header-brand">/);
+ assert.match(profile,/onClick=\{onGoHome\}><img src="\/1ce-logo.png" alt="1CE"\/>/);
+ assert.match(workspace,/onece-workspace-back/);
  assert.match(profile,/<div className="onece-workspace-actions onece-profile-nav-actions">/);
  for(const cls of ['onece-profile-nav-back','onece-profile-nav-edit','onece-profile-nav-follow','onece-profile-nav-copy']){
   assert.match(profile,new RegExp('className="library-settings '+cls+'"'),cls);
@@ -27,7 +29,7 @@ test('profile and other screens use exactly the same HeaderV2 geometry and subdu
  assert.match(workspace,/max\(16px, env\(safe-area-inset-left\)\)/);
  assert.match(workspace,/transform: translateY\(6px\)/);
  assert.match(workspace,/transform: translateY\(4px\)/);
- assert.match(workspace,/background: #ffffff05/);
+ assert.match(workspace,/background: #ffffff09/);
  assert.match(workspace,/color: #aaa1b6/);
  assert.match(workspace,/width: 44px/);
  assert.match(workspace,/height: 44px/);
@@ -50,7 +52,7 @@ test('Back is aligned with right buttons, and Copy link is the exact icon from c
  assert.match(profile,/<CopyLinkIconV2 size=\{22\}\/><\/button>/);
  assert.doesNotMatch(profile,/<Copy size=/);
  assert.match(profile,/className="onece-workspace-actions onece-profile-nav-actions"/);
- assert.match(profile,/className="onece-workspace-brand"/);
+ assert.match(profile,/className="onece-workspace-brand onece-profile-header-brand"/);
  assert.doesNotMatch(profile,/<Share2/);
 });
 

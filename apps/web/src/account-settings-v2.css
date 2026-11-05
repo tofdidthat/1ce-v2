@@ -1,35 +1,107 @@
-.onece-account-settings{width:100%;padding:100px 24px 24px;color:#f5f3ff}
-.onece-account-layout{display:grid;grid-template-columns:minmax(0,234px) minmax(0,318px);align-items:start;justify-content:center;gap:34px;max-width:760px;width:100%;margin:0 auto}
+/* Settings: reference-inspired, centered two-column composition.
+   Keep 1CE branding and only real account actions. */
+.onece-account-settings{
+ width:100%;padding:48px 24px 140px;color:#f5f3ff;
+}
+.onece-account-layout{
+ display:grid;grid-template-columns:minmax(0,230px) minmax(0,308px);
+ align-items:start;justify-content:center;gap:58px;
+ max-width:596px;width:100%;margin:0 auto;
+}
 .onece-account-left,.onece-account-right{min-width:0}
-.onece-account-right{display:flex;flex-direction:column;gap:14px}
-.onece-account-card{min-width:0;padding:20px;border:1px solid #ffffff10;border-radius:18px;background:#111017}
-.onece-account-user-card{padding:40px 20px 28px;text-align:center;min-height:208px}
-.onece-account-avatar-wrap{position:relative;width:88px;height:88px;margin:0 auto}
-.onece-account-avatar{display:flex;align-items:center;justify-content:center;width:88px;height:88px;padding:0;border:1px solid #ffffff14;border-radius:50%;background:#09080e;color:#91869f;overflow:hidden;cursor:default}
+.onece-account-right{display:flex;flex-direction:column;gap:12px}
+.onece-account-card{
+ min-width:0;border:1px solid rgba(255,255,255,.08);border-radius:20px;
+ background:#211f24;color:#f5f3ff;
+}
+.onece-account-user-card{
+ min-height:270px;padding:28px 17px 22px;
+ background:#121115;text-align:center;
+ border-color:rgba(255,255,255,.12);
+}
+.onece-account-avatar-wrap{position:relative;width:116px;height:116px;margin:0 auto}
+.onece-account-avatar{
+ display:flex;align-items:center;justify-content:center;width:116px;height:116px;
+ padding:0;border:0;border-radius:50%;
+ background:linear-gradient(145deg,#44297f 0%,#231447 68%,#170c33 100%);
+ color:#d6c6ff;overflow:hidden;cursor:default;
+}
 .onece-account-avatar:enabled{cursor:pointer}
 .onece-account-avatar img{width:100%;height:100%;object-fit:cover}
-.onece-account-avatar svg{width:44px;height:44px}
-.onece-account-avatar-remove{position:absolute;top:-4px;right:-4px;width:26px;height:26px;padding:0;border:1px solid #ffffff1f;border-radius:50%;background:#171420;color:#f2b0b7;font-size:18px;cursor:pointer}
-.onece-account-identity{display:flex;flex-direction:column;align-items:center;gap:6px;margin-top:14px;min-width:0}
-.onece-account-identity h2{max-width:100%;margin:0;font-size:17px;font-weight:650;line-height:1.4;overflow-wrap:anywhere}
-.onece-account-edit{padding:2px 6px;border:0;background:transparent;color:#91869f;font-size:11px;cursor:pointer}
-.onece-account-edit:hover{color:#ddd4f2}
-.onece-account-form{display:flex;align-items:center;justify-content:center;gap:4px;width:100%;min-width:0;margin-top:14px}
-.onece-account-form input{flex:1 1 auto;min-width:0;max-width:100%;padding:0;border:0;background:transparent;color:#f5f3ff;font-size:16px;font-weight:650;line-height:1.4;text-align:center;outline:none;box-shadow:none;border-radius:0}
-.onece-account-confirm,.onece-account-cancel{flex:0 0 28px;width:28px;height:28px;padding:0;border:0;border-radius:50%;background:transparent;color:#91869f;cursor:pointer}
+.onece-account-avatar-initials{font-size:27px;font-weight:550;letter-spacing:-.06em;opacity:.73}
+.onece-account-avatar-remove{
+ position:absolute;top:-4px;right:-4px;width:27px;height:27px;padding:0;
+ border:1px solid #ffffff1f;border-radius:50%;background:#19151e;
+ color:#f2b0b7;font-size:18px;cursor:pointer;
+}
+.onece-account-identity{
+ display:flex;flex-direction:column;align-items:center;gap:5px;margin-top:23px;min-width:0;
+}
+.onece-account-identity h2{
+ max-width:100%;margin:0;font-size:18px;font-weight:660;line-height:1.35;
+ letter-spacing:-.02em;overflow-wrap:anywhere;
+}
+.onece-account-membership-label{
+ margin:0;color:#918b97;font-size:11px;line-height:1.5;
+}
+.onece-account-edit{
+ padding:7px 10px;margin-top:7px;border:0;border-radius:8px;
+ background:transparent;color:#d2c8df;font-size:11px;cursor:pointer;
+}
+.onece-account-edit:hover{color:#fff;background:#ffffff0a}
+.onece-account-form{display:flex;align-items:center;justify-content:center;gap:4px;width:100%;min-width:0;margin-top:20px}
+.onece-account-form input{
+ flex:1 1 auto;min-width:0;max-width:100%;padding:0;border:0;
+ background:transparent;color:#f5f3ff;font-size:16px;font-weight:650;
+ line-height:1.4;text-align:center;outline:none;box-shadow:none;border-radius:0;
+}
+.onece-account-confirm,.onece-account-cancel{
+ flex:0 0 28px;width:28px;height:28px;padding:0;border:0;border-radius:50%;
+ background:transparent;color:#b5adbf;cursor:pointer;
+}
 .onece-account-confirm{color:#c4b5fd}
 .onece-account-cancel{font-size:20px}
 .onece-account-error{margin:12px 0 0;color:#f2b0b7;font-size:11px;line-height:1.6;overflow-wrap:anywhere}
-.onece-account-profile-card{display:flex;align-items:center;justify-content:space-between;gap:16px}
-.onece-account-profile-card h2{margin:0;font-size:14px;font-weight:600}
-.onece-account-profile-card p{margin:5px 0 0;color:#ffffff59;font-size:12px}
-.onece-account-view{display:inline-flex;flex-shrink:0;align-items:center;gap:8px;padding:8px 14px;border:1px solid #ffffff0d;border-radius:999px;background:#ffffff08;color:#f5f3ff;font-size:12px;font-weight:600;cursor:pointer}
-.onece-account-view:hover{background:#ffffff10}
+.onece-account-profile-card{
+ display:flex;align-items:center;justify-content:space-between;gap:14px;
+ min-height:78px;padding:15px 14px;
+}
+.onece-account-profile-card>div{min-width:0}
+.onece-account-profile-card h2{margin:0;font-size:14px;font-weight:680}
+.onece-account-profile-card p{margin:4px 0 0;color:#9d97a2;font-size:11px;line-height:1.4}
+.onece-account-view{
+ display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;gap:5px;
+ padding:9px 14px;border:0;border-radius:999px;background:#f9f9fa;color:#16131b;
+ font-size:11px;font-weight:700;cursor:pointer;
+}
+.onece-account-view:hover{background:#e2ddeb}
 .onece-account-links-card{padding:0;overflow:hidden}
-.onece-account-links-card a,.onece-account-links-card button{display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;min-height:52px;padding:16px 20px;border:0;border-radius:0;background:transparent;color:#e4dff0;font-size:12px;text-align:left;text-decoration:none;cursor:pointer}
-.onece-account-links-card > * + *{border-top:1px solid #ffffff0a}
-.onece-account-links-card a:hover,.onece-account-links-card button:hover:not(:disabled){background:#ffffff05}
-.onece-account-links-card .onece-account-logout{color:#f2b0b7}
-.onece-account-settings button:focus-visible,.onece-account-settings a:focus-visible,.onece-account-settings input:focus-visible{outline:2px solid #a78bfa;outline-offset:3px}
+.onece-account-group-heading{
+ margin:0;padding:16px 16px 11px;color:#faf8fc;font-size:13px;font-weight:660;
+}
+.onece-account-links-card a,.onece-account-links-card button{
+ display:flex;align-items:center;justify-content:space-between;gap:12px;
+ width:100%;min-height:53px;padding:15px 16px;border:0;border-radius:0;
+ background:transparent;color:#eeeaf4;font-size:12px;text-align:left;
+ text-decoration:none;cursor:pointer;
+}
+.onece-account-links-card>*+*{border-top:1px solid #ffffff0b}
+.onece-account-group-heading+button,.onece-account-group-heading+a{border-top:1px solid #ffffff0b}
+.onece-account-option-label{display:inline-flex;align-items:center;gap:11px;min-width:0}
+.onece-account-option-label>svg{flex-shrink:0;color:#bbb4c4}
+.onece-account-links-card>a>svg,.onece-account-links-card>button>svg{flex-shrink:0;color:#9d96a7}
+.onece-account-links-card a:hover,.onece-account-links-card button:hover:not(:disabled){background:#ffffff08}
+.onece-account-links-card .onece-account-logout{color:#f5c5ce}
+.onece-account-session-card{margin-top:0}
+.onece-account-settings button:focus-visible,.onece-account-settings a:focus-visible,.onece-account-settings input:focus-visible{
+ outline:2px solid #a78bfa;outline-offset:3px;
+}
 .onece-account-settings button:disabled{opacity:.45;cursor:default}
-@media(max-width:640px){.onece-account-settings{padding:20px 16px 24px}.onece-account-layout{grid-template-columns:minmax(0,1fr);max-width:380px;gap:16px}}
+@media(max-width:700px){
+ .onece-account-settings{padding:26px 20px 120px}
+ .onece-account-layout{grid-template-columns:minmax(0,1fr);max-width:380px;gap:18px}
+ .onece-account-user-card{min-height:250px}
+}
+@media(max-width:390px){
+ .onece-account-settings{padding:24px 16px 120px}
+}

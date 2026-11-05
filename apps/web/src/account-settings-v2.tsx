@@ -4,6 +4,7 @@ import {isAccountUserV2,type AccountUserV2} from './account-identity-v2';
 import './account-settings-v2.css';
 import {notifyV2DataChanged} from './data-refresh-v2';
 import TrashSettingsV2 from './trash-settings-v2';
+import {ArrowUpRight,ChevronRight,LogOut,ShieldCheck,Trash2,UserRound} from 'lucide-react';
 
 const api=import.meta.env.VITE_API_URL;
 async function request(path:string,options:RequestInit):Promise<AccountUserV2>{
@@ -82,7 +83,7 @@ export default function AccountSettingsV2({user,onUserChange,onViewProfile,onLog
     <section className="onece-account-card onece-account-user-card" aria-label="Your account">
      <div className="onece-account-avatar-wrap">
       <button type="button" className="onece-account-avatar" disabled={!editing||saving} aria-label={editing?'Change profile photo':'Profile photo'} onClick={()=>fileInput.current?.click()}>
-       {photo?<img src={photo} alt="" referrerPolicy="no-referrer"/>:<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2Z"/></svg>}
+       {photo?<img src={photo} alt="" referrerPolicy="no-referrer"/>:<span className="onece-account-avatar-initials" aria-hidden="true">{(user.username||user.name||'1CE').slice(0,2).toUpperCase()}</span>}
       </button>
       {editing&&(file||user.has_avatar)&&<button type="button" className="onece-account-avatar-remove" disabled={saving} title="Remove photo" aria-label="Remove photo" onClick={()=>{if(file)setFile(null);else setRemovePhoto(true);}}>×</button>}
       <input ref={fileInput} type="file" hidden accept="image/jpeg,image/png,image/webp" onChange={choosePhoto}/>
@@ -93,23 +94,32 @@ export default function AccountSettingsV2({user,onUserChange,onViewProfile,onLog
       <button type="button" className="onece-account-cancel" disabled={saving} aria-label="Cancel editing" title="Cancel editing" onClick={cancel}>×</button>
      </form>:<div className="onece-account-identity">
       <h2>{user.username||'Choose username'}</h2>
-      <button type="button" className="onece-account-edit" onClick={begin}>Edit</button>
+      <p className="onece-account-membership-label">Your 1CE account</p>
+      <button type="button" className="onece-account-edit" onClick={begin}>Edit info</button>
      </div>}
      {error&&<p className="onece-account-error" role="alert">{error}</p>}
     </section>
    </aside>
    <div className="onece-account-right">
     <section className="onece-account-card onece-account-profile-card">
-     <div><h2>Profile</h2><p>View your profile</p></div>
-     <button type="button" className="onece-account-view" onClick={onViewProfile}>View <span aria-hidden="true">↗</span></button>
+     <div><h2>Profile</h2><p>Your projects, saved tracks and public links in one place.</p></div>
+     <button type="button" className="onece-account-view" onClick={onViewProfile}>View <ArrowUpRight size={14} aria-hidden="true"/></button>
     </section>
     {trashOpen?<TrashSettingsV2 userId={user.id} onBack={()=>setTrashOpen(false)}/>:
-    <section className="onece-account-card onece-account-links-card" aria-label="Account options">
-     <button type="button" className="onece-account-trash-link" onClick={()=>setTrashOpen(true)}>Trash <span aria-hidden="true">↗</span></button>
-     <a href="/terms">Terms of Service <span aria-hidden="true">↗</span></a>
-     <a href="/privacy">Privacy Policy <span aria-hidden="true">↗</span></a>
-     <button type="button" className="onece-account-logout" disabled={loggingOut} onClick={()=>void logout()}><span>{loggingOut?'Logging out…':'Log out'}</span><span aria-hidden="true">↗</span></button>
-    </section>}
+    <>
+     <section className="onece-account-card onece-account-links-card" aria-label="Storage">
+      <h2 className="onece-account-group-heading">Storage</h2>
+      <button type="button" className="onece-account-trash-link" onClick={()=>setTrashOpen(true)}><span className="onece-account-option-label"><Trash2 size={17} aria-hidden="true"/> Trash</span><ChevronRight size={16} aria-hidden="true"/></button>
+     </section>
+     <section className="onece-account-card onece-account-links-card" aria-label="Information">
+      <h2 className="onece-account-group-heading">Information</h2>
+      <a href="/terms"><span className="onece-account-option-label"><ShieldCheck size={17} aria-hidden="true"/> Terms of Service</span><ArrowUpRight size={15} aria-hidden="true"/></a>
+      <a href="/privacy"><span className="onece-account-option-label"><UserRound size={17} aria-hidden="true"/> Privacy Policy</span><ArrowUpRight size={15} aria-hidden="true"/></a>
+     </section>
+     <section className="onece-account-card onece-account-links-card onece-account-session-card" aria-label="Session">
+      <button type="button" className="onece-account-logout" disabled={loggingOut} onClick={()=>void logout()}><span className="onece-account-option-label"><LogOut size={17} aria-hidden="true"/>{loggingOut?'Logging out…':'Log out'}</span><ChevronRight size={16} aria-hidden="true"/></button>
+     </section>
+    </>}
    </div>
   </div>
  </section>;

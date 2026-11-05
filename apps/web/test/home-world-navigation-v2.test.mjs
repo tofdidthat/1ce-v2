@@ -37,7 +37,7 @@ test('names are user-facing; old route keys and persistent player stay unchanged
 test('all user-facing Library text becomes Home while API paths and selectors remain intact',()=>{
  assert.match(items,/Loading your Home…/);
  assert.match(items,/Your Home is empty/);
- assert.match(items,/aria-label="Back to Home"/);
+ assert.match(items,/detailOrigin==='profile'\?'Back to Profile':'Back to Home'/);
  assert.match(upload,/Save to Home/);
  assert.match(panel,/aria-label="Search your Home"/);
  assert.match(panel,/Loading Home…/);

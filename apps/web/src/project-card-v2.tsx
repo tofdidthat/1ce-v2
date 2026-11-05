@@ -23,9 +23,11 @@ export default function ProjectCardV2({id,project,ownerId,variant,secondary,play
   onContextMenu={onContextMenu} onPointerEnter={onPointerEnter} onFocusCapture={onFocusCapture}>
   {library?
    <div className={'beat-pack-art beat-art-'+tone+' v2-art-openable'} role="button" tabIndex={0}
-    onClick={onOpen} onKeyDown={event=>{if(onOpen&&(event.key==='Enter'||event.key===' ')){event.preventDefault();onOpen()}}}
+    onClick={onOpen} onKeyDown={event=>{if(onOpen&&event.target===event.currentTarget&&(event.key==='Enter'||event.key===' ')){event.preventDefault();onOpen()}}}
     aria-label={'Open '+project.kind+' '+project.title}>{art}{play}</div>
-   :<div className="onece-profile-project-art">{art}{play}</div>}
+   :<div className={'onece-profile-project-art'+(onOpen?' v2-art-openable':'')} role={onOpen?'button':undefined}
+    tabIndex={onOpen?0:undefined} aria-label={onOpen?'Open '+project.kind+' '+project.title:undefined}
+    onClick={onOpen} onKeyDown={event=>{if(onOpen&&event.target===event.currentTarget&&(event.key==='Enter'||event.key===' ')){event.preventDefault();onOpen()}}}>{art}{play}</div>}
   {library?<><div className="beat-pack-caption"><span className="v2-card-name">{project.title}</span></div><p>{secondary}</p></>
    :<div className="onece-profile-project-info"><strong>{project.title}</strong><span>{secondary}</span></div>}
  </article>;
