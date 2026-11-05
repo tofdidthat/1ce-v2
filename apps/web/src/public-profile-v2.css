@@ -23,28 +23,28 @@
 .onece-profile-actions button{display:grid;place-items:center;width:27px;height:27px;padding:0;border:1px solid transparent;border-radius:8px;background:transparent;color:#aaa2b4;cursor:pointer;transition:background .18s ease,color .18s ease}
 .onece-profile-actions button:hover{background:#ffffff12;color:#fff}
 .onece-profile-actions button:focus-visible,.onece-profile-tabs button:focus-visible{outline:2px solid #a78bfa;outline-offset:3px}
-.onece-profile-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:center;width:min(560px,100%);margin:0 auto;border-bottom:1px solid #ffffff13}
+.onece-profile-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:center;width:min(620px,100%);margin:-20px auto 0;border-bottom:1px solid #ffffff13}
 .onece-profile-tabs button{position:relative;display:flex;align-items:center;justify-content:center;gap:8px;min-height:56px;padding:12px 5px;border:0;background:transparent;color:#8f8998;font:inherit;font-size:12px;font-weight:500;cursor:pointer;transition:color .18s ease}
-.onece-profile-tabs button svg{width:20px;height:20px;stroke-width:1.8}
+.onece-profile-tabs button svg{width:24px;height:24px;stroke-width:1.8}
 .onece-profile-tabs button:hover{color:#d6c5fa}
 .onece-profile-tabs button.is-active{color:#f8f6fc}
 .onece-profile-tabs button.is-active:after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:2px;background:#f6f4fa;border-radius:2px}
-.onece-profile-panel{width:min(520px,100%);min-height:340px;margin:0 auto;padding:38px 0}
+.onece-profile-panel{width:min(520px,100%);min-height:340px;margin:0 auto;padding:70px 0 38px}
 .onece-profile-empty{display:flex;align-items:center;justify-content:center;flex-direction:column;min-height:260px;text-align:center;color:#8f8998}
 .onece-profile-empty>svg{color:#8e7aab;stroke-width:1.4;margin-bottom:17px}
 .onece-profile-empty h2{margin:0 0 8px;color:#e4dfea;font-size:16px;font-weight:550}
 .onece-profile-empty p{max-width:420px;margin:0;font-size:13px;line-height:1.7}
-@media(max-width:680px){.onece-public-profile{width:calc(100% - 32px)}.onece-profile-top{min-height:280px;padding:32px 0 34px}.onece-profile-avatar{width:108px;height:108px;flex-basis:108px}.onece-profile-tabs button{font-size:11px;min-height:52px}.onece-profile-name h1{font-size:19px}.onece-profile-panel{padding-top:34px}}
+@media(max-width:680px){.onece-public-profile{width:calc(100% - 32px)}.onece-profile-top{min-height:280px;padding:32px 0 34px}.onece-profile-tabs{margin:0 auto}.onece-profile-avatar{width:108px;height:108px;flex-basis:108px}.onece-profile-tabs button{font-size:11px;min-height:52px}.onece-profile-name h1{font-size:19px}.onece-profile-panel{padding-top:34px}}
 
 .onece-profile-status{text-align:center;color:#aaa2b4;font-size:13px;padding:28px 0}
 .onece-profile-panel-projects{width:100%}
 /* Same flex-wrap/card geometry as Home's .beat-pack-grid. No compact/large-count modes. */
 .onece-profile-projects{display:flex;flex-wrap:wrap;justify-content:center;align-items:flex-start;gap:32px;box-sizing:border-box;width:100%;max-width:960px;margin:0 auto;padding:8px 0 0}
-.onece-profile-project{box-sizing:border-box;flex:0 0 160px;width:160px;min-width:0;max-width:100%;margin:0;position:relative}
+.onece-profile-project{box-sizing:border-box;flex:0 0 216px;width:216px;min-width:0;max-width:100%;margin:0;position:relative}
 .onece-profile-project-cover{width:100%;aspect-ratio:1;overflow:hidden;border-radius:14px;background:#26212f;display:grid;place-items:center;color:#bfb0d3;font-size:44px}
 .onece-profile-project-cover img{width:100%;height:100%;object-fit:cover}
 .onece-profile-project-info{display:flex;flex-direction:column;gap:5px;padding:10px 0 0 2px}
-.onece-profile-project-info strong{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.onece-profile-project-info strong{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .onece-profile-project-info span{font-size:12px;color:#938a9f}
 .onece-profile-context-menu{width:230px;padding:7px;background:#18171b;border:1px solid #302d34;border-radius:15px;box-shadow:0 16px 44px #0009;display:flex;flex-direction:column;gap:1px}
 .onece-profile-context-menu button{display:flex;align-items:center;gap:12px;width:100%;min-height:37px;padding:8px 11px;border:0;border-radius:8px;background:transparent;color:#f3f0f5;font:inherit;font-size:13px;font-weight:500;text-align:left;cursor:pointer}
@@ -68,7 +68,7 @@
 /* Match Home's two-card responsive wrapping and spacing at <=600px. */
 @media(max-width:600px){
  .onece-profile-projects{gap:20px 14px}
- .onece-profile-projects>.onece-profile-project{flex:0 0 min(160px,calc((100% - 14px)/2));width:min(160px,calc((100% - 14px)/2))}
+ .onece-profile-projects>.onece-profile-project{flex:0 0 min(216px,calc((100% - 14px)/2));width:min(216px,calc((100% - 14px)/2))}
 }
 @media(max-width:420px){.onece-profile-project-info strong{font-size:12px}.onece-profile-project-info span{font-size:11px}}
 

@@ -14,11 +14,11 @@ test('Catalog and Saves share the wide panel while Following stays a compact lis
  assert.doesNotMatch(profile,/is-compact/);
 });
 
-test('profile cards have Home exact desktop size and flex-wrap behavior',()=>{
+test('profile cards match enlarged Home cards and preserve flex-wrap behavior',()=>{
  assert.match(home,/\.onece-v2-library \.beat-pack-grid\{display:flex;flex-wrap:wrap;justify-content:center;align-items:flex-start;gap:32px/);
- assert.match(home,/\.onece-v2-library \.beat-pack-grid>article\{box-sizing:border-box;flex:0 0 160px;width:160px/);
+ assert.match(home,/\.onece-v2-library \.beat-pack-grid>article\{box-sizing:border-box;flex:0 0 216px;width:216px/);
  assert.match(css,/\.onece-profile-projects\{display:flex;flex-wrap:wrap;justify-content:center;align-items:flex-start;gap:32px/);
- assert.match(css,/\.onece-profile-project\{box-sizing:border-box;flex:0 0 160px;width:160px/);
+ assert.match(css,/\.onece-profile-project\{box-sizing:border-box;flex:0 0 216px;width:216px/);
  assert.match(css,/max-width:960px;margin:0 auto/);
  assert.doesNotMatch(css,/\.onece-profile-projects\{display:grid/);
  assert.doesNotMatch(css,/\.onece-profile-projects\.is-compact/);
@@ -26,10 +26,10 @@ test('profile cards have Home exact desktop size and flex-wrap behavior',()=>{
 
 test('mobile cards use the same 600px threshold, 2-across card sizing and gap as Home',()=>{
  assert.match(home,/@media\(max-width:600px\)\{[^\n]*\.beat-pack-grid\{gap:20px 14px\}/);
- assert.match(home,/flex:0 0 min\(160px,calc\(\(100% - 14px\)\/2\)\)/);
+ assert.match(home,/flex:0 0 min\(216px,calc\(\(100% - 14px\)\/2\)\)/);
  assert.match(css,/@media\(max-width:600px\)\{/);
  assert.match(css,/\.onece-profile-projects\{gap:20px 14px\}/);
- assert.match(css,/\.onece-profile-projects>\.onece-profile-project\{flex:0 0 min\(160px,calc\(\(100% - 14px\)\/2\)\)/);
+ assert.match(css,/\.onece-profile-projects>\.onece-profile-project\{flex:0 0 min\(216px,calc\(\(100% - 14px\)\/2\)\)/);
 });
 
 test('square covers, playback overlay and original project card callbacks remain intact',()=>{
