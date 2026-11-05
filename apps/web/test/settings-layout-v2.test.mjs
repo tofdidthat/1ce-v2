@@ -44,3 +44,17 @@ test('Home retains the original shared dropdown, not a direct Settings shortcut'
  assert.match(workspace,/\{ id: 'upload', label: 'Upload', icon: <UploadMark \/> \}/);
  assert.match(workspace,/\{ id: 'account', label: 'Settings', icon: <SettingsMark \/> \}/);
 });
+
+test('Back is context-sensitive: Home origin hides the arrow, other origins preserve history navigation',()=>{
+ assert.match(workspace,/const previousWorkspacePath=typeof location\.state\?\.oneceFromPath==='string'\?location\.state\.oneceFromPath:null/);
+ assert.match(workspace,/const showContextBack=previousWorkspacePath!=='\/app\/library'/);
+ assert.match(workspace,/view!=='library'&&showBack&&<button/);
+ assert.match(workspace,/<HeaderV2 view=\{view\} user=\{account\} onNavigate=\{onNavigate\} showBack=\{showContextBack\} onBack=\{onWorkspaceBack\}/);
+ assert.match(workspace,/if\(previousWorkspacePath&&typeof window\.history\.state\?\.idx==='number'&&window\.history\.state\.idx>0\)navigate\(-1\)/);
+ assert.match(workspace,/else onNavigate\('library'\)/);
+ assert.match(workspace,/state:\{oneceFromPath:location\.pathname\}/);
+ assert.match(profile,/\{showBack&&<button type="button" className="library-settings onece-profile-nav-back"/);
+ assert.match(workspace,/showBack=\{showContextBack\} profileId=/);
+ assert.match(profile,/onClick=\{onGoHome\}><img src="\/1ce-logo.png" alt="1CE"\/>/);
+ assert.match(workspace,/onClick=\{\(\)=>onNavigate\('library'\)\}><img src="\/1ce-logo.png" alt="1CE"\/>/);
+});
