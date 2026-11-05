@@ -256,9 +256,7 @@ function HeaderV2({view,user,onNavigate}:{view:WorkspaceView;user:AccountUserV2|
  <button type="button" className="library-settings library-profile-trigger" title="My Profile" aria-label="My Profile" onClick={()=>onNavigate('profile')}>
  {picture ? <img src={picture} alt="" referrerPolicy="no-referrer"/> : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="7" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2Z"/></svg>}
  </button>
- {view==='library'
-  ?<button type="button" className="library-settings onece-home-settings-trigger" title="Settings" aria-label="Settings" onClick={()=>onNavigate('account')}><SettingsMark/></button>
-  :<CompactWorkspaceNav view={view} disabled={false} onNavigate={onNavigate}/>}</div></header>}</>;
+ <CompactWorkspaceNav view={view} disabled={false} onNavigate={onNavigate}/></div></header>}</>;
 }
 function EmptyLibrary({onUpload}:{onUpload:()=>void}){
  return <section className="beat-profile library-page onece-v2-library">
