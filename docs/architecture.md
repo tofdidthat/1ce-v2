@@ -19,11 +19,13 @@
 | Workspace, Home, World, upload views | `apps/web/src/workspace-v1.tsx`, `world-v2.tsx`, `library-upload-v1.tsx` |
 | Home UI and persistent playback owner | `apps/web/src/library-items-v2.tsx` |
 | Source-authorized Home/pack read adapter | `apps/web/src/library-home-api-v2.ts`; normalization in `project-read-v2.ts` |
-| Stateless global player UI | `apps/web/src/player-dock-v2.tsx`; styling remains in `library-items-v2.css` |
+| Stateless global player UI | `apps/web/src/player-dock-v2.tsx`; player CSS remains in `library-items-v2.css` |
 | Owner-keyed waveform preload and React hook | `apps/web/src/player-waveform-v2.ts` |
+| Shared project grid tokens and menu styles | `apps/web/src/project-grid-tokens-v2.css` (imported by `project-card-v2.tsx`), `project-context-menu-v2.css` (imported by `project-context-menu-v2.tsx`) |
 | Project menu and actions | `apps/web/src/project-context-menu-v2.tsx`, `project-action-dialog-v2.tsx`, `project-requests-v2.ts` |
 | Cover and project data | `apps/web/src/project-cover-v2.tsx`, `project-cover-cache-v2.ts`, `project-read-v2.ts` |
-| Profile, follows, edit controls | `apps/web/src/public-profile-v2.tsx`, `edit-profile-panel-v2.tsx`, `profile-follows-v2.ts` |
+| Profile views / presentation | `apps/web/src/public-profile-v2.tsx`, `public-profile-v2.css`, `edit-profile-panel-v2.tsx` |
+| Viewer-target-scoped Follow/Following state | `apps/web/src/use-profile-follows-v2.ts` (frontend), `profile-follows-v2.ts` (transport) |
 | Settings and Trash UI | `apps/web/src/account-settings-v2.tsx`, `trash-settings-v2.tsx` |
 | Frontend data refresh | `apps/web/src/data-refresh-v2.ts` |
 | API entry, auth/sessions/OAuth | `apps/api/src/server.ts` |
@@ -45,7 +47,7 @@ The entry point `apps/api/src/server.ts` (emitted as `dist/server.js`) delegates
 - Use shared refresh notifications and source-backed project identity. Do not reset upload destinations, player state or project listing on routine refresh. Test rapid navigation, playback, saves, shares and profile changes in two distinct browser sessions.
 
 
-### Player and Home maintainability boundaries (refactor candidate; not released)
+### Player and Home maintainability boundaries (PR #63 merged; user-confirmed in production 2026-11-05)
 
 The v2 Home component is a **persistent playback coordinator**, not just a page. The Workspace renders **exactly one** `LibraryItemsV2` instance and keeps it mounted while switching Home, World, Upload, Settings, and Profile. Preserve the single `<audio ref={audioRef}>` portal and its owner-scoped `current`, queue, elapsed/duration, repeat/shuffle/volume, account-switch cleanup, and profile-origin requests. Do not move audio to a conditional per-page component or add a second audio element.
 
@@ -54,7 +56,32 @@ The v2 Home component is a **persistent playback coordinator**, not just a page.
 - **`library-home-api-v2.ts` reads the existing authorized v2 endpoints and normalizes pack tracks.** Do not use v1 endpoints or bypass auth with frontend assumptions. `LibraryItemsV2` still owns viewer-scoped `loadedViewerId`, abort-on-revalidation, handling HTTP 401/403 by clearing private Home metadata, refresh notifications, and retained cards during same-viewer revalidation. Only a verified current viewer's data becomes visible.
 - **`playback-queue-v2.ts` remains the pure source-backed ordering/identity helper**; beat identity is `owner_id + id`, no duplicate media files, no accidental rearrangement of pack order. `project-card-v2.tsx` remains the one shared card for Home and Profile.
 
-**Test gates for this refactor before merge:** web builds on Node 22/26 and all frontend/API CI; source contracts for exactly one audio portal, queue controls and waveform access; profile play and queue while navigating; Home update after upload without F5; packs, beat modal, controls, Escape, volume capsule, progress seek, shuffle/repeat, switching accounts and session revocation. CI pattern tests cannot prove browser playback; run an authenticated browser smoke against a non-production preview and obtain approval before merging. Do not start CSS/profile medium-priority refactors until player/Home browser acceptance is confirmed. The user has *not* authorized a production merge or deploy for this batch.
+**Completed historical validation:** PR #63 (`af2817d` squash) merged with all 7 CI jobs passing and Vercel production READY. On 2026-11-05, the user reported that player/Home were functioning after testing, authorizing the next CSS/profile refactor. This report is not equivalent to automated multi-account browser E2E coverage; continue testing queue, seek, repeat, profile requests, session changes and upload refresh before further risky logic changes.
+
+
+
+### Shared CSS and Public Profile maintainability (CSS/Profile refactor phase)
+
+- `project-grid-tokens-v2.css` is the **single source of the approved ProjectCard grid geometry** for Home and Public Profile: desktop card 216px, 32px gap, 960px maximum grid, 14px artwork radius/title, and two-column mobile rules at 600px (20px row gap, 14px column gap). `ProjectCardV2` imports the token stylesheet so both consumers receive it. The structural selectors remain scoped to their own view; Home and Profile use `var(--onece-project-...)` rather than independent numeric overrides. When changing card dimensions, update tokens + both responsive tests and verify small screens. Do not enlarge only one view without an explicit product decision.
+- `ProjectContextMenuV2` alone imports `project-context-menu-v2.css`. No other component should import Home's `library-items-v2.css` simply to obtain menu rules. Old unused `.onece-profile-context-menu` styles are retired. Keep the shared menu actions, owner/visitor authorization callbacks and order unchanged.
+- `public-profile-v2.tsx` owns profile identity verification, visible Catalog/Saves state, owner-only project actions and rendering. `use-profile-follows-v2.ts` owns Follow/Following status, fetch cancellations, refresh subscriptions, stale viewer/target protection, follow/unfollow mutation, error retry and busy state; `profile-follows-v2.ts` remains its network adapter. Follow changes must never bypass server permissions, leak stale users, allow owner follow, or create access grants.
+- **No visual redesign:** same avatar/tab positions, link placement, play button, media access behavior, 1CE purple palette, mobile card geometry and player single-instance state. CSS-specific and profile hook tests must remain green. Version the architecture and tests when moving source so that AI assistants see the *actual* code owner rather than copy obsolete logic into the view.
+- A green static contract CI is not proof of actual browser rendering: test profile Follow/Unfollow, Catalog/Saves, viewer switch, card positioning and context actions plus player continuity on final production after approved merge.
+
+### Cautious API refactor — design only; DO NOT implement or deploy with CSS/Profile work
+
+**Motivation:** `apps/api/src/library-files.ts` is roughly 368 lines but is a security-critical dispatcher. It combines owner-only beat/pack writes; authorized audio/stems/cover/items/pack reads; R2 signed `init`; verification and concurrent `complete` with DB leases. **A file length alone is not authorization to change these behaviors.** The other existing boundary modules (`upload-security.ts`, `upload-leases.ts`, `project-media.ts`, `project-actions.ts`, `trash.ts`) should remain separate, not be folded into another facade.
+
+**Sequence (new, independent branches and review checkpoints):**
+
+1. **Read-only inventory and response contracts.** Map every `/api/library/files/*` route, method, input parser, ownership filter, R2 operation, DB transaction, status code, cache/security header and consumer. Verify current PostgreSQL schema and CI source before designing changes. Record whether access requires owner, published, share grant or explicit owner-only stems. Identify existing tests and missing cases.
+2. **Characterization tests, before any extraction.** On disposable PostgreSQL, test malformed payloads, wrong owners/two accounts, session expiry (401/403), pack-only vs standalone, shared covers and stems, no duplicate media, ordering, quota, expired signed URLs, invalid content type and file dimensions, hash/dedup and request limits. Add deterministic tests for concurrent `complete` with lease fencing and stale ETag/CopySourceIfMatch, `200/206/416` audio range and R2 error handling. Establish baseline responses and timestamps before making code moves.
+3. **Extraction by behavior, not wholesale rewrite.** Prefer small pure validation/response helpers and `GET` handlers first. Retain `handleLibraryFiles(req,res,pathname,pool,currentUser)` as the stable route facade, with the same endpoint names, response shapes, checks and authorization order. Do not move the single source of ownership enforcement into the browser. No SQL migrations.
+4. **Only after read paths pass:** isolate beat/pack project creation transactions, then `init` upload validation and quota reservation. Keep DB advisory locks, readiness checks, owner+kind-scoped object identity, pending expiry, and verification immutable.
+5. **`complete` is the final/highest-risk batch.** Never loosen lease-token fencing, share PG locks across long R2 requests, skip object signature/hash/size checks, or turn a failed or uncertain copy into READY. Require independent review of all terminal transitions and reconciliation semantics. No automatic deletion or write to old v1 media.
+6. **Isolated integration and deployment.** Every batch: TypeScript strict build, Node 22/26 web CI, API suite, disposable PG tests and dedicated temporary R2 canary only with opt-in credentials. Test real signed PUT, HEAD, conditional copy, Range, corrupt objects, concurrent completion, wrong-owner access and sibling-object survival. Check response parity, production health and logs. User approval separately before any production merge/deploy; automatic Vercel/Railway builds from main should be considered. Never conduct destructive smoke tests against users' production objects. Preserve a rollback commit and distinguish reversible code rollback from non-reversible media deletion.
+
+**Separate phase dependency:** Do not mix this API refactor with OAuth, social publishing, domain cutover, Create Video or new storage plans. First lock current contracts; publication workers and job queues require their own architecture and separate acceptance criteria.
 
 
 ## 3. Database, storage and migrations
