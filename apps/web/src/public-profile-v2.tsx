@@ -8,12 +8,12 @@ import {createProjectShareLinkV2} from './project-requests-v2';
 import {fetchPlayableProjectV2,downloadAuthorizedMp3V2,publicProjectLinkV2,type PlayableTrackV2} from './public-project-actions-v2';
 import {downloadOwnedProjectV2} from './owner-download-v2';
 import ProjectActionDialogV2,{type ContextProject,type ProjectAction,type ChangedProject} from './project-action-dialog-v2';
-import {subscribeV2DataChanges,subscribeV2Resume,notifyV2DataChanged} from './data-refresh-v2';
+import {subscribeV2DataChanges,subscribeV2Resume} from './data-refresh-v2';
 import useProjectFlagsV2 from './project-flags-v2';
 import {profilePictureV2} from './profile-picture-v2';
 import {normalizeProfileProjectsV2,normalizeLibraryProjectsV2,type ProfileProjectV2} from './project-read-v2';
 import {savedProjectKeyV2} from './project-identity-v2';
-import {getProfileFollowsV2,setProfileFollowV2,type ProfileFollowsV2} from './profile-follows-v2';
+import useProfileFollowsV2 from './use-profile-follows-v2';
 import EditProfilePanelV2 from './edit-profile-panel-v2';
 import {ProfileSocialLinksV2} from './profile-social-links-v2';
 import type {AccountUserV2} from './account-identity-v2';
@@ -42,17 +42,12 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
  const [loadState,setLoadState]=useState<{key:string;status:'loading'|'ready'|'error'}>({key:'',status:'loading'});
  const [error,setError]=useState('');
  const [refreshRevision,setRefreshRevision]=useState(0);
- const [followRevision,setFollowRevision]=useState(0);
  const previouslyActive=React.useRef(active);
  React.useEffect(()=>{
-  if(active&&!previouslyActive.current){setRefreshRevision(value=>value+1);setFollowRevision(value=>value+1);}
+  if(active&&!previouslyActive.current){setRefreshRevision(value=>value+1);}
   previouslyActive.current=active;
  },[active]);
- const [followState,setFollowState]=useState<{key:string;status:'loading'|'ready'|'error';data:ProfileFollowsV2|null}>({key:'',status:'loading',data:null});
- const [followError,setFollowError]=useState('');
- const [followBusy,setFollowBusy]=useState(false);
  const [copyStatus,setCopyStatus]=useState('');
- const currentFollowRequest=React.useRef('');
  const targetId=profileId||String(user?.id||'');
  const requestKey=String(user?.id||'anonymous')+':'+targetId;
  const profileStatus=loadState.key===requestKey?loadState.status:'loading';
@@ -64,9 +59,9 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
  const isOwner=!!user?.id&&(!profileId||String(user.id)===String(visibleProfileUser?.id));
  const resolvedTargetId=profileStatus==='ready'&&Number.isSafeInteger(Number(visibleProfileUser?.id))?Number(visibleProfileUser?.id):null;
  const followKey=requestKey+':'+String(resolvedTargetId??'');
- currentFollowRequest.current=followKey;
- const followStatus=followState.key===followKey?followState.status:'loading';
- const followData=followState.key===followKey?followState.data:null;
+ const {followStatus,followData,followError,followBusy,changeFollow,retryFollow}=useProfileFollowsV2({
+  active,targetId,userId:user?.id,followKey,resolvedTargetId,isOwner,onLogin
+ });
  React.useEffect(()=>{
   if(!active)return;
   return subscribeV2DataChanges(['library','saves','publications','shares','identity'],
@@ -94,15 +89,7 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
   const frame=window.requestAnimationFrame(()=>document.getElementById('onece-project-'+element.kind+'-'+element.id)?.scrollIntoView({block:'center'}));
   return()=>window.cancelAnimationFrame(frame);
  },[active,profileStatus,visibleProjects.catalog]);
- React.useEffect(()=>{
-  if(!active)return;
-  return subscribeV2DataChanges(['follows'],()=>setFollowRevision(v=>v+1),user?.id);
- },[active,targetId,user?.id]);
- React.useEffect(()=>{
-  if(!active)return;
-  return subscribeV2Resume(()=>setFollowRevision(v=>v+1));
- },[active,targetId,user?.id]);
- React.useEffect(()=>{setFollowBusy(false);setCopyStatus('');},[followKey]);
+ React.useEffect(()=>{setCopyStatus('');},[followKey]);
  React.useEffect(()=>{
   if(!api||!targetId){
    setLoadState({key:requestKey,status:'error'});setError('Profile API is not configured');return;
@@ -136,20 +123,6 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
     }).catch(e=>{if(!controller.signal.aborted){setError(e instanceof Error?e.message:'Unable to load profile');setLoadState({key:requestKey,status:'error'});}});
    return()=>controller.abort();
  },[requestKey,refreshRevision]);
- React.useEffect(()=>{
-  if(!resolvedTargetId){setFollowState({key:followKey,status:'loading',data:null});return;}
-  const controller=new AbortController();
-  setFollowState(previous=>({key:followKey,status:'loading',data:previous.key===followKey?previous.data:null}));setFollowError('');
-  void getProfileFollowsV2(resolvedTargetId,controller.signal).then(data=>{
-   if(!controller.signal.aborted)setFollowState({key:followKey,status:'ready',data});
-  }).catch(caught=>{
-   if(!controller.signal.aborted){
-    setFollowState({key:followKey,status:'error',data:null});
-    setFollowError(caught instanceof Error?caught.message:'Unable to load following');
-   }
-  });
-  return()=>controller.abort();
- },[followKey,followRevision]);
  const toggleSave=async(project:PublicProject)=>{
   const key=savedProjectKeyV2(project.owner_id,project.kind,project.id);
   const already=saved.has(key);
@@ -184,22 +157,6 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
    await togglePublished(project.kind,project.id);
    setProjects(previous=>({...previous,catalog:already?previous.catalog.filter(p=>p.kind+':'+p.id!==key):previous.catalog}));
   }catch(e){setError(e instanceof Error?e.message:'Unable to change publication')}
- };
- const changeFollow=async()=>{
-  if(!user?.id){onLogin();return;}
-  if(!resolvedTargetId||isOwner||followStatus!=='ready'||!followData||followBusy)return;
-  const key=followKey;
-  setFollowBusy(true);setFollowError('');
-  try{
-   const result=await setProfileFollowV2(resolvedTargetId,followData.viewerFollows);
-   if(currentFollowRequest.current===key){
-    setFollowState(previous=>previous.key===key&&previous.data?
-     {...previous,data:{...previous.data,viewerFollows:result.viewerFollows,followersCount:result.followersCount}}:previous);
-   }
-   notifyV2DataChanged(['follows'],Number(user.id));
-  }catch(caught){
-   if(currentFollowRequest.current===key)setFollowError(caught instanceof Error?caught.message:'Unable to update follow');
-  }finally{if(currentFollowRequest.current===key)setFollowBusy(false);}
  };
  const copyProfileLink=async()=>{
   const identifier=String(visibleProfileUser?.username||visibleProfileUser?.id||user?.username||user?.id||targetId);
@@ -307,7 +264,7 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
    {error&&<p role="alert" className="onece-profile-status">{error}{profileStatus==='error'&&<button type="button" onClick={()=>setRefreshRevision(v=>v+1)}>Retry</button>}</p>}
    {Boolean(user?.id)&&flagsStatus==='loading'&&<p className="onece-profile-status">Loading Save and Publish actions…</p>}
    {Boolean(user?.id)&&flagsStatus==='error'&&<p role="alert" className="onece-profile-status">{flagsError}<button type="button" onClick={retryFlags}>Retry</button></p>}
-   {followError&&<p role="alert" className="onece-profile-status">{followError}<button type="button" onClick={()=>setFollowRevision(v=>v+1)}>Retry</button></p>}
+   {followError&&<p role="alert" className="onece-profile-status">{followError}<button type="button" onClick={retryFollow}>Retry</button></p>}
    {profileStatus==='loading'&&!sameVerifiedProfile?<p className="onece-profile-status">Loading profile…</p>:profileStatus==='error'&&!sameVerifiedProfile?null:tab==='following'?
     followStatus==='loading'?<p className="onece-profile-status">Loading following…</p>:followStatus==='error'?null:
     followData?.followingUsers.length?
