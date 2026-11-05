@@ -30,7 +30,7 @@ test('stems action uses verified existing upload protocol and transactional owne
  assert.match(dialog,/ownedBeatFilesV2\(project.id,controller.signal\)/);
  assert.match(dialog,/kind:'stems',name:file.name,contentType:mime,size:file.size,sha256/);
  assert.match(dialog,/fetch\(init.uploadUrl,\{method:'PUT'/);
- assert.match(dialog,/\/api\/library\/files\/\+id\+'\/complete'/);
+ assert.ok(dialog.includes("'/api/library/files/'+id+'/complete'"));
  assert.match(dialog,/root\+'beat\/'\+project.id,'PATCH',\{stemsFileId\}/);
  assert.match(dialog,/downloadOwnedStemsV2\(stemsId,project.title\)/);
  assert.match(dialog,/type="file" accept=".zip,application\/zip"/);
@@ -38,7 +38,7 @@ test('stems action uses verified existing upload protocol and transactional owne
 test('pack ZIP uses Home owner manifest, original audio and optional private stems, preserving pack order',()=>{
  assert.match(download,/\/api\/library\/files\/pack-tracks\//);
  assert.match(download,/\/api\/library\/files\/beat\//);
- assert.match(download,/\/api\/library\/files\/\+kind\+'\/\+id/);
+ assert.ok(download.includes("'/api/library/files/'+kind+'/'+id"));
  assert.match(download,/for\(const \[index,beat\] of beats.entries\(\)\)/);
  assert.match(download,/entries.push\(\{name:folder\+'\/'\+label\+'\.'\+audio.extension,body:audio.blob\}\)/);
  assert.match(download,/entries.push\(\{name:folder\+'\/stems\/'\+label\+'\.zip',body:stems.blob\}\)/);
