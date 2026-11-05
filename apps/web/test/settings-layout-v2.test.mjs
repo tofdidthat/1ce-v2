@@ -35,3 +35,11 @@ test('Workspace header provides consistent brand geometry and back buttons acros
  assert.match(profile,/onClick=\{\(\)=>void copyProfileLink\(\)\}/);
  assert.match(workspace,/<LibraryItemsV2 active=\{view==='library'\}/);
 });
+
+test('Only Home replaces the navigation trigger with a direct Settings button',()=>{
+ assert.match(workspace,/view==='library'\s*\?<button type="button" className="library-settings onece-home-settings-trigger"/);
+ assert.match(workspace,/title="Settings" aria-label="Settings" onClick=\{\(\)=>onNavigate\('account'\)\}><SettingsMark\/>/);
+ assert.match(workspace,/:<CompactWorkspaceNav view=\{view\} disabled=\{false\} onNavigate=\{onNavigate\}\/>/);
+ assert.match(workspace,/\{ id: 'library', label: 'Home', icon: <HomeMark \/> \}/);
+ assert.match(workspace,/\{ id: 'account', label: 'Settings', icon: <SettingsMark \/> \}/);
+});
