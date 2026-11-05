@@ -24,7 +24,7 @@ test('mobile keeps centered avatar and tabs with the Home two-card wrapping',()=
  assert.match(css,/@media\(max-width:600px\)\{/);
  assert.match(css,/\.onece-profile-projects\{gap:20px 14px\}/);
  assert.match(css,/\.onece-profile-projects>\.onece-profile-project\{flex:0 0 min\(160px,calc\(\(100% - 14px\)\/2\)\)/);
- assert.doesNotMatch(css,/grid-template-columns:repeat\(3/);
+ assert.doesNotMatch(css,/\.onece-profile-projects\{display:grid/);
 });
 
 test('Catalog icon and shared workspace/header remain unchanged',()=>{
