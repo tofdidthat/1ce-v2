@@ -146,6 +146,12 @@ export async function handleLibraryFiles(
    await client.query('COMMIT');send(res,201,{id});return true;
   }catch(err){await client.query('ROLLBACK');throw err;}finally{client.release();}
  }
+ // Stems remain private to the authenticated owner; public access is never granted.
+ if(req.method==='GET'&&segments.length===5&&segments[3]==='stems'&&/^\d+$/.test(segments[4])){
+  const file=await resolveAuthorizedMediaFile(pool,{ownerId:user.id,viewerId:user.id,fileId:segments[4],kind:'stems'});
+  if(!file){send(res,404,{error:'Stems not found'});return true;}
+  await streamAuthorizedAudio(req,res,{file,s3,bucket:cfg.bucket});return true;
+ }
  if(req.method==='GET'&&segments.length===5&&segments[3]==='audio'&&/^\d+$/.test(segments[4])){
   const id=segments[4];
   const file=await resolveAuthorizedMediaFile(pool,{ownerId:user.id,viewerId:user.id,fileId:id,kind:'audio'});
