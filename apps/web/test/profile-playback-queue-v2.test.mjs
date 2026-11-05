@@ -34,12 +34,12 @@ test('validated pack tracks preserve ownership, order, audio IDs and cover fallb
 });
 test('Profile play, queue and the independent player use the same source-backed path',()=>{
  const src=name=>readFileSync(new URL('../src/'+name,import.meta.url),'utf8');
- const player=src('library-items-v2.tsx'),profile=src('public-profile-v2.tsx');
+ const player=src('library-items-v2.tsx'),dock=src('player-dock-v2.tsx'),profile=src('public-profile-v2.tsx');
  assert.match(profile,/onPlay=\{onPlayProject\?\(\)=>onPlayProject\(project.owner_id,project.kind,project.id\)/);
  assert.match(player,/const project=await fetchPlayableProjectV2\(ownerId,kind,id,controller.signal\)/);
  assert.match(player,/tracksFromPlayableProjectV2\(project\)/);
  assert.match(player,/createPortal\(<div className="onece-player-dock/);
  assert.match(player,/createPortal\(<audio ref=\{audioRef\}/);
- assert.match(player,/upcomingQueueV2\(queue,current\)\.map/);
+ assert.match(dock,/upcomingQueueV2\(queue,current\)\.map/);
  assert.doesNotMatch(player,/setQueue\(previous=>\[\.\.\.previous,\.\.\.tracks\]\)/);
 });
