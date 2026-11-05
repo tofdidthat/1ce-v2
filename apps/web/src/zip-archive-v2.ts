@@ -28,8 +28,8 @@ async function checksum(blob:Blob,signal?:AbortSignal):Promise<number>{
  }finally{reader.releaseLock();}
  return (crc^0xffffffff)>>>0;
 }
-function record(length:number):{bytes:Uint8Array;view:DataView}{
- const bytes=new Uint8Array(length);
+function record(length:number):{bytes:Uint8Array<ArrayBuffer>;view:DataView}{
+ const bytes=new Uint8Array(new ArrayBuffer(length));
  return {bytes,view:new DataView(bytes.buffer)};
 }
 export async function zipArchiveV2(entries:ZipEntryV2[],signal?:AbortSignal):Promise<Blob>{
