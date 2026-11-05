@@ -60,7 +60,7 @@ async function putAndVerify(name,original,mime){
  insist(first.equals(original.subarray(0,32)),'R2 ranged read mismatch for '+name);
  const roundTrip=await read(ready);
  insist(sha256(roundTrip)===sha256(original),'R2 SHA-256 mismatch for '+name);
- return {staging,ready,roundTrip,signed};
+ return {staging,ready,roundTrip,signed,originalEtag:head.ETag};
 }
 // Independent reader for ZIP32 STORE. Verify record offsets, paths, sizes,
 // content and CRC. Reject unsupported compression, encryption, or traversal.
@@ -118,11 +118,10 @@ try{
  const race=prefix+'race-cannot-copy.zip';uploaded.add(race);
  try{
   await client.send(new CopyObjectCommand({
-   Bucket:bucket,Key:race,CopySource:bucket+'/'+rs.staging,CopySourceIfMatch:(await client.send(new HeadObjectCommand({Bucket:bucket,Key:rs.ready}))).ETag
+   Bucket:bucket,Key:race,CopySource:bucket+'/'+rs.staging,CopySourceIfMatch:rs.originalEtag
   }));
  }catch(error){staleRejected=error?.$metadata?.httpStatusCode===412;}
- // R2 may assign a new ETag to copied objects; this check is informational.
- if(!staleRejected)console.warn('Note: stale-ETag probe was inconclusive; immutable final SHA passed.');
+ insist(staleRejected,'Stale source ETag unexpectedly allowed conditional copy');
  const folder=safeZipSegmentV2('PR57 R2 real media');
  const first=folder+'/01 - melody.wav',second=folder+'/02 - drums.wav',stem=folder+'/stems/01 - melody.zip';
  const pack=await blobBytes(await zipArchiveV2([
