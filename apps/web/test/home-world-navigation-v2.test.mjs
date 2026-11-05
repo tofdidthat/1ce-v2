@@ -7,6 +7,7 @@ const world=read('world-v2.tsx');
 const worldCss=read('world-v2.css');
 const profile=read('public-profile-v2.tsx');
 const items=read('library-items-v2.tsx');
+const homeApi=read('library-home-api-v2.ts');
 const upload=read('library-upload-v1.tsx');
 const panel=read('edit-profile-panel-v2.tsx');
 const main=read('main.tsx');
@@ -48,7 +49,7 @@ test('all user-facing Library text becomes Home while API paths and selectors re
   for(const phrase of ['Save to Library','Loading your Library','Your Library is Empty','Search your library','Discover is not yet available','label: \'Discover\''])
    assert.ok(!file.includes(phrase),phrase+' must not remain visible');
  }
- assert.match(items,/api\+'\/api\/library\/files\/items'/);
+ assert.match(homeApi,/api\+'\/api\/library\/files\/items'/);
 });
 test('World has accessible independent For you and Following tabs and responsive 1CE styling',()=>{
  assert.match(world,/type WorldTab='for-you'\|'following'/);
