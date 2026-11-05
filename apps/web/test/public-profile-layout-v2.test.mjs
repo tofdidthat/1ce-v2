@@ -11,19 +11,20 @@ test('avatar moves down while Catalog/Saves/Following move up toward the referen
  assert.match(css,/\.onece-profile-avatar\{[^}]*width:120px;height:120px;flex:0 0 120px/);
  assert.match(css,/\.onece-profile-name\{[^}]*margin-top:20px/);
  assert.match(css,/\.onece-profile-top \.onece-social-links\.is-compact\{[^}]*margin-top:20px/);
- assert.match(css,/\.onece-profile-tabs\{[^}]*width:min\(560px,100%\);margin:0 auto/);
+ assert.match(css,/\.onece-profile-tabs\{[^}]*width:min\(620px,100%\);margin:-20px auto 0/);
  assert.match(css,/\.onece-profile-tabs button\{[^}]*min-height:56px/);
- assert.match(css,/\.onece-profile-tabs button svg\{width:20px;height:20px/);
- assert.match(css,/\.onece-profile-panel\{width:min\(520px,100%\);[^}]*padding:38px 0/);
- assert.match(css,/\.onece-profile-project\{[^}]*width:160px;min-width:0/);
+ assert.match(css,/\.onece-profile-tabs button svg\{width:24px;height:24px/);
+ assert.match(css,/\.onece-profile-panel\{width:min\(520px,100%\);[^}]*padding:70px 0 38px/);
+ assert.match(css,/\.onece-profile-project\{[^}]*width:216px;min-width:0/);
 });
 
 test('mobile keeps centered avatar and tabs with the Home two-card wrapping',()=>{
  assert.match(css,/@media\(max-width:680px\)/);
+ assert.match(css,/\.onece-profile-tabs\{margin:0 auto\}/,'Mobile tabs must not use the desktop negative margin');
  assert.match(css,/\.onece-profile-top\{min-height:280px;padding:32px 0 34px/);
  assert.match(css,/@media\(max-width:600px\)\{/);
  assert.match(css,/\.onece-profile-projects\{gap:20px 14px\}/);
- assert.match(css,/\.onece-profile-projects>\.onece-profile-project\{flex:0 0 min\(160px,calc\(\(100% - 14px\)\/2\)\)/);
+ assert.match(css,/\.onece-profile-projects>\.onece-profile-project\{flex:0 0 min\(216px,calc\(\(100% - 14px\)\/2\)\)/);
  assert.doesNotMatch(css,/\.onece-profile-projects\{display:grid/);
 });
 
