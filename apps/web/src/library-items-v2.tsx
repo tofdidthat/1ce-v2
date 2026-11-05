@@ -10,7 +10,8 @@ import useProjectFlagsV2 from './project-flags-v2';
 import ProjectContextMenuV2 from './project-context-menu-v2';
 import ProjectCoverV2,{useProjectCoverUrlV2} from './project-cover-v2';
 import ProjectCardV2 from './project-card-v2';
-import {normalizeLibraryProjectsV2,normalizePackTracksV2,type LibraryBeatV2,type LibraryPackV2,type LibraryProjectsV2} from './project-read-v2';
+import {normalizeLibraryProjectsV2,type LibraryBeatV2,type LibraryPackV2,type LibraryProjectsV2} from './project-read-v2';
+import {fetchLibraryHomePayloadV2,fetchLibraryPackTracksV2} from './library-home-api-v2';
 import {savedProjectKeyV2} from './project-identity-v2';
 import {createProjectShareLinkV2} from './project-requests-v2';
 import {fetchPlayableProjectV2} from './public-project-actions-v2';
@@ -170,10 +171,8 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
   packRequest.current=controller;
   setOpenedPack(pack);setOpenedTracks([]);setPackError('');setPackLoading(true);
   try{
-   const response=await fetch(api+'/api/library/files/pack-tracks/'+pack.id,{credentials:'include',signal:controller.signal});
-   if(!response.ok)throw Error('Unable to load pack');
-   const result=await response.json();
-   if(!controller.signal.aborted)setOpenedTracks(normalizePackTracksV2(result,pack));
+   const tracks=await fetchLibraryPackTracksV2(pack,controller.signal,'Unable to load pack');
+   if(!controller.signal.aborted)setOpenedTracks(tracks);
   }catch(e){if(!controller.signal.aborted)setPackError(e instanceof Error?e.message:'Unable to load pack')}
   finally{if(!controller.signal.aborted)setPackLoading(false)}
  };
@@ -301,12 +300,11 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
   if(!api){setError('Home is unavailable');setLoading(false);return;}
   setError('');setLoading(true);
   lastLibraryFetch.current=Date.now();
-  fetch(api+'/api/library/files/items',{credentials:'include',cache:'no-store',signal:controller.signal})
-   .then(async r=>{
-    const body=await r.json().catch(()=>({}));
-    if(!r.ok){
+  fetchLibraryHomePayloadV2(controller.signal)
+   .then(({ok,status,body})=>{
+    if(!ok){
      // Expired/revoked session cannot keep displaying old private Home metadata.
-     if(!controller.signal.aborted&&(r.status===401||r.status===403)){
+     if(!controller.signal.aborted&&(status===401||status===403)){
       setData({beats:[],packs:[]});setLoadedViewerId(null);
      }
      throw Error(body.error||'Unable to load Home');
@@ -365,7 +363,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
     onMouseDown={event=>{if(event.target===event.currentTarget)closeProjectDetails()}}>
    <section className="beat-profile library-page onece-v2-library v2-profile-project-detail-sheet">{packDetail}</section>
   </div>,document.body)}
- {contextPack&&<ProjectContextMenuV2 project={{...contextPack.pack,kind:'pack'}} x={contextPack.x} y={contextPack.y} owner published={published.has(publicationKey('pack',contextPack.pack.id))} saved={savedPackIds.has(contextPack.pack.id)} onPublish={flagsStatus==='ready'?()=>void togglePublish('pack',contextPack.pack.id):undefined} onSave={flagsStatus==='ready'?()=>{const id=contextPack.pack.id;setContextPack(null);void toggleSavedProject('pack',id)}:undefined} onShare={()=>void copyProjectLink('pack',contextPack.pack.id)} onQueue={()=>{const pack=contextPack.pack;setContextPack(null);void (async()=>{try{const response=await fetch(api+'/api/library/files/pack-tracks/'+pack.id,{credentials:'include'});if(!response.ok)throw Error('Unable to load pack tracks');const result=await response.json();const tracks=normalizePackTracksV2(result,pack);if(!tracks.length)return;if(!current)choose(tracks[0],tracks,pack.id);else setQueue(previous=>appendDistinctQueueV2(previous,tracks.map(beat=>({...beat,queue_pack_id:pack.id}))))}catch(error){setPlayerError(error instanceof Error?error.message:'Unable to add pack to queue')}})()}} onDownload={downloadBusy?undefined:()=>void downloadOwnerProject({kind:'pack',id:contextPack.pack.id,title:contextPack.pack.title})} onAction={action=>showProjectAction(action,{...contextPack.pack,kind:'pack'})}/>}
+ {contextPack&&<ProjectContextMenuV2 project={{...contextPack.pack,kind:'pack'}} x={contextPack.x} y={contextPack.y} owner published={published.has(publicationKey('pack',contextPack.pack.id))} saved={savedPackIds.has(contextPack.pack.id)} onPublish={flagsStatus==='ready'?()=>void togglePublish('pack',contextPack.pack.id):undefined} onSave={flagsStatus==='ready'?()=>{const id=contextPack.pack.id;setContextPack(null);void toggleSavedProject('pack',id)}:undefined} onShare={()=>void copyProjectLink('pack',contextPack.pack.id)} onQueue={()=>{const pack=contextPack.pack;setContextPack(null);void (async()=>{try{const tracks=await fetchLibraryPackTracksV2(pack,undefined,'Unable to load pack tracks');if(!tracks.length)return;if(!current)choose(tracks[0],tracks,pack.id);else setQueue(previous=>appendDistinctQueueV2(previous,tracks.map(beat=>({...beat,queue_pack_id:pack.id}))))}catch(error){setPlayerError(error instanceof Error?error.message:'Unable to add pack to queue')}})()}} onDownload={downloadBusy?undefined:()=>void downloadOwnerProject({kind:'pack',id:contextPack.pack.id,title:contextPack.pack.title})} onAction={action=>showProjectAction(action,{...contextPack.pack,kind:'pack'})}/>}
  {contextBeat&&<ProjectContextMenuV2 project={{...contextBeat.beat,kind:'beat'}} x={contextBeat.x} y={contextBeat.y} owner published={published.has(publicationKey('beat',contextBeat.beat.id))} saved={savedBeatIds.has(contextBeat.beat.id)} onPublish={flagsStatus==='ready'?()=>void togglePublish('beat',contextBeat.beat.id):undefined} onSave={flagsStatus==='ready'?()=>{const id=contextBeat.beat.id;setContextBeat(null);void toggleSavedProject('beat',id)}:undefined} onShare={()=>void copyProjectLink('beat',contextBeat.beat.id)} onQueue={()=>addToQueue(contextBeat.beat)} onDownload={downloadBusy?undefined:()=>void downloadOwnerProject({kind:'beat',id:contextBeat.beat.id,title:contextBeat.beat.title})} onAction={action=>showProjectAction(action,{...contextBeat.beat,kind:'beat'})}/>}
  {actionDialog&&<ProjectActionDialogV2
   key={actionDialog.action+':'+actionDialog.project.kind+':'+actionDialog.project.id}
