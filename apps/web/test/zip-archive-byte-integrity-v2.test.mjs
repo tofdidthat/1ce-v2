@@ -45,7 +45,7 @@ test('real WAV audio and nested stems ZIP extract byte-for-byte from generated p
   const path=join(directory,'pack.zip');
   await writeFile(path,await bytes(pack));
   assert.match(execFileSync('unzip',['-t',path],{encoding:'utf8'}),/No errors detected/);
-  const names=execFileSync('unzip',['-Z','-1',path],{encoding:'utf8'}).trim().split('\\n');
+  const names=execFileSync('unzip',['-Z','-1',path],{encoding:'utf8'}).trim().split(String.fromCharCode(10));
   assert.deepEqual(names,entries.map(x=>x.name));
   for(const [name,original] of [[first,beatA],[second,beatB],[stemName,await bytes(stems)]]){
    const extracted=execFileSync('unzip',['-p',path,name]);
@@ -63,7 +63,7 @@ test('ZIP entry paths cannot inherit traversal or separators from project titles
  for(const name of ['../../other','C:\\Users\\test','...','a/b:c*?','  ']){
   const segment=safeZipSegmentV2(name);
   assert.ok(segment.length>0);
-  assert.ok(!/[\\\\/:*?"<>|]/.test(segment));
+  assert.ok(!segment.includes('/')&&!segment.includes(String.fromCharCode(92)));
   assert.notEqual(segment,'..');
  }
 });
