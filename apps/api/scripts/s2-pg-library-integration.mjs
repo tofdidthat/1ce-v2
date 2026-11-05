@@ -42,7 +42,7 @@ async function patchProject(path,data,userId){
 }
 async function getFile(path,userId){
  const req=Readable.from([]);req.method='GET';req.headers={};
- const res={status:0,body:null,writeHead(status){this.status=status;},end(raw){this.body=raw?JSON.parse(raw):null;}};
+ const res={status:0,headers:{},body:null,writeHead(status,headers={}){this.status=status;this.headers=headers;},end(raw){this.body=raw?JSON.parse(raw):null;}};
  assert.equal(await handleLibraryFiles(req,res,'/api/library/files/'+path,db,async()=>userId==null?null:{id:userId},opts),true);
  return res;
 }
@@ -128,6 +128,43 @@ try{
  assert.equal(visible.get(beatTwo.body.id),false);
  assert.equal(await count('SELECT count(*)::int AS n FROM library_packs WHERE user_id=$1',[a]),1);
 
+ // Owner-scoped read contracts: real PostgreSQL, no real S3 requests.
+ // These must stay stable when GET dispatch is extracted in a future PR.
+ const [homeA,homeB,homeAnonymous]=await Promise.all([
+  getFile('items',a),getFile('items',b),getFile('items',null)
+ ]);
+ assert.equal(homeA.status,200);
+ assert.equal(homeB.status,200);
+ assert.equal(homeAnonymous.status,401);
+ assert.equal(homeA.headers['Cache-Control'],'no-store');
+ assert.equal(homeB.headers['Cache-Control'],'no-store');
+ assert.deepEqual(homeAnonymous.body,{error:'Not authenticated'});
+ assert.deepEqual(homeA.body.beats.map(row=>row.id).sort(),[beatOne.body.id,beatTwo.body.id].sort());
+ assert.deepEqual(homeB.body.beats.map(row=>row.id),[beatOther.body.id]);
+ assert.deepEqual(homeA.body.packs.map(row=>row.id),[good.body.id]);
+ assert.deepEqual(homeB.body.packs,[],'Foreign packs must not appear in another Home');
+ assert.equal(homeA.body.beats.find(row=>row.id===beatOne.body.id).library_visible,true);
+ assert.equal(homeA.body.beats.find(row=>row.id===beatTwo.body.id).library_visible,false);
+ const tracksA=await getFile('pack-tracks/'+good.body.id,a);
+ const tracksB=await getFile('pack-tracks/'+good.body.id,b);
+ assert.equal(tracksA.status,200);assert.equal(tracksB.status,200);
+ assert.deepEqual(tracksA.body.beats.map(row=>row.id),[beatOne.body.id,beatTwo.body.id],
+  'Pack membership and original order must remain unchanged');
+ assert.deepEqual(tracksB.body,{beats:[]},'Unowned pack ID is indistinguishable from an empty pack under the current GET contract');
+ assert.equal((await getFile('pack-tracks/'+good.body.id,null)).status,401);
+ const filesA=await getFile('',a);
+ const filesB=await getFile('',b);
+ assert.equal(filesA.status,200);assert.equal(filesB.status,200);
+ assert.ok(filesA.body.files.length>0);
+ assert.ok(filesA.body.files.every(row=>!('object_key' in row)), 'Never expose R2 object keys');
+ assert.ok(filesA.body.files.every(row=>row.id!==String(audioB)&&row.id!==audioB),'Foreign file IDs must not appear in Home');
+ assert.ok(filesB.body.files.every(row=>row.id!==String(audioA)&&row.id!==audioA),'Owner A files cannot appear for B');
+ assert.equal(filesA.body.files.some(row=>row.id===String(audioA)||row.id===audioA),true);
+ assert.equal(filesA.body.files.some(row=>row.id===String(coverPending)||row.id===coverPending),false,
+  'Pending files must not appear in READY listing');
+ assert.equal((await getFile('',null)).status,401);
+ assert.equal((await getFile('no-such-route',a)).status,404);
+
  // PR #57 real PostgreSQL authorization: attach/replace/unlink stems on the
  // canonical beat. Never write another beat, pack, library_file or R2 object.
  const stemsA2=await ready(a,'stems','stems-replacement.zip');
@@ -173,5 +210,5 @@ try{
  assert.equal(existing.status,200);
  assert.deepEqual(existing.body,{id:String(audioA),reused:true});
  assert.equal(signed.length,11,'Reused READY asset must never issue a signed PUT');
- console.log('Phase 4C + PR57 disposable PostgreSQL PASS: concurrent quota locks, READY dedup, per-owner grants, pack membership, stems owner-only attach/replace/unlink persistence, foreign and anonymous access denied; R2 intentionally not used');
+ console.log('Phase 4C + PR57 + API read contracts disposable PostgreSQL PASS: concurrent quota locks, READY dedup, per-owner grants, pack membership, stems owner-only attach/replace/unlink persistence, foreign and anonymous access denied; R2 intentionally not used');
 }finally{await db.end();}
