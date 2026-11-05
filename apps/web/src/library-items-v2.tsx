@@ -3,12 +3,15 @@ import React,{useEffect,useMemo,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
 import {Play,Pause,SkipBack,SkipForward,Shuffle,Repeat,Repeat1,ListMusic,Volume2,VolumeX,X,Music2,ChevronLeft,Bookmark,Eye,EyeOff,ListPlus,FolderPlus,Pencil,Image as ImageIcon,Download,Layers,Trash2,ChevronRight,Link2} from 'lucide-react';
 import './library-items-v2.css';
+import PlayerDockV2 from './player-dock-v2';
+import {loadWaveform,useWaveform} from './player-waveform-v2';
 import {subscribeV2DataChanges,subscribeV2Resume} from './data-refresh-v2';
 import useProjectFlagsV2 from './project-flags-v2';
 import ProjectContextMenuV2 from './project-context-menu-v2';
 import ProjectCoverV2,{useProjectCoverUrlV2} from './project-cover-v2';
 import ProjectCardV2 from './project-card-v2';
-import {normalizeLibraryProjectsV2,normalizePackTracksV2,type LibraryBeatV2,type LibraryPackV2,type LibraryProjectsV2} from './project-read-v2';
+import {normalizeLibraryProjectsV2,type LibraryBeatV2,type LibraryPackV2,type LibraryProjectsV2} from './project-read-v2';
+import {fetchLibraryHomePayloadV2,fetchLibraryPackTracksV2} from './library-home-api-v2';
 import {savedProjectKeyV2} from './project-identity-v2';
 import {createProjectShareLinkV2} from './project-requests-v2';
 import {fetchPlayableProjectV2} from './public-project-actions-v2';
@@ -19,56 +22,6 @@ const api=import.meta.env.VITE_API_URL;
 type BeatItem = LibraryBeatV2;
 type PackItem = LibraryPackV2;
 type LibraryData = LibraryProjectsV2;
-// Private, per-page waveform cache. Start decoding before playback when possible.
-const waveCache=new Map<string,number[]>();
-const wavePending=new Map<string,Promise<number[]>>();
-function loadWaveform(fileId:number,ownerId:number):Promise<number[]>{
- const key=String(ownerId)+':'+String(fileId);
- const cached=waveCache.get(key);
- if(cached)return Promise.resolve(cached);
- const existing=wavePending.get(key);
- if(existing)return existing;
- const pending=(async()=>{
-  let context:AudioContext|null=null;
-  try{
-   const response=await fetch(api+'/api/public/audio/'+ownerId+'/'+fileId,{credentials:'include'});
-   if(!response.ok)throw Error('Waveform unavailable');
-   const bytes=await response.arrayBuffer();
-   context=new AudioContext();
-   const decoded=await context.decodeAudioData(bytes);
-   const samples=decoded.getChannelData(0);
-   const count=84;
-   const size=Math.max(1,Math.floor(samples.length/count));
-   const peaks=Array.from({length:count},(_,index)=>{
-    let peak=0;
-    const end=Math.min(samples.length,(index+1)*size);
-    for(let i=index*size;i<end;i+=32)peak=Math.max(peak,Math.abs(samples[i]));
-    return peak;
-   });
-   const max=Math.max(...peaks,.001);
-   const bars=peaks.map(value=>value/max);
-   if(waveCache.size>=16)waveCache.delete(waveCache.keys().next().value!);
-   waveCache.set(key,bars);
-   return bars;
-  }finally{
-   wavePending.delete(key);
-   if(context&&context.state!=='closed')await context.close().catch(()=>{});
-  }
- })();
- wavePending.set(key,pending);
- return pending;
-}
-function useWaveform(fileId:number|null,ownerId:number|null){
- const [bars,setBars]=useState<number[]>([]);
- useEffect(()=>{
-  let active=true;
-  const key=ownerId&&fileId?String(ownerId)+':'+String(fileId):null;
-  setBars(key?waveCache.get(key)||[]:[]);
-  if(fileId&&ownerId)loadWaveform(fileId,ownerId).then(value=>{if(active)setBars(value)}).catch(()=>{});
-  return()=>{active=false};
- },[fileId,ownerId]);
- return bars;
-}
 export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackChange,userId,active=true,playRequest,queueRequest,openRequest,profileRouteKey=null}:{onUpload:()=>void;onPlayerVisibility?:(visible:boolean)=>void;onPlaybackChange?:(state:{ownerId:number;kind:'beat'|'pack';id:string;playing:boolean}|null)=>void;userId?:number;active?:boolean;playRequest?:{ownerId:number;kind:'beat'|'pack';id:string;nonce:number}|null;queueRequest?:{ownerId:number;kind:'beat'|'pack';id:string;nonce:number}|null;openRequest?:{ownerId:number;kind:'beat'|'pack';id:string;nonce:number}|null;profileRouteKey?:string|null}){
  const [data,setData]=useState<LibraryData>({beats:[],packs:[]});
  const [loadedViewerId,setLoadedViewerId]=useState<number|null>(null);
@@ -218,10 +171,8 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
   packRequest.current=controller;
   setOpenedPack(pack);setOpenedTracks([]);setPackError('');setPackLoading(true);
   try{
-   const response=await fetch(api+'/api/library/files/pack-tracks/'+pack.id,{credentials:'include',signal:controller.signal});
-   if(!response.ok)throw Error('Unable to load pack');
-   const result=await response.json();
-   if(!controller.signal.aborted)setOpenedTracks(normalizePackTracksV2(result,pack));
+   const tracks=await fetchLibraryPackTracksV2(pack,controller.signal,'Unable to load pack');
+   if(!controller.signal.aborted)setOpenedTracks(tracks);
   }catch(e){if(!controller.signal.aborted)setPackError(e instanceof Error?e.message:'Unable to load pack')}
   finally{if(!controller.signal.aborted)setPackLoading(false)}
  };
@@ -349,12 +300,11 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
   if(!api){setError('Home is unavailable');setLoading(false);return;}
   setError('');setLoading(true);
   lastLibraryFetch.current=Date.now();
-  fetch(api+'/api/library/files/items',{credentials:'include',cache:'no-store',signal:controller.signal})
-   .then(async r=>{
-    const body=await r.json().catch(()=>({}));
-    if(!r.ok){
+  fetchLibraryHomePayloadV2(controller.signal)
+   .then(({ok,status,body})=>{
+    if(!ok){
      // Expired/revoked session cannot keep displaying old private Home metadata.
-     if(!controller.signal.aborted&&(r.status===401||r.status===403)){
+     if(!controller.signal.aborted&&(status===401||status===403)){
       setData({beats:[],packs:[]});setLoadedViewerId(null);
      }
      throw Error(body.error||'Unable to load Home');
@@ -413,7 +363,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
     onMouseDown={event=>{if(event.target===event.currentTarget)closeProjectDetails()}}>
    <section className="beat-profile library-page onece-v2-library v2-profile-project-detail-sheet">{packDetail}</section>
   </div>,document.body)}
- {contextPack&&<ProjectContextMenuV2 project={{...contextPack.pack,kind:'pack'}} x={contextPack.x} y={contextPack.y} owner published={published.has(publicationKey('pack',contextPack.pack.id))} saved={savedPackIds.has(contextPack.pack.id)} onPublish={flagsStatus==='ready'?()=>void togglePublish('pack',contextPack.pack.id):undefined} onSave={flagsStatus==='ready'?()=>{const id=contextPack.pack.id;setContextPack(null);void toggleSavedProject('pack',id)}:undefined} onShare={()=>void copyProjectLink('pack',contextPack.pack.id)} onQueue={()=>{const pack=contextPack.pack;setContextPack(null);void (async()=>{try{const response=await fetch(api+'/api/library/files/pack-tracks/'+pack.id,{credentials:'include'});if(!response.ok)throw Error('Unable to load pack tracks');const result=await response.json();const tracks=normalizePackTracksV2(result,pack);if(!tracks.length)return;if(!current)choose(tracks[0],tracks,pack.id);else setQueue(previous=>appendDistinctQueueV2(previous,tracks.map(beat=>({...beat,queue_pack_id:pack.id}))))}catch(error){setPlayerError(error instanceof Error?error.message:'Unable to add pack to queue')}})()}} onDownload={downloadBusy?undefined:()=>void downloadOwnerProject({kind:'pack',id:contextPack.pack.id,title:contextPack.pack.title})} onAction={action=>showProjectAction(action,{...contextPack.pack,kind:'pack'})}/>}
+ {contextPack&&<ProjectContextMenuV2 project={{...contextPack.pack,kind:'pack'}} x={contextPack.x} y={contextPack.y} owner published={published.has(publicationKey('pack',contextPack.pack.id))} saved={savedPackIds.has(contextPack.pack.id)} onPublish={flagsStatus==='ready'?()=>void togglePublish('pack',contextPack.pack.id):undefined} onSave={flagsStatus==='ready'?()=>{const id=contextPack.pack.id;setContextPack(null);void toggleSavedProject('pack',id)}:undefined} onShare={()=>void copyProjectLink('pack',contextPack.pack.id)} onQueue={()=>{const pack=contextPack.pack;setContextPack(null);void (async()=>{try{const tracks=await fetchLibraryPackTracksV2(pack,undefined,'Unable to load pack tracks');if(!tracks.length)return;if(!current)choose(tracks[0],tracks,pack.id);else setQueue(previous=>appendDistinctQueueV2(previous,tracks.map(beat=>({...beat,queue_pack_id:pack.id}))))}catch(error){setPlayerError(error instanceof Error?error.message:'Unable to add pack to queue')}})()}} onDownload={downloadBusy?undefined:()=>void downloadOwnerProject({kind:'pack',id:contextPack.pack.id,title:contextPack.pack.title})} onAction={action=>showProjectAction(action,{...contextPack.pack,kind:'pack'})}/>}
  {contextBeat&&<ProjectContextMenuV2 project={{...contextBeat.beat,kind:'beat'}} x={contextBeat.x} y={contextBeat.y} owner published={published.has(publicationKey('beat',contextBeat.beat.id))} saved={savedBeatIds.has(contextBeat.beat.id)} onPublish={flagsStatus==='ready'?()=>void togglePublish('beat',contextBeat.beat.id):undefined} onSave={flagsStatus==='ready'?()=>{const id=contextBeat.beat.id;setContextBeat(null);void toggleSavedProject('beat',id)}:undefined} onShare={()=>void copyProjectLink('beat',contextBeat.beat.id)} onQueue={()=>addToQueue(contextBeat.beat)} onDownload={downloadBusy?undefined:()=>void downloadOwnerProject({kind:'beat',id:contextBeat.beat.id,title:contextBeat.beat.title})} onAction={action=>showProjectAction(action,{...contextBeat.beat,kind:'beat'})}/>}
  {actionDialog&&<ProjectActionDialogV2
   key={actionDialog.action+':'+actionDialog.project.kind+':'+actionDialog.project.id}
@@ -441,33 +391,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
   </div>
  </div>,document.body)}
  {current&&createPortal(<div className="onece-player-dock v2-active-player" aria-label="Audio player">
-  <div className="onece-global-player">
-   <div className="onece-player-cover" aria-hidden="true">{coverUrl?<img src={coverUrl} alt=""/>:<Music2 size={20}/>}</div>
-   <div className="onece-player-meta"><span className="onece-player-title" title={current.title}>{current.title}</span><span className="onece-player-author">1CE</span></div>
-   <div className="onece-player-wave" style={{'--played':(duration?elapsed/duration*100:0)+'%'} as React.CSSProperties}>
-    <div className={'onece-wave-bars'+(!waveBars.length?' is-loading':'')} aria-hidden="true">{waveBars.map((height,index)=><span key={index} className={index/waveBars.length*100<=(duration?elapsed/duration*100:0)?'is-played':''} style={{height:Math.max(2,height*34)+'px'}}/>)}</div><span className="onece-wave-cursor" aria-hidden="true"/>
-    <input type="range" min="0" max={duration||1} step="0.1" value={Math.min(elapsed,duration||1)} disabled={!duration} aria-label="Playback position" onChange={e=>{if(audioRef.current)audioRef.current.currentTime=Number(e.target.value)}}/>
-   </div>
-   <div className="onece-player-time">{formatTime(elapsed)} <span>/</span> {formatTime(duration)}</div>
-   <div className="onece-player-controls">
-    <div className="onece-player-transport" role="group" aria-label="Transport controls">
-    <button type="button" className="onece-player-icon" title="Previous" aria-label="Previous" disabled={!current} onClick={previous}><V1SkipBack/></button>
-    <button type="button" className="onece-player-icon onece-player-play" title={playing?'Pause':'Play'} aria-label={playing?'Pause':'Play'} onClick={toggle}>{playing?<Pause/>:<Play/>}</button>
-    <button type="button" className="onece-player-icon" title="Next" aria-label="Next" disabled={queue.length<2&&repeat!=='all'} onClick={next}><V1SkipForward/></button>
-    </div>
-    <div className="onece-player-options" role="group" aria-label="Playback options">
-    <button type="button" className={'onece-player-icon'+(shuffle?' is-active':'')} title="Shuffle" aria-label="Shuffle" aria-pressed={shuffle} onClick={()=>setShuffle(v=>!v)}><Shuffle/></button>
-    <button type="button" className={'onece-player-icon'+(repeat!=='off'?' is-active':'')} title={'Repeat: '+repeat} aria-label="Repeat" aria-pressed={repeat!=='off'} onClick={()=>setRepeat(v=>v==='off'?'all':v==='all'?'one':'off')}>{repeat==='one'?<Repeat1/>:<Repeat/>}</button>
-    <button type="button" className={'onece-player-icon onece-player-queue'+(popup==='queue'?' is-active':'')} title="Playback queue" aria-label="Playback queue" aria-expanded={popup==='queue'} onClick={()=>setPopup(v=>v==='queue'?null:'queue')}><ListMusic/>{upcomingQueueV2(queue,current).length>0&&<span className="onece-queue-count">{upcomingQueueV2(queue,current).length}</span>}</button>
-    <div className="onece-player-volume">
-     <button type="button" className={'onece-player-icon'+(popup==='volume'?' is-active':'')} title="Volume" aria-label="Volume" aria-expanded={popup==='volume'} onClick={()=>setPopup(v=>v==='volume'?null:'volume')}>{muted||volume===0?<VolumeX/>:<Volume2/>}</button>
-     {popup==='volume'&&<div className="onece-volume-popup v2-volume-popup" role="group" aria-label="Volume control"><div className="v2-volume-track"><input type="range" min="0" max="1" step="0.01" value={muted?0:volume} style={{'--volume-level':((muted?0:volume)*100)+'%'} as React.CSSProperties} onChange={e=>{setMuted(false);setVolume(Number(e.target.value))}} aria-label="Volume level" aria-orientation="vertical"/></div></div>}
-    </div>
-    </div>
-   </div>
-  </div>
-  {playerError&&<p className="onece-player-error" role="alert">{playerError}</p>}
-  {popup==='queue'&&<section className="onece-queue-popup" role="region" aria-label="Playback queue"><header><h2>Playback queue</h2><button type="button" className="onece-player-icon" aria-label="Close queue" onClick={()=>setPopup(null)}><X/></button></header><div className="onece-queue-current"><small>Now playing</small><p>{current.title}</p></div><ol>{upcomingQueueV2(queue,current).map((beat,index)=><li key={queueTrackKeyV2(beat)}><button type="button" className="onece-queue-track" onClick={()=>{setCurrent(beat);setActivePackId(beat.queue_pack_id??null);setElapsed(0);setPopup(null)}}><span>{String(index+1).padStart(2,'0')}</span><span>{beat.title}</span></button></li>)}</ol></section>}
+  <PlayerDockV2 current={current} coverUrl={coverUrl} waveBars={waveBars} elapsed={elapsed} duration={duration} playing={playing} queue={queue} repeat={repeat} shuffle={shuffle} popup={popup} muted={muted} volume={volume} playerError={playerError} audioRef={audioRef} previous={previous} toggle={toggle} next={next} setShuffle={setShuffle} setRepeat={setRepeat} setPopup={setPopup} setMuted={setMuted} setVolume={setVolume} setCurrent={setCurrent} setActivePackId={setActivePackId} setElapsed={setElapsed} formatTime={formatTime} SkipBackIcon={V1SkipBack} SkipForwardIcon={V1SkipForward}/>
  </div>,document.body)}
  {playerError&&!current&&createPortal(<p className="v2-player-error v2-player-notice" role="alert">{playerError}</p>,document.body)}
  {current&&createPortal(<audio ref={audioRef} crossOrigin="use-credentials" preload="metadata" src={api+'/api/public/audio/'+(current.owner_id??userId)+'/'+current.audio_file_id} onTimeUpdate={e=>setElapsed(e.currentTarget.currentTime)} onLoadedMetadata={e=>setDuration(Number.isFinite(e.currentTarget.duration)?e.currentTarget.duration:0)} onEnded={next} onPause={()=>setPlaying(false)} onPlay={()=>setPlaying(true)} onError={()=>{setPlaying(false);setPlayerError('Audio could not be loaded')}}/>,document.body)}

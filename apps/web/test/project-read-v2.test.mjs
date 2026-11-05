@@ -5,6 +5,7 @@ import {normalizeLibraryProjectsV2,normalizePackTracksV2,normalizeProfileProject
 
 const source=name=>readFileSync(new URL('../src/'+name,import.meta.url),'utf8');
 const library=source('library-items-v2.tsx');
+const libraryApi=source('library-home-api-v2.ts');
 const profile=source('public-profile-v2.tsx');
 const flags=source('project-flags-v2.tsx');
 const menu=source('project-context-menu-v2.tsx');
@@ -68,7 +69,7 @@ test('profile Catalog and Saves normalize per original owner, not viewing accoun
 
 test('views share adapters, scoped invalidations and no F5 to retry',()=>{
  assert.match(library,/normalizeLibraryProjectsV2\(body,Number\(userId\)\)/);
- assert.match(library,/normalizePackTracksV2\(result,pack\)/);
+ assert.match(libraryApi,/normalizePackTracksV2\(await response.json\(\),pack\)/);
  assert.match(profile,/normalizeProfileProjectsV2\(result\)/);
  assert.match(profile,/requestKey=String\(user\?\.id\|\|'anonymous'\)\+':'\+targetId/);
  assert.match(profile,/const sameVerifiedProfile=lastVerifiedProfileKey\.current===requestKey/);

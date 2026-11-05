@@ -5,6 +5,7 @@ import {readFileSync} from 'node:fs';
 const source=name=>readFileSync(new URL('../src/'+name,import.meta.url),'utf8');
 const workspace=source('workspace-v1.tsx');
 const library=source('library-items-v2.tsx');
+const libraryApi=source('library-home-api-v2.ts');
 const profile=source('public-profile-v2.tsx');
 
 test('C5 Home preserves the last viewer-verified cards during in-flight revalidation',()=>{
@@ -13,7 +14,9 @@ test('C5 Home preserves the last viewer-verified cards during in-flight revalida
  assert.doesNotMatch(library,/loading\|\|loadedViewerId!==Number\(userId\)\?/);
  assert.match(library,/\{error&&<div className="v2-library-status" role="alert">/);
  assert.match(library,/setError\(''\);setLoading\(true\)/);
- assert.match(library,/signal:controller\.signal/);
+ assert.match(library,/fetchLibraryHomePayloadV2\(controller.signal\)/);
+ assert.match(libraryApi,/credentials:'include',cache:'no-store',signal/);
+ assert.match(library,/status===401\|\|status===403/);
  assert.match(library,/return \(\)=>controller\.abort\(\)/);
 });
 
