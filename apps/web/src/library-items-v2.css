@@ -1,18 +1,18 @@
 /* V1 Library grid geometry, scoped to the isolated V2 view. */
 .onece-v2-library .v2-library-contents{box-sizing:border-box;width:100%;padding:32px 24px 130px}
 .onece-v2-library .beat-pack-grid{display:flex;flex-wrap:wrap;justify-content:center;align-items:flex-start;gap:32px;box-sizing:border-box;width:100%;max-width:960px;margin:0 auto;padding:0}
-.onece-v2-library .beat-pack-grid>article{box-sizing:border-box;flex:0 0 160px;width:160px;min-width:0;max-width:100%;margin:0;position:relative;color:#f5f3ff}
+.onece-v2-library .beat-pack-grid>article{box-sizing:border-box;flex:0 0 216px;width:216px;min-width:0;max-width:100%;margin:0;position:relative;color:#f5f3ff}
 .onece-v2-library .beat-pack-art{display:block;box-sizing:border-box;width:100%;aspect-ratio:1;border-radius:14px;overflow:hidden;background:#241c32}
 .onece-v2-library .beat-art-1{background:#261c30}
 .onece-v2-library .beat-art-2{background:#1d2334}
 .onece-v2-library .v2-item-cover{width:100%;height:100%;display:grid;place-items:center;color:#ffffff40;font-size:72px;font-weight:300}
 .onece-v2-library .v2-item-cover img{display:block;width:100%;height:100%;object-fit:cover}
 .onece-v2-library .beat-pack-caption{display:flex;align-items:center;justify-content:space-between;margin-top:10px;gap:8px}
-.onece-v2-library .v2-card-name{font-size:13px;font-weight:600;text-align:left;overflow-wrap:anywhere}
+.onece-v2-library .v2-card-name{font-size:14px;font-weight:600;text-align:left;overflow-wrap:anywhere}
 .onece-v2-library .beat-pack-grid>article>p{margin:6px 0 0;color:#918b9d;font-size:11px}
 .onece-v2-library .v2-library-status{padding:60px 20px;text-align:center;color:#aaa1b6}
 .onece-v2-library .v2-library-status button{display:block;margin:16px auto;background:transparent;border:1px solid #aaa1b6;color:inherit;border-radius:10px;padding:9px 18px;cursor:pointer}
-@media(max-width:600px){.onece-v2-library .v2-library-contents{padding:24px 16px 120px}.onece-v2-library .beat-pack-grid{gap:20px 14px}.onece-v2-library .beat-pack-grid>article{flex:0 0 min(160px,calc((100% - 14px)/2));width:min(160px,calc((100% - 14px)/2))}}
+@media(max-width:600px){.onece-v2-library .v2-library-contents{padding:24px 16px 120px}.onece-v2-library .beat-pack-grid{gap:20px 14px}.onece-v2-library .beat-pack-grid>article{flex:0 0 min(216px,calc((100% - 14px)/2));width:min(216px,calc((100% - 14px)/2))}}
 
 /* V1-style compact play action beside each card title. */
 .onece-v2-library .v2-card-name{min-width:0;flex:1}
@@ -37,7 +37,7 @@
 .onece-player-dock {
   position: fixed;
   z-index: 80;
-  bottom: max(24px, env(safe-area-inset-bottom));
+  bottom: max(32px, env(safe-area-inset-bottom));
   left: 50%;
   transform: translateX(-50%);
   width: min(860px, calc(100% - 32px));
@@ -129,11 +129,14 @@
 .onece-v2-library .beat-pack-art .v2-card-play:focus-visible{outline:2px solid #c4b5fd;outline-offset:3px}
 
 
-/* Reference-style volume tower, adapted to the 1CE purple palette. */
+/* Reference-height volume tower behind the existing speaker button. 1CE
+   keeps its purple volume level and one accessible toggle (no duplicate icon). */
+.onece-player-volume > .onece-player-icon { position: relative; z-index: 2; }
 .onece-player-volume .v2-volume-popup{
- bottom:calc(100% + 6px);right:-5px;width:46px;
- padding:14px 6px 8px;gap:8px;border-radius:24px;
+ bottom:-13px;right:-5px;width:46px;
+ padding:14px 6px 73px;gap:0;border-radius:23px;
  border:0;background:#444148;box-shadow:0 10px 28px #0007;
+ z-index:1;
 }
 .v2-volume-track{height:106px;width:100%;display:flex;justify-content:center;align-items:center}
 .onece-player-volume .v2-volume-popup input[type="range"]{
@@ -155,15 +158,6 @@
 .onece-player-volume .v2-volume-popup input[type="range"]::-moz-range-thumb{width:12px;height:12px;border:0;border-radius:50%;background:#c4b5fd}
 .onece-player-volume .v2-volume-popup .v2-volume-mute{width:30px;height:30px;flex-basis:30px;color:#e9e5f0}
 .onece-player-volume .v2-volume-popup .v2-volume-mute svg{width:19px;height:19px}
-
-/* One speaker icon only: the original player control anchors the floating slider. */
-.onece-player-volume .v2-volume-popup{
- bottom:calc(100% + 2px);
- right:-5px;
- padding:14px 6px 12px;
- gap:0;
- border-radius:23px 23px 12px 12px;
-}
 
 /* v1 distinct opening patterns: inline pack detail and centered beat modal. */
 .onece-v2-library .v2-art-openable{cursor:pointer}
@@ -401,8 +395,8 @@
   }
 
   .library-page .beat-pack-grid > article {
-    flex-basis: min(160px, calc((100% - 20px) / 2));
-    width: min(160px, calc((100% - 20px) / 2));
+    flex-basis: min(216px, calc((100% - 20px) / 2));
+    width: min(216px, calc((100% - 20px) / 2));
   }
 
 }
