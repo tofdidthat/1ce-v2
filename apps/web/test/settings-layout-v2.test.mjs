@@ -24,7 +24,7 @@ test('Settings keeps original account operations within the wider reference-base
  assert.doesNotMatch(settings,/Subscriptions|Referrals|Try membership|Redeem code|fake plan/i);
 });
 test('Workspace header provides consistent brand geometry and back buttons across pages, including Profile',()=>{
- assert.match(workspace,/\{view!=='library'&&<button type="button" className="library-settings onece-workspace-back"/);
+ assert.match(workspace,/\{view!=='library'&&showBack&&<button type="button" className="library-settings onece-workspace-back"/);
  assert.match(workspace,/onClick=\{\(\)=>onNavigate\('library'\)\}><img src="\/1ce-logo.png" alt="1CE"\/>/);
  assert.match(workspace,/\.onece-workspace-brand \{ display: flex; align-items: center; gap: 14px/);
  assert.match(profile,/onece-workspace-brand onece-profile-header-brand/);
