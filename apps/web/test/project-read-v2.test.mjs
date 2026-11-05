@@ -5,6 +5,7 @@ import {normalizeLibraryProjectsV2,normalizePackTracksV2,normalizeProfileProject
 
 const source=name=>readFileSync(new URL('../src/'+name,import.meta.url),'utf8');
 const library=source('library-items-v2.tsx');
+const libraryApi=source('library-home-api-v2.ts');
 const profile=source('public-profile-v2.tsx');
 const flags=source('project-flags-v2.tsx');
 const menu=source('project-context-menu-v2.tsx');
