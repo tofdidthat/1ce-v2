@@ -6,8 +6,8 @@ const profile=read('public-profile-v2.tsx');
 const css=read('public-profile-v2.css');
 const workspace=read('workspace-v1.tsx');
 
-test('avatar, name and wider tab controls match the vertical reference hierarchy',()=>{
- assert.match(css,/\.onece-profile-top\{[^}]*justify-content:flex-start;[^}]*min-height:330px;padding:58px 0 46px/);
+test('avatar moves down while Catalog/Saves/Following move up toward the reference',()=>{
+ assert.match(css,/\.onece-profile-top\{[^}]*justify-content:flex-start;[^}]*min-height:294px;padding:68px 0 5px/);
  assert.match(css,/\.onece-profile-avatar\{[^}]*width:120px;height:120px;flex:0 0 120px/);
  assert.match(css,/\.onece-profile-name\{[^}]*margin-top:20px/);
  assert.match(css,/\.onece-profile-top \.onece-social-links\.is-compact\{[^}]*margin-top:20px/);
