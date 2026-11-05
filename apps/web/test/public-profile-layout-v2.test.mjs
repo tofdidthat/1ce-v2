@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 const read=name=>readFileSync(new URL('../src/'+name,import.meta.url),'utf8');
 const profile=read('public-profile-v2.tsx');
 const css=read('public-profile-v2.css');
+const tokens=read('project-grid-tokens-v2.css');
 const workspace=read('workspace-v1.tsx');
 
 test('avatar moves down while Catalog/Saves/Following move up toward the reference',()=>{
@@ -18,7 +19,8 @@ test('avatar moves down while Catalog/Saves/Following move up toward the referen
  assert.match(css,/\.onece-profile-tabs button\{[^}]*min-height:56px/);
  assert.match(css,/\.onece-profile-tabs button svg\{width:24px;height:24px/);
  assert.match(css,/\.onece-profile-panel\{width:min\(520px,100%\);[^}]*padding:70px 0 38px/);
- assert.match(css,/\.onece-profile-project\{[^}]*width:216px;min-width:0/);
+ assert.match(css,/\.onece-profile-project\{[^}]*width:var\(--onece-project-card-size\);min-width:0/);
+ assert.match(tokens,/--onece-project-card-size:216px/);
 });
 
 test('mobile keeps centered avatar and tabs with the Home two-card wrapping',()=>{
@@ -26,8 +28,9 @@ test('mobile keeps centered avatar and tabs with the Home two-card wrapping',()=
  assert.match(css,/\.onece-profile-tabs\{margin:0 auto\}/,'Mobile tabs must not use the desktop negative margin');
  assert.match(css,/\.onece-profile-top\{min-height:280px;padding:32px 0 34px/);
  assert.match(css,/@media\(max-width:600px\)\{/);
- assert.match(css,/\.onece-profile-projects\{gap:20px 14px\}/);
- assert.match(css,/\.onece-profile-projects>\.onece-profile-project\{flex:0 0 min\(216px,calc\(\(100% - 14px\)\/2\)\)/);
+ assert.match(css,/\.onece-profile-projects\{gap:var\(--onece-project-mobile-gap\)\}/);
+ assert.match(css,/\.onece-profile-projects>\.onece-profile-project\{flex:0 0 var\(--onece-project-mobile-card-size\)/);
+ assert.match(tokens,/--onece-project-mobile-card-size:min\(216px,calc\(\(100% - 14px\)\/2\)\)/);
  assert.doesNotMatch(css,/\.onece-profile-projects\{display:grid/);
 });
 
