@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 const src=name=>readFileSync(new URL('../src/'+name,import.meta.url),'utf8');
 const profile=src('public-profile-v2.tsx');
+const follows=src('use-profile-follows-v2.ts');
 const workspace=src('workspace-v1.tsx');
 const transport=src('profile-follows-v2.ts');
 const refresh=src('data-refresh-v2.ts');
@@ -23,10 +24,10 @@ test('profile navbar replaces normal header, preserves back and own pencil to re
  assert.match(profile,/String\(visibleProfileUser\?\.id\)/); // verified target identity, not URL guess
 });
 test('other profiles expose real Follow/Unfollow; no follow mutation available for own or anonymous',()=>{
- assert.match(profile,/changeFollow=async/);
- assert.match(profile,/if\(!user\?\.id\)\{onLogin\(\);return;\}/);
- assert.match(profile,/!resolvedTargetId\|\|isOwner\|\|followStatus!=='ready'/);
- assert.match(profile,/setProfileFollowV2\(resolvedTargetId,followData\.viewerFollows\)/);
+ assert.match(follows,/changeFollow=async/);
+ assert.match(follows,/if\(!userId\)\{onLogin\(\);return;\}/);
+ assert.match(follows,/!resolvedTargetId\|\|isOwner\|\|followStatus!=='ready'/);
+ assert.match(follows,/setProfileFollowV2\(resolvedTargetId,followData\.viewerFollows\)/);
  assert.match(profile,/followData\?\.viewerFollows\?<UserRoundCheck size=\{22\}\/>:<UserRoundPlus size=\{22\}\/>/);
  assert.match(profile,/aria-label=\{followData\?\.viewerFollows\?'Unfollow profile':'Follow profile'\}/);
  assert.doesNotMatch(profile,/followData\?\.viewerFollows\?'Following':'Follow'/);
@@ -48,13 +49,25 @@ test('Following tab lists actual profiles and navigates by public handle',()=>{
  assert.match(profile,/onOpenProfile\(person\.username\|\|String\(person\.id\)\)/);
  assert.match(workspace,/onOpenProfile=\{identifier=>navigate\('\/u\/'\+encodeURIComponent\(identifier\),\{state:\{oneceFromPath:location\.pathname\}\}\)\}/);
  assert.match(workspace,/onGoHome=\{\(\)=>onNavigate\('library'\)\}/);
- assert.match(profile,/getProfileFollowsV2\(resolvedTargetId,controller\.signal\)/);
+ assert.match(follows,/getProfileFollowsV2\(resolvedTargetId,controller\.signal\)/);
  assert.match(profile,/controller\.abort\(\)/);
  assert.match(refresh,/\|'follows'/);
- assert.match(profile,/notifyV2DataChanged\(\['follows'\]/);
+ assert.match(follows,/notifyV2DataChanged\(\['follows'\]/);
 });
 test('profile read errors remain visible; management-only error hidden for anonymous',()=>{
  assert.match(profile,/error&&<p role="alert"/);
  assert.match(profile,/Boolean\(user\?\.id\)&&flagsStatus==='error'/);
  assert.match(profile,/flagsStatus==='ready'\?/);
+});
+
+test('Follow controller cannot expose stale cross-viewer results or mutate owner',()=>{
+ assert.match(profile,/useProfileFollowsV2\(\{/);
+ assert.match(profile,/userId:user\?\.id,followKey,resolvedTargetId,isOwner,onLogin/);
+ assert.match(follows,/currentFollowRequest\.current=followKey/);
+ assert.match(follows,/if\(currentFollowRequest\.current===key\)/);
+ assert.match(follows,/controller\.signal\.aborted/);
+ assert.match(follows,/return\(\)=>controller\.abort\(\)/);
+ assert.match(follows,/if\(!resolvedTargetId\|\|isOwner/);
+ assert.match(follows,/retryFollow:\(\)=>setFollowRevision/);
+ assert.doesNotMatch(profile,/setFollowState\(|setFollowBusy\(|setProfileFollowV2\(/);
 });

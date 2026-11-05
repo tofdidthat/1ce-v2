@@ -1,0 +1,26 @@
+/* 1CE v2: categorized context menu approved visual. */
+.v2-context-menu{
+ position:fixed;z-index:10050;box-sizing:border-box;
+ width:230px;max-width:calc(100vw - 16px);
+ padding:7px;background:#18171b;border:1px solid #302d34;
+ border-radius:15px;box-shadow:0 16px 44px #0009;
+ display:flex;flex-direction:column;gap:1px;color:#f3f0f5;
+}
+.v2-context-action{
+ display:flex;align-items:center;gap:12px;
+ width:100%;min-height:37px;padding:8px 11px;
+ border:0;border-radius:8px;background:transparent;
+ color:#f3f0f5;font:inherit;font-size:13px;font-weight:500;
+ text-align:left;cursor:pointer;
+}
+.v2-context-action svg{flex:0 0 17px;stroke-width:1.8}
+.v2-context-action span{flex:1}
+.v2-context-action .v2-context-chevron{flex:0 0 15px}
+.v2-context-action:hover:not(:disabled),.v2-context-action:focus-visible:not(:disabled){
+ background:#302c35;outline:none;color:#f3f0f5;
+}
+.v2-context-action:disabled{opacity:.38;cursor:not-allowed}
+.v2-context-separator{height:1px;background:#343038;margin:5px 8px}
+.v2-context-action.v2-context-danger{color:#b77885}
+.v2-context-action.v2-context-danger:hover:not(:disabled){color:#e9a1af}
+@media(prefers-reduced-motion:reduce){.v2-context-action{transition:none}}

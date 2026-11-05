@@ -40,19 +40,14 @@
 .onece-profile-status{text-align:center;color:#aaa2b4;font-size:13px;padding:28px 0}
 .onece-profile-panel-projects{width:100%}
 /* Same flex-wrap/card geometry as Home's .beat-pack-grid. No compact/large-count modes. */
-.onece-profile-projects{display:flex;flex-wrap:wrap;justify-content:center;align-items:flex-start;gap:32px;box-sizing:border-box;width:100%;max-width:960px;margin:0 auto;padding:8px 0 0}
-.onece-profile-project{box-sizing:border-box;flex:0 0 216px;width:216px;min-width:0;max-width:100%;margin:0;position:relative}
-.onece-profile-project-cover{width:100%;aspect-ratio:1;overflow:hidden;border-radius:14px;background:#26212f;display:grid;place-items:center;color:#bfb0d3;font-size:44px}
+.onece-profile-projects{display:flex;flex-wrap:wrap;justify-content:center;align-items:flex-start;gap:var(--onece-project-grid-gap);box-sizing:border-box;width:100%;max-width:var(--onece-project-grid-max-width);margin:0 auto;padding:8px 0 0}
+.onece-profile-project{box-sizing:border-box;flex:0 0 var(--onece-project-card-size);width:var(--onece-project-card-size);min-width:0;max-width:100%;margin:0;position:relative}
+.onece-profile-project-cover{width:100%;aspect-ratio:1;overflow:hidden;border-radius:var(--onece-project-cover-radius);background:#26212f;display:grid;place-items:center;color:#bfb0d3;font-size:44px}
 .onece-profile-project-cover img{width:100%;height:100%;object-fit:cover}
 .onece-profile-project-info{display:flex;flex-direction:column;gap:5px;padding:10px 0 0 2px}
-.onece-profile-project-info strong{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.onece-profile-project-info strong{font-size:var(--onece-project-title-size);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .onece-profile-project-info span{font-size:12px;color:#938a9f}
-.onece-profile-context-menu{width:230px;padding:7px;background:#18171b;border:1px solid #302d34;border-radius:15px;box-shadow:0 16px 44px #0009;display:flex;flex-direction:column;gap:1px}
-.onece-profile-context-menu button{display:flex;align-items:center;gap:12px;width:100%;min-height:37px;padding:8px 11px;border:0;border-radius:8px;background:transparent;color:#f3f0f5;font:inherit;font-size:13px;font-weight:500;text-align:left;cursor:pointer}
-.onece-profile-context-menu button:hover:not(:disabled){background:#302c35}
-.onece-profile-context-menu button:disabled{opacity:.38;cursor:not-allowed}
-.onece-profile-context-menu button span{flex:1}
-.onece-profile-context-separator{height:1px;background:#343038;margin:5px 8px}
+/* Legacy profile-only menu removed: both views use ProjectContextMenuV2. */
 
 .onece-profile-project-art{position:relative}
 .onece-profile-project-art .v2-card-play.onece-profile-project-play{
@@ -68,8 +63,8 @@
 
 /* Match Home's two-card responsive wrapping and spacing at <=600px. */
 @media(max-width:600px){
- .onece-profile-projects{gap:20px 14px}
- .onece-profile-projects>.onece-profile-project{flex:0 0 min(216px,calc((100% - 14px)/2));width:min(216px,calc((100% - 14px)/2))}
+ .onece-profile-projects{gap:var(--onece-project-mobile-gap)}
+ .onece-profile-projects>.onece-profile-project{flex:0 0 var(--onece-project-mobile-card-size);width:var(--onece-project-mobile-card-size)}
 }
 @media(max-width:420px){.onece-profile-project-info strong{font-size:12px}.onece-profile-project-info span{font-size:11px}}
 

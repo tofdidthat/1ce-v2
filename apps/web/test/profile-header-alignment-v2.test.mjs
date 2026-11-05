@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 
 const read=name=>readFileSync(new URL('../src/'+name,import.meta.url),'utf8');
 const profile=read('public-profile-v2.tsx');
+const follows=read('use-profile-follows-v2.ts');
 const workspace=read('workspace-v1.tsx');
 const profileCss=read('public-profile-v2.css');
 const menu=read('project-context-menu-v2.tsx');
@@ -68,7 +69,7 @@ test('Follow/Edit/Back/Copy behaviors remain intact; project player is untouched
  assert.match(profile,/onClick=\{\(\)=>setEditorOpen\(true\)\}/);
  assert.match(profile,/onClick=\{\(\)=>void changeFollow\(\)\}/);
  assert.match(profile,/onClick=\{\(\)=>void copyProfileLink\(\)\}/);
- assert.match(profile,/setProfileFollowV2\(resolvedTargetId,followData\.viewerFollows\)/);
+ assert.match(follows,/setProfileFollowV2\(resolvedTargetId,followData\.viewerFollows\)/);
  assert.match(profile,/navigator\.clipboard\.writeText\(url\)/);
  assert.match(workspace,/onIdentityUpdated=\{updated=>\{/);
  assert.match(workspace,/setAccount\(updated\)/);

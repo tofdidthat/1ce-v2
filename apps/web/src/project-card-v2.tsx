@@ -1,5 +1,6 @@
 import React from 'react';
 import ProjectCoverV2 from './project-cover-v2';
+import './project-grid-tokens-v2.css';
 
 export type ProjectCardModel={id:string;kind:'beat'|'pack';title:string;cover_file_id?:number|null;owner_id?:number|null};
 type Props={
