@@ -133,15 +133,15 @@
    keeps its purple volume level and one accessible toggle (no duplicate icon). */
 .onece-player-volume > .onece-player-icon { position: relative; z-index: 2; }
 .onece-player-volume .v2-volume-popup{
- bottom:-13px;right:-5px;width:46px;
- padding:14px 6px 73px;gap:0;border-radius:23px;
+ bottom:-6px;right:-5px;width:46px;
+ padding:14px 6px 45px;gap:0;border-radius:23px;
  border:0;background:#444148;box-shadow:0 10px 28px #0007;
  z-index:1;
 }
-.v2-volume-track{height:106px;width:100%;display:flex;justify-content:center;align-items:center}
+.v2-volume-track{height:126px;width:100%;display:flex;justify-content:center;align-items:center}
 .onece-player-volume .v2-volume-popup input[type="range"]{
  appearance:none;-webkit-appearance:none;writing-mode:vertical-lr;direction:rtl;
- height:100px;width:18px;margin:0;padding:0;border:0;border-radius:0;
+ height:120px;width:18px;margin:0;padding:0;border:0;border-radius:0;
  background:transparent;cursor:pointer;accent-color:#a78bfa;
 }
 .onece-player-volume .v2-volume-popup input[type="range"]::-webkit-slider-runnable-track{
