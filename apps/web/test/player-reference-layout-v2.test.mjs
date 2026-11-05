@@ -4,6 +4,8 @@ import {readFileSync} from 'node:fs';
 
 const read=name=>readFileSync(new URL('../src/'+name,import.meta.url),'utf8');
 const player=read('library-items-v2.tsx');
+const dock=read('player-dock-v2.tsx');
+const waveform=read('player-waveform-v2.ts');
 const css=read('library-items-v2.css');
 const shellCss=read('workspace-v1.css');
 
@@ -17,10 +19,10 @@ test('player matches the reference capsule proportions, not a longer waveform',(
  assert.doesNotMatch(shellCss,/\.onece-global-player\s*\{/);
 });
 test('transport and auxiliary buttons are grouped without changing their order/actions',()=>{
- const start=player.indexOf('<div className="onece-player-controls">');
- const end=player.indexOf('  {playerError&&<p className="onece-player-error"',start);
+ const start=dock.indexOf('<div className="onece-player-controls">');
+ const end=dock.indexOf('  {playerError&&<p className="onece-player-error"',start);
  assert.ok(start>=0&&end>start);
- const controls=player.slice(start,end);
+ const controls=dock.slice(start,end);
  assert.match(controls,/className="onece-player-transport" role="group" aria-label="Transport controls"/);
  assert.match(controls,/className="onece-player-options" role="group" aria-label="Playback options"/);
  const labels=['title="Previous"',"title={playing?'Pause':'Play'}",'title="Next"','title="Shuffle"', "title={'Repeat: '+repeat}",'title="Playback queue"','title="Volume"'];
@@ -35,7 +37,7 @@ test('player remains one accessible portal with responsive waveform and upward v
  assert.match(player,/current&&createPortal\(<div className="onece-player-dock/);
  assert.match(player,/current&&createPortal\(<audio ref=\{audioRef\}/);
  assert.match(player,/aria-label="Playback position"/);
- assert.match(player,/upcomingQueueV2\(queue,current\)/);
+ assert.match(dock,/upcomingQueueV2\(queue,current\)/);
  assert.match(css,/@media\(max-width:760px\)/);
  assert.match(css,/\.onece-player-wave \{ grid-column: 1 \/ -1; grid-row: 2; height: 28px; max-width: none; \}/);
  assert.match(css,/@media\(max-width:390px\)/);
@@ -47,9 +49,20 @@ test('player remains one accessible portal with responsive waveform and upward v
  assert.match(css,/\.v2-volume-track\{height:126px/);
  assert.match(css,/height:120px;width:18px;margin:0;padding:0;border:0;border-radius:0/);
  // The active single speaker icon still owns the volume toggle.
- assert.match(player,/onClick=\{\(\)=>setPopup\(v=>v==='volume'\?null:'volume'\)\}/);
+ assert.match(dock,/onClick=\{\(\)=>setPopup\(v=>v==='volume'\?null:'volume'\)\}/);
  assert.match(css,/\.onece-player-volume > \.onece-player-icon \{ position: relative; z-index: 2; \}/);
  assert.match(css,/bottom: max\(32px, env\(safe-area-inset-bottom\)\)/);
  assert.doesNotMatch(css,/bottom:calc\(100% \+ 2px\)/);
  assert.match(css,/#a78bfa/);
+});
+
+test('one persistent audio owner delegates only dock rendering and owner-scoped waveform data',()=>{
+ assert.match(player,/<PlayerDockV2 current coverUrl waveBars/);
+ assert.equal((player.match(/createPortal\(<audio ref=\{audioRef\}/g)||[]).length,1);
+ assert.doesNotMatch(dock,/<audio\b|new Audio\(|useState\(|useEffect\(|createPortal\(/);
+ assert.match(waveform,/String\(ownerId\)\+':'\+String\(fileId\)/);
+ assert.match(waveform,/if\(waveCache.size>=16\)/);
+ assert.match(waveform,/if\(context&&context.state!=='closed'\)await context.close\(\)/);
+ assert.match(player,/useWaveform\(current\?\.audio_file_id/);
+ assert.match(player,/loadWaveform\(b.audio_file_id,userId\)/);
 });
