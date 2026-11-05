@@ -149,3 +149,38 @@ test('another account cannot rename, recolor or attach to the owner pack',async(
  assert.equal(db.calls.some(c=>/^(UPDATE|INSERT|DELETE) library_/.test(c.sql)),false);
  assert.ok(db.calls.filter(c=>c.sql==='ROLLBACK').length>=3);
 });
+
+test('owner can attach ready private stems to an original beat, with no media copy',async()=>{
+ const db=fixture();
+ const response=await invoke(db,'PATCH','beat/'+beat,{stemsFileId:100});
+ assert.equal(response.status,200);
+ const check=db.calls.find(c=>c.sql.includes("kind='stems' AND status='ready'"));
+ assert.deepEqual(check.args,[100,1]);
+ const change=db.calls.find(c=>c.sql.startsWith('UPDATE library_beats SET stems_file_id='));
+ assert.ok(change);
+ assert.deepEqual(change.args,[100,beat,1]);
+ assert.ok(change.sql.includes('RETURNING id,title,cover_file_id,stems_file_id'));
+ assert.equal(db.calls.some(c=>c.sql.startsWith('INSERT INTO library_files')),false);
+ assert.equal(db.calls.at(-2).sql,'COMMIT');
+});
+test('stems changes reject wrong kind, invalid IDs and foreign/unready objects',async()=>{
+ const db=fixture();
+ for(const body of [{stemsFileId:0},{stemsFileId:1.5},{stemsFileId:'42'},{stemsFileId:undefined},{title:'X',stemsFileId:100}]){
+  assert.equal((await invoke(db,'PATCH','beat/'+beat,body)).status,400);
+ }
+ assert.equal((await invoke(db,'PATCH','pack/'+pack,{stemsFileId:100})).status,400);
+ assert.equal(db.calls.some(c=>c.sql.startsWith('UPDATE library_')&&c.sql.includes('stems_file_id')),false);
+ const foreign=fixture({badCover:true});
+ assert.equal((await invoke(foreign,'PATCH','beat/'+beat,{stemsFileId:100})).status,400);
+ assert.equal(foreign.calls.some(c=>c.sql.startsWith('UPDATE library_')),false);
+ const other=fixture({missing:true});
+ assert.equal((await invoke(other,'PATCH','beat/'+beat,{stemsFileId:100})).status,404);
+});
+test('owner can detach stems without deleting original R2 bytes',async()=>{
+ const db=fixture();
+ const response=await invoke(db,'PATCH','beat/'+beat,{stemsFileId:null});
+ assert.equal(response.status,200);
+ const update=db.calls.find(c=>c.sql.startsWith('UPDATE library_beats SET stems_file_id='));
+ assert.deepEqual(update.args,[null,beat,1]);
+ assert.equal(db.calls.some(c=>c.sql.startsWith('DELETE FROM library_files')),false);
+});
