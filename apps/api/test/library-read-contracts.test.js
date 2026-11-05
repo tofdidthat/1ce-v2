@@ -181,3 +181,67 @@ test('invalid byte range and invalid read route do not stream objects',async()=>
  assert.deepEqual(missing.body(),{error:'Not found'});
  assert.equal(f.storageCommands.length,0);
 });
+
+test('malformed media paths and cross-kind/foreign IDs fail closed before S3 access',async()=>{
+ const f=fixture();
+ for(const path of [
+  '/api/library/files/cover/nope',
+  '/api/library/files/audio/0',
+  '/api/library/files/audio/garbage',
+  '/api/library/files/stems/-1',
+  '/api/library/files/beat/not-a-uuid',
+  '/api/library/files/pack-tracks/not-a-uuid',
+  '/api/library/files/pack-tracks/\\%00'
+ ]){
+  const result=await f.invoke(path);
+  assert.equal(result.handled,true,path);
+  assert.equal(result.status,404,path);
+  assert.equal(result.headers['Cache-Control'],'no-store',path);
+ }
+ for(const path of [
+  '/api/library/files/audio/12', // owned cover, not audio
+  '/api/library/files/cover/11', // owned audio, not cover
+  '/api/library/files/audio/14', // owned upload not yet READY
+  '/api/library/files/audio/21'  // other owner's ready audio
+ ]){
+  const result=await f.invoke(path);
+  assert.equal(result.status,404,path);
+ }
+ assert.equal(f.storageCommands.length,0,'Invalid, unready and foreign files never trigger private R2 reads');
+});
+
+test('owner stems remain original and private; other accounts cannot read a READY file by guessing its ID',async()=>{
+ const f=fixture();
+ const stems=await f.invoke('/api/library/files/stems/13');
+ assert.equal(stems.status,200);
+ assert.deepEqual(stems.bytes,original);
+ assert.equal(stems.headers['Cache-Control'],'private, no-store');
+ const count=f.storageCommands.length;
+ assert.equal((await f.invoke('/api/library/files/stems/13',{viewer:ownerB})).status,404);
+ assert.equal((await f.invoke('/api/library/files/audio/11',{viewer:ownerB})).status,404);
+ assert.equal((await f.invoke('/api/library/files/cover/12',{viewer:ownerB})).status,404);
+ assert.equal(f.storageCommands.length,count);
+ const foreignOwner=await f.invoke('/api/library/files/audio/21',{viewer:ownerB});
+ assert.equal(foreignOwner.status,200,'The original file owner retains authorized access');
+ assert.equal(f.storageCommands.length,count+1);
+ assert.ok(f.storageCommands.every(c=>c.kind==='GetObjectCommand'),'Read routes must never PUT, copy or delete objects');
+});
+
+test('JSON responses preserve no-store and content type on empty or denied metadata',async()=>{
+ const f=fixture();
+ for(const [path,viewer,status] of [
+  ['/api/library/files/items',ownerA,200],
+  ['/api/library/files/items',null,401],
+  ['/api/library/files/beat/'+beatB,ownerA,404],
+  ['/api/library/files/pack-tracks/'+packA,ownerB,200],
+  ['/api/library/files',ownerB,200],
+  ['/api/library/files/unknown',ownerA,404]
+ ]){
+  const result=await f.invoke(path,{viewer});
+  assert.equal(result.status,status,path);
+  assert.equal(result.headers['Content-Type'],'application/json; charset=utf-8',path);
+  assert.equal(result.headers['Cache-Control'],'no-store',path);
+  assert.notEqual(result.body(),null,path);
+ }
+ assert.equal(f.storageCommands.length,0,'Metadata routes must not fetch media');
+});
