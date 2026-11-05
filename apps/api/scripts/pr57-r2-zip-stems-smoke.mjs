@@ -9,8 +9,11 @@ import {S3Client,PutObjectCommand,HeadObjectCommand,CopyObjectCommand,
 import {getSignedUrl} from '@aws-sdk/s3-request-presigner';
 import {zipArchiveV2,safeZipSegmentV2} from '../../web/src/zip-archive-v2.ts';
 
-const {R2_SMOKE_ACCOUNT_ID:account,R2_SMOKE_KEY_ID:key,
- R2_SMOKE_SECRET:secret,R2_SMOKE_BUCKET:bucket}=process.env;
+// Read-Host input may contain accidental leading/trailing whitespace.
+const account=process.env.R2_SMOKE_ACCOUNT_ID?.trim(),
+ key=process.env.R2_SMOKE_KEY_ID?.trim(),
+ secret=process.env.R2_SMOKE_SECRET?.trim(),
+ bucket=process.env.R2_SMOKE_BUCKET?.trim();
 if(!account||!key||!secret||!bucket||!/^onece-s2-smoke-[a-z0-9-]+$/.test(bucket))
  throw Error('Use dedicated R2_SMOKE_* credentials and an isolated onece-s2-smoke-* bucket');
 if(bucket===process.env.R2_BUCKET_NAME)
@@ -22,6 +25,10 @@ const prefix='pr57-smoke/'+randomUUID()+'/';
 const uploaded=new Set();
 const sha256=data=>createHash('sha256').update(data).digest('hex');
 const insist=(truth,message)=>{if(!truth)throw Error(message);};
+function r2ErrorCode(xml){
+ // Never print presigned URLs, authorization headers, credentials or request dumps.
+ return /<Code>([A-Za-z][A-Za-z0-9]*)<\/Code>/.exec(xml)?.[1]||'UnknownR2Error';
+}
 async function blobBytes(blob){return Buffer.from(await blob.arrayBuffer());}
 function validWav(freq){
  const rate=16000,frames=3200,out=Buffer.alloc(44+frames*2);
@@ -41,13 +48,17 @@ async function read(key,range){
 }
 async function putAndVerify(name,original,mime){
  const staging=prefix+'staging/'+name,ready=prefix+'verified/'+name;
- uploaded.add(staging);
  const signed=await getSignedUrl(client,new PutObjectCommand({
   Bucket:bucket,Key:staging,ContentType:mime,ContentLength:original.length
  }),{expiresIn:120});
  const put=await fetch(signed,{method:'PUT',headers:{'Content-Type':mime},
   body:original,signal:AbortSignal.timeout(30000)});
- insist(put.ok,'Signed PUT failed for '+name+': '+put.status);
+ if(!put.ok){
+  const code=r2ErrorCode(await put.text().catch(()=>''));
+  throw Error('Signed PUT failed for '+name+': HTTP '+put.status+' '+code+
+   ' (check R2 account ID, matching S3 access/secret key and bucket permissions; no production data used)');
+ }
+ uploaded.add(staging);
  const head=await client.send(new HeadObjectCommand({Bucket:bucket,Key:staging}));
  insist(Number(head.ContentLength)===original.length,'R2 HEAD size mismatch for '+name);
  insist(head.ContentType===mime,'R2 HEAD MIME mismatch for '+name);
@@ -103,11 +114,10 @@ try{
   {name:'bass.wav',body:new Blob([validWav(180)])}
  ]));
  insist(storedZip(stemsOriginal).size===2,'Local stems ZIP not readable');
- const [r1,r2,rs]=await Promise.all([
-  putAndVerify('beat-one.wav',beat1,'audio/wav'),
-  putAndVerify('beat-two.wav',beat2,'audio/wav'),
-  putAndVerify('stems.zip',stemsOriginal,'application/zip')
- ]);
+ // Sequential writes guarantee that cleanup cannot race pending uploads.
+ const r1=await putAndVerify('beat-one.wav',beat1,'audio/wav');
+ const r2=await putAndVerify('beat-two.wav',beat2,'audio/wav');
+ const rs=await putAndVerify('stems.zip',stemsOriginal,'application/zip');
  // A leaked staging PUT URL must NOT be able to modify verified final bytes.
  const replacement=Buffer.alloc(stemsOriginal.length,0x52);
  const overwrite=await fetch(rs.signed,{method:'PUT',
