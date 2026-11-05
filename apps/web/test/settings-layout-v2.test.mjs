@@ -12,8 +12,8 @@ test('Settings keeps original account operations within the wider reference-base
  assert.match(css,/gap:58px/);
  assert.match(css,/border-radius:20px/);
  assert.match(css,/@media\(max-width:700px\)/);
- assert.match(settings,/className="onece-account-user-card"/);
- assert.match(settings,/className="onece-account-profile-card"/);
+ assert.match(settings,/className="onece-account-card onece-account-user-card"/);
+ assert.match(settings,/className="onece-account-card onece-account-profile-card"/);
  assert.match(settings,/onece-account-group-heading/);
  assert.match(settings,/onClick=\{onViewProfile\}/);
  assert.match(settings,/onClick=\{begin\}/);
