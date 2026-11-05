@@ -72,19 +72,8 @@
 }
 @media(max-width:420px){.onece-profile-project-info strong{font-size:12px}.onece-profile-project-info span{font-size:11px}}
 
-/* The profile uses HeaderV2's button geometry and behavior. In the desktop reference
-   its controls sit lower, with wider edge gutters and a slightly tighter pair.
-   Scope these overrides to Profile only; preserve HeaderV2's safe-area handling
-   and mobile placement on every other workspace page. */
-@media(min-width:681px){
- .onece-workspace-header.onece-profile-navbar{
-  padding-left:max(80px,env(safe-area-inset-left));
-  padding-right:max(80px,env(safe-area-inset-right));
- }
- .onece-workspace-header.onece-profile-navbar .onece-workspace-brand,
- .onece-workspace-header.onece-profile-navbar .onece-workspace-actions{transform:translateY(18px)}
- .onece-workspace-header.onece-profile-navbar .onece-profile-nav-actions{gap:8px}
-}
+/* HeaderV2 now owns desktop geometry for every workspace, including Profile.
+   Keep only profile-specific placement for the copy-link feedback popover. */
 .onece-profile-navbar .onece-profile-nav-actions { position:relative; }
 .onece-workspace-header.onece-profile-navbar .library-settings.onece-profile-nav-follow{
  flex:0 0 44px;width:44px;min-width:44px;height:44px;padding:0;
