@@ -10,7 +10,7 @@ const menu=read('project-context-menu-v2.tsx');
 const copyIcon=read('copy-link-icon-v2.tsx');
 const library=read('library-items-v2.tsx');
 
-test('profile retains HeaderV2 controls and independently matches the reference desktop placement',()=>{
+test('profile and all desktop workspaces use the approved shared HeaderV2 placement',()=>{
  assert.match(workspace,/<HeaderV2 view=\{view\} user=\{account\}/);
  assert.match(workspace,/\{view==='profile'\?null:<header className="onece-workspace-header"/);
  assert.match(profile,/<header className="onece-workspace-header onece-profile-navbar"/);
@@ -33,12 +33,15 @@ test('profile retains HeaderV2 controls and independently matches the reference 
  assert.match(workspace,/color: #aaa1b6/);
  assert.match(workspace,/width: 44px/);
  assert.match(workspace,/height: 44px/);
- // Desktop profile uses the reference-specific lower 44px controls and deeper
- // side gutters, without moving other workspaces or changing mobile geometry.
- assert.match(profileCss,/@media\(min-width:681px\)\{/);
- assert.match(profileCss,/\.onece-workspace-header\.onece-profile-navbar\{\s*padding-left:max\(80px,env\(safe-area-inset-left\)\);\s*padding-right:max\(80px,env\(safe-area-inset-right\)\)/);
- assert.match(profileCss,/\.onece-workspace-header\.onece-profile-navbar \.onece-workspace-brand,[\s\S]*?\.onece-workspace-header\.onece-profile-navbar \.onece-workspace-actions\{transform:translateY\(18px\)\}/);
- assert.match(profileCss,/\.onece-workspace-header\.onece-profile-navbar \.onece-profile-nav-actions\{gap:8px\}/);
+ // Approved desktop alignment is defined once in HeaderV2 (including the
+ // profile header), with the old mobile breakpoint unchanged.
+ assert.match(workspace,/@media \(min-width: 681px\) \{/);
+ assert.match(workspace,/padding-left: max\(80px, env\(safe-area-inset-left\)\)/);
+ assert.match(workspace,/padding-right: max\(80px, env\(safe-area-inset-right\)\)/);
+ assert.match(workspace,/\.onece-workspace-brand, \.onece-workspace-actions \{ transform: translateY\(18px\); \}/);
+ assert.match(workspace,/\.onece-workspace-actions \{ gap: 8px; \}/);
+ assert.doesNotMatch(profileCss,/\.onece-workspace-header\.onece-profile-navbar\s*\{[^}]*padding/);
+ assert.doesNotMatch(profileCss,/transform:translateY\(18px\)/);
  assert.doesNotMatch(profileCss,/max\(30px/);
  assert.doesNotMatch(profileCss,/background:#242328;color:#f5f3f7/);
  assert.match(profileCss,/\.onece-workspace-header\.onece-profile-navbar \.library-settings\.onece-profile-nav-follow/);
