@@ -373,3 +373,11 @@ A green TypeScript build, a passing source-pattern test and a visually correct s
 - At <=760px retain the v1-inspired three-row mobile layout with waveform stretching across its own row; a compact intermediate breakpoint avoids overflow on narrower laptops. The purple vertical Volume popup must still open upwards.
 - Eliminate duplicate `.onece-player-dock` and `.onece-global-player` declarations in `workspace-v1.css`; `library-items-v2.css` is the single player stylesheet. Audio decoding, seek, volume, order, queue identity, access permissions, R2, SQL, API and navigation routes remain unchanged.
 - This is a **visual/layout correction** with source-contract tests; CI and builds do not replace browser acceptance of desktop, laptop, and mobile spacing/seek/volume. No merge or deploy without explicit authorization.
+
+
+### Contextual Back arrow (2026-11-05)
+
+- The 1CE logo is the permanent Home shortcut. A top-left Back arrow adds no value when the route entry was reached directly from Home: hide it on World, Upload, Settings, and Profile in that case, while preserving the same logo position.
+- Internal navigation records the origin pathname in the browser history entry (`oneceFromPath`, via React Router state). For routes entered from other pages, retain the Back arrow and return to the preceding entry. Direct links/reloads without a known origin keep a fallback Back control to Home.
+- Public and own Profile use their existing shared navbar and Back callback; hiding the button does not modify Follow, Copy, Edit, user identity, player state, account access, project IDs, or authorization.
+- This UI-only change has no SQL, R2, media, uploads, or API changes. Requires CI and browser verification of Home → Settings/Profile/World and World → Profile/Settings, including browser Back/Forward and reloads. No merge/deploy without approval.
