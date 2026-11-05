@@ -8,6 +8,7 @@ import {acquireCompletionLease,releaseCompletionLease,promoteReadyWithLease,fail
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import {resolveAuthorizedMediaFile} from './project-media.js';
 import {streamAuthorizedAudio} from './audio-stream.js';
+import {isR2ReadableBody} from './r2-body.js';
 import type {IncomingMessage,ServerResponse} from 'node:http';
 import type {QueryableV2,DbQueryResultV2,MediaKindV2} from '../../../packages/shared/contracts.js';
 
@@ -31,6 +32,23 @@ type StoredPendingFileV2={
 };
 const isMediaKindV2=(value:unknown):value is MediaKindV2=>
  value==='audio'||value==='cover'||value==='stems';
+const validStoredFileId=(value:unknown):value is number|string=>
+ (typeof value==='number'&&Number.isSafeInteger(value)&&value>0)||
+ (typeof value==='string'&&/^[1-9][0-9]*$/.test(value)&&Number.isSafeInteger(Number(value)));
+const validStoredBytes=(value:unknown):value is number|string=>
+ (typeof value==='number'&&Number.isSafeInteger(value)&&value>0)||
+ (typeof value==='string'&&/^[1-9][0-9]*$/.test(value));
+function decodePendingUploadRow(value:unknown,ownerId:number):StoredPendingFileV2{
+ if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Invalid pending upload metadata');
+ const row=value as Record<string,unknown>;
+ if(!validStoredFileId(row.id)||!isMediaKindV2(row.kind)||
+  typeof row.sha256!=='string'||!/^[0-9a-f]{64}$/i.test(row.sha256)||
+  typeof row.object_key!=='string'||!row.object_key.startsWith('staging/users/'+ownerId+'/assets/'+row.kind+'/')||
+  typeof row.content_type!=='string'||!row.content_type||!validStoredBytes(row.byte_size)||row.status!=='pending')
+  throw Error('Invalid pending upload metadata');
+ return {id:row.id,kind:row.kind,sha256:row.sha256,object_key:row.object_key,
+  content_type:row.content_type,byte_size:row.byte_size,status:'pending'};
+}
 
 const limits:Record<MediaKindV2,number>={audio:150*1024*1024,cover:15*1024*1024,stems:250*1024*1024};
 const types:Record<MediaKindV2,Record<string,readonly string[]>>={
@@ -53,7 +71,10 @@ function client():S3Client|null{
 const send=(res:ServerResponse,status:number,data:unknown):void=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data));};
 async function bodyJSON(req:IncomingMessage):Promise<Record<string,unknown>|null>{
  let raw='';for await(const chunk of req){raw+=chunk;if(raw.length>8192)throw new Error('Request too large');}
- try{return JSON.parse(raw) as Record<string,unknown>|null}catch{throw new Error('Invalid JSON');}
+ try{
+  const value:unknown=JSON.parse(raw);
+  return value!==null&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:null;
+ }catch{throw new Error('Invalid JSON');}
 }
 // Optional dependencies are for request-level regression tests; in production
 // the exact same private R2 client and presigner are used as before.
@@ -158,8 +179,9 @@ export async function handleLibraryFiles(
   const file=await resolveAuthorizedMediaFile(pool,{ownerId:user.id,viewerId:user.id,fileId:id,kind:'cover'});
   if(!file){send(res,404,{error:'Cover not found'});return true;}
   const object=await s3.send(new GetObjectCommand({Bucket:cfg.bucket,Key:file.object_key}));
+  if(!isR2ReadableBody(object.Body)){send(res,503,{error:'Storage unavailable'});return true;}
   res.writeHead(200,{'Content-Type':file.content_type,'Cache-Control':'private, max-age=300','X-Content-Type-Options':'nosniff'});
-  for await(const chunk of (object.Body as AsyncIterable<Uint8Array>))res.write(chunk);
+  for await(const chunk of object.Body)res.write(chunk);
   res.end();return true;
  }
  if(req.method==='GET'&&segments.length===3){
@@ -218,10 +240,15 @@ export async function handleLibraryFiles(
  if(req.method==='POST'&&segments.length===5&&segments[4]==='complete'&&/^\d+$/.test(segments[3])){
   const id=segments[3];
   const q=await pool.query('SELECT id,kind,sha256,object_key,content_type,byte_size,status FROM library_files WHERE id=$1 AND user_id=$2',[id,user.id]);
-  const file=q.rows[0] as unknown as StoredPendingFileV2|undefined;
-  if(!file){send(res,404,{error:'File not found'});return true;}
-  if(file.status==='ready'){send(res,200,{ok:true,id:file.id});return true;}
-  if(file.status!=='pending'){send(res,409,{error:'Invalid upload state'});return true;}
+  const rawFile=q.rows[0];
+  if(!rawFile){send(res,404,{error:'File not found'});return true;}
+  if(rawFile.status==='ready'){
+   if(!validStoredFileId(rawFile.id))throw Error('Invalid ready upload metadata');
+   send(res,200,{ok:true,id:rawFile.id});return true;
+  }
+  if(rawFile.status!=='pending'){send(res,409,{error:'Invalid upload state'});return true;}
+  // Corrupt staging metadata must not acquire a completion lease or reach R2.
+  const file=decodePendingUploadRow(rawFile,user.id);
   if(await rateLimitExceeded(pool,'upload-complete',user.id,uploadLimits.completePerHour,60)){
    send(res,429,{error:'Upload completion rate limit reached'});return true;
   }

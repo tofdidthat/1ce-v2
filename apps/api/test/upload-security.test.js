@@ -170,3 +170,11 @@ test('R2 that ignores byte ranges fails closed during central-directory verifica
   InvalidMedia
  );
 });
+
+test('R2 verification rejects a missing or malformed stream body before reading bytes',async()=>{
+ const bytes=zip();
+ for(const body of [null,{}, {destroy:'invalid',[Symbol.asyncIterator]:async function*(){yield bytes;}}]){
+  const s3={async send(){return {Body:body,ContentLength:bytes.length};}};
+  await assert.rejects(()=>verifyUploadedObject({s3,bucket:'mock',key:'invalid',file:file(bytes)}),VerificationUnavailable);
+ }
+});

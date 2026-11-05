@@ -4,15 +4,13 @@ import {createHash} from 'node:crypto';
 import {GetObjectCommand} from '@aws-sdk/client-s3';
 import type {S3Client} from '@aws-sdk/client-s3';
 import type {MediaKindV2} from '../../../packages/shared/contracts.js';
+import {isR2ReadableBody,type R2ReadableBody} from './r2-body.js';
 
 type StoredUploadV2={
  kind:MediaKindV2;
  content_type:string;
  byte_size:number|string;
  sha256:string;
-};
-type ReadableR2Body=AsyncIterable<Uint8Array>&{
- destroy?:(error?:Error)=>unknown;
 };
 type ReadOptions={
  range?:string;
@@ -51,11 +49,11 @@ async function readObject(s3:S3Client,bucket:string,key:string,{range,maxBytes,t
  const controller=new AbortController();
  const timer=setTimeout(()=>controller.abort(new Error('R2 verification deadline exceeded')),timeoutMs);
  // Keep the deadline referenced so stalled streams cannot outlive the verifier.
- let body:ReadableR2Body|undefined;
+ let body:R2ReadableBody|undefined;
  try{
   const object=await s3.send(new GetObjectCommand({Bucket:bucket,Key:key,...(range?{Range:range}: {})}),{abortSignal:controller.signal});
-  body=object.Body as unknown as ReadableR2Body|undefined;
-  if(!body||typeof body[Symbol.asyncIterator]!=='function')throw new VerificationUnavailable('R2 did not provide a readable body');
+  if(!isR2ReadableBody(object.Body))throw new VerificationUnavailable('R2 did not provide a readable body');
+  body=object.Body;
   if(Number.isFinite(Number(object.ContentLength))&&Number(object.ContentLength)>maxBytes)
    throw new InvalidMedia('R2 response exceeds the permitted size');
   const stop=()=>body?.destroy?.(new Error('R2 verification deadline exceeded'));
