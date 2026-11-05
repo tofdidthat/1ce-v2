@@ -381,3 +381,12 @@ A green TypeScript build, a passing source-pattern test and a visually correct s
 - Internal navigation records the origin pathname in the browser history entry (`oneceFromPath`, via React Router state). For routes entered from other pages, retain the Back arrow and return to the preceding entry. Direct links/reloads without a known origin keep a fallback Back control to Home.
 - Public and own Profile use their existing shared navbar and Back callback; hiding the button does not modify Follow, Copy, Edit, user identity, player state, account access, project IDs, or authorization.
 - This UI-only change has no SQL, R2, media, uploads, or API changes. Requires CI and browser verification of Home → Settings/Profile/World and World → Profile/Settings, including browser Back/Forward and reloads. No merge/deploy without approval.
+
+
+### 2026-11-05 — logo-only header on World, Upload, Settings
+
+- On World (`discover`), Upload, and Settings (`account`), **always render only the clickable 1CE logo at the top-left**, regardless of prior navigation route, direct deep link or reload; remove the redundant Back arrow for these three workspace views. The logo continues navigating to Home.
+- Preserve the header's right-side Profile and shared navigation buttons, including hover, keyboard, click and mobile behavior; preserve existing logo geometry and the persistent player.
+- Home already uses logo-only on the left; Profile has its own header and retains contextual Back behavior from PR #54; the independent `edit-profile` placeholder route may retain contextual Back when applicable.
+- Keep the `oneceFromPath` origin tracking for contextual Profile behavior and browser history; only change the left workspace header arrow visibility. No API, R2, database, auth, upload or playback changes.
+- This is a UI-only regression fix. Confirm builds and tests before merge, then verify actual Vercel deployment and browser navigation.
