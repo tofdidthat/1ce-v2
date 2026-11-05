@@ -1,5 +1,6 @@
 // 1CE v2 private library. Never requests v1 data.
 import React,{useEffect,useMemo,useRef,useState} from 'react';
+import {createPortal} from 'react-dom';
 import {Play,Pause,SkipBack,SkipForward,Shuffle,Repeat,Repeat1,ListMusic,Volume2,VolumeX,X,Music2,ChevronLeft,Bookmark,Eye,EyeOff,ListPlus,FolderPlus,Pencil,Image as ImageIcon,Download,Layers,Trash2,ChevronRight,Link2} from 'lucide-react';
 import './library-items-v2.css';
 import {subscribeV2DataChanges,subscribeV2Resume} from './data-refresh-v2';
@@ -10,6 +11,7 @@ import ProjectCardV2 from './project-card-v2';
 import {normalizeLibraryProjectsV2,normalizePackTracksV2,type LibraryBeatV2,type LibraryPackV2,type LibraryProjectsV2} from './project-read-v2';
 import {createProjectShareLinkV2} from './project-requests-v2';
 import {fetchPlayableProjectV2} from './public-project-actions-v2';
+import {appendDistinctQueueV2,upcomingQueueV2,queueTrackKeyV2,tracksFromPlayableProjectV2,type PlaybackQueueTrackV2} from './playback-queue-v2';
 import ProjectActionDialogV2,{type ContextProject,type ProjectAction,type ChangedProject} from './project-action-dialog-v2';
 const api=import.meta.env.VITE_API_URL;
 type BeatItem = LibraryBeatV2;
@@ -85,8 +87,8 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
   wasActive.current=active;
  },[active]);
  const [loading,setLoading]=useState(true);
- const [current,setCurrent]=useState<BeatItem|null>(null);
- const currentRef=useRef<BeatItem|null>(null);
+ const [current,setCurrent]=useState<PlaybackQueueTrackV2|null>(null);
+ const currentRef=useRef<PlaybackQueueTrackV2|null>(null);
  currentRef.current=current;
  const [openedPack,setOpenedPack]=useState<PackItem|null>(null);
  const [openedTracks,setOpenedTracks]=useState<BeatItem[]>([]);
@@ -103,6 +105,9 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
   packRequest.current?.abort();
   setOpenedPack(null);setOpenedTracks([]);setOpenedBeat(null);
   setContextBeat(null);setContextPack(null);setActionDialog(null);
+  // Account switching must clear old private audio and queue state.
+  audioRef.current?.pause();setCurrent(null);setQueue([]);setPlaying(false);
+  setActivePackId(null);setPopup(null);setPlayerError('');
  },[userId]);
  const showProjectAction=(action:ProjectAction,project:ContextProject)=>{
   setContextBeat(null);setContextPack(null);setActionDialog({action,project});
@@ -202,7 +207,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
  useEffect(()=>{if(!openedBeat)return;const close=(event:KeyboardEvent)=>{if(event.key==='Escape')setOpenedBeat(null)};document.addEventListener('keydown',close);return()=>document.removeEventListener('keydown',close)},[openedBeat]);
 
  const waveBars=useWaveform(current?.audio_file_id??null,current?.owner_id??userId??null);
- const [queue,setQueue]=useState<BeatItem[]>([]);
+ const [queue,setQueue]=useState<PlaybackQueueTrackV2[]>([]);
  const [playing,setPlaying]=useState(false);
  const [activePackId,setActivePackId]=useState<string|null>(null);
  const [elapsed,setElapsed]=useState(0);
@@ -221,19 +226,19 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
  useEffect(()=>{const audio=audioRef.current;if(!audio||!current)return;audio.load();audio.play().then(()=>setPlaying(true)).catch(()=>{setPlaying(false);setPlayerError('Unable to play audio')})},[current?.owner_id,current?.id,current?.audio_file_id]);
  const toggle=()=>{const a=audioRef.current;if(!a)return;if(a.paused)a.play().then(()=>setPlaying(true)).catch(()=>setPlayerError('Unable to play audio'));else{a.pause();setPlaying(false)}};
  const choose=(beat:BeatItem,list:BeatItem[],packId:string|null=null)=>{
-  const tracks=list.map(item=>({...item,owner_id:item.owner_id??userId}));
-  const selected=tracks.find(item=>item.id===beat.id&&item.owner_id===(beat.owner_id??userId))||{...beat,owner_id:beat.owner_id??userId};
+  const tracks:PlaybackQueueTrackV2[]=list.map(item=>({...item,queue_pack_id:packId}));
+  const selected=tracks.find(item=>item.id===beat.id&&item.owner_id===beat.owner_id)||{...beat,queue_pack_id:packId};
   setPlayerError('');
   if(current?.id===selected.id&&current?.owner_id===selected.owner_id&&activePackId===packId){toggle();return;}
-  setActivePackId(packId);setQueue(tracks);setElapsed(0);setDuration(0);setCurrent(selected);
+  setActivePackId(packId);setQueue(appendDistinctQueueV2([],tracks));setElapsed(0);setDuration(0);setCurrent(selected);
  };
  const addToQueue=(beat:BeatItem)=>{
   if(!current){choose(beat,[beat])}
-  else setQueue(previous=>[...previous,{...beat,owner_id:beat.owner_id??userId}]);
+  else setQueue(previous=>appendDistinctQueueV2(previous,[{...beat,queue_pack_id:null}]));
   setContextBeat(null);
  };
- const next=()=>{if(!current)return;if(repeat==='one'){if(audioRef.current){audioRef.current.currentTime=0;audioRef.current.play().catch(()=>{})}return;}const index=queue.findIndex(b=>b.id===current.id&&b.owner_id===current.owner_id);const target=shuffle&&queue.length>1?queue.filter(b=>b.id!==current.id||b.owner_id!==current.owner_id)[Math.floor(Math.random()*(queue.length-1))]:queue[index+1]||(repeat==='all'?queue[0]:null);if(target){setCurrent(target);setElapsed(0)}else{setPlaying(false)}};
- const previous=()=>{if(!current)return;const index=queue.findIndex(b=>b.id===current.id&&b.owner_id===current.owner_id);if(index>0){setCurrent(queue[index-1]);setElapsed(0)}else if(audioRef.current)audioRef.current.currentTime=0};
+ const next=()=>{if(!current)return;if(repeat==='one'){if(audioRef.current){audioRef.current.currentTime=0;audioRef.current.play().catch(()=>{})}return;}const index=queue.findIndex(b=>b.id===current.id&&b.owner_id===current.owner_id);const target=shuffle&&queue.length>1?queue.filter(b=>b.id!==current.id||b.owner_id!==current.owner_id)[Math.floor(Math.random()*(queue.length-1))]:queue[index+1]||(repeat==='all'?queue[0]:null);if(target){setCurrent(target);setActivePackId(target.queue_pack_id??null);setElapsed(0)}else{setPlaying(false)}};
+ const previous=()=>{if(!current)return;const index=queue.findIndex(b=>b.id===current.id&&b.owner_id===current.owner_id);if(index>0){setCurrent(queue[index-1]);setActivePackId(queue[index-1].queue_pack_id??null);setElapsed(0)}else if(audioRef.current)audioRef.current.currentTime=0};
  const playPack=async(p:PackItem)=>{if(activePackId===p.id&&current){toggle();return;}try{setPlayerError('');const response=await fetch(api+'/api/library/files/pack-tracks/'+p.id,{credentials:'include'});if(!response.ok)throw Error('Unable to load pack');const result=await response.json();const beats=normalizePackTracksV2(result,p);if(beats[0])void loadWaveform(beats[0].audio_file_id,userId!).catch(()=>{});if(!beats.length)throw Error('Pack has no playable beats');choose(beats[0],beats,p.id)}catch(e){setPlayerError(e instanceof Error?e.message:'Unable to load pack')}};
 
  // A Profile/Catalog/Saves play request resolves the original owner's project.
@@ -248,13 +253,9 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
   setPlayerError('');
   void (async()=>{
    try{
-    const response=await fetch(api+'/api/public/play/'+ownerId+'/'+kind+'/'+id,{credentials:'include',signal:controller.signal});
-    const result=await response.json().catch(()=>({}));
-    if(!response.ok)throw Error(result.error||'Project unavailable for playback');
-    const project=result.project;
-    const tracks=normalizeLibraryProjectsV2({beats:project?.tracks},ownerId).beats.map(beat=>({
-     ...beat,cover_file_id:beat.cover_file_id??project.cover_file_id??null
-    }));
+    // Home and Profile share the validated, server-authorized playback manifest.
+    const project=await fetchPlayableProjectV2(ownerId,kind,id,controller.signal);
+    const tracks=tracksFromPlayableProjectV2(project);
     if(!tracks.length)throw Error('Project has no playable audio');
     if(!controller.signal.aborted)choose(tracks[0],tracks,kind==='pack'?id:null);
    }catch(error){if(!controller.signal.aborted)setPlayerError(error instanceof Error?error.message:'Unable to play this project');}
@@ -271,13 +272,11 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
   void (async()=>{
    try{
     const project=await fetchPlayableProjectV2(ownerId,kind,id,controller.signal);
-    const tracks=normalizeLibraryProjectsV2({beats:project.tracks},ownerId).beats.map(beat=>({
-     ...beat,cover_file_id:beat.cover_file_id??project.cover_file_id
-    }));
+    const tracks=tracksFromPlayableProjectV2(project).map(beat=>({...beat,queue_pack_id:kind==='pack'?id:null}));
     if(!tracks.length)throw Error('No playable tracks to queue');
     if(controller.signal.aborted)return;
     if(!currentRef.current){choose(tracks[0],tracks,kind==='pack'?id:null);}
-    else setQueue(previous=>[...previous,...tracks]);
+    else setQueue(previous=>appendDistinctQueueV2(previous,tracks));
    }catch(error){
     if(!controller.signal.aborted)setPlayerError(error instanceof Error?error.message:'Unable to add to queue');
    }
@@ -341,7 +340,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
     </div>}
    </div>}
  </div></div>
- {contextPack&&<ProjectContextMenuV2 project={{...contextPack.pack,kind:'pack'}} x={contextPack.x} y={contextPack.y} owner published={published.has(publicationKey('pack',contextPack.pack.id))} saved={savedPackIds.has(contextPack.pack.id)} onPublish={flagsStatus==='ready'?()=>void togglePublish('pack',contextPack.pack.id):undefined} onSave={flagsStatus==='ready'?()=>{const id=contextPack.pack.id;setContextPack(null);void toggleSavedProject('pack',id)}:undefined} onShare={()=>void copyProjectLink('pack',contextPack.pack.id)} onQueue={()=>{const pack=contextPack.pack;setContextPack(null);void (async()=>{try{const response=await fetch(api+'/api/library/files/pack-tracks/'+pack.id,{credentials:'include'});if(!response.ok)throw Error('Unable to load pack tracks');const result=await response.json();const tracks=normalizePackTracksV2(result,pack);if(!tracks.length)return;if(!current)choose(tracks[0],tracks,pack.id);else setQueue(previous=>[...previous,...tracks])}catch(error){setPlayerError(error instanceof Error?error.message:'Unable to add pack to queue')}})()}} onAction={action=>showProjectAction(action,{...contextPack.pack,kind:'pack'})}/>}
+ {contextPack&&<ProjectContextMenuV2 project={{...contextPack.pack,kind:'pack'}} x={contextPack.x} y={contextPack.y} owner published={published.has(publicationKey('pack',contextPack.pack.id))} saved={savedPackIds.has(contextPack.pack.id)} onPublish={flagsStatus==='ready'?()=>void togglePublish('pack',contextPack.pack.id):undefined} onSave={flagsStatus==='ready'?()=>{const id=contextPack.pack.id;setContextPack(null);void toggleSavedProject('pack',id)}:undefined} onShare={()=>void copyProjectLink('pack',contextPack.pack.id)} onQueue={()=>{const pack=contextPack.pack;setContextPack(null);void (async()=>{try{const response=await fetch(api+'/api/library/files/pack-tracks/'+pack.id,{credentials:'include'});if(!response.ok)throw Error('Unable to load pack tracks');const result=await response.json();const tracks=normalizePackTracksV2(result,pack);if(!tracks.length)return;if(!current)choose(tracks[0],tracks,pack.id);else setQueue(previous=>appendDistinctQueueV2(previous,tracks.map(beat=>({...beat,queue_pack_id:pack.id}))))}catch(error){setPlayerError(error instanceof Error?error.message:'Unable to add pack to queue')}})()}} onAction={action=>showProjectAction(action,{...contextPack.pack,kind:'pack'})}/>}
  {contextBeat&&<ProjectContextMenuV2 project={{...contextBeat.beat,kind:'beat'}} x={contextBeat.x} y={contextBeat.y} owner published={published.has(publicationKey('beat',contextBeat.beat.id))} saved={savedBeatIds.has(contextBeat.beat.id)} onPublish={flagsStatus==='ready'?()=>void togglePublish('beat',contextBeat.beat.id):undefined} onSave={flagsStatus==='ready'?()=>{const id=contextBeat.beat.id;setContextBeat(null);void toggleSavedProject('beat',id)}:undefined} onShare={()=>void copyProjectLink('beat',contextBeat.beat.id)} onQueue={()=>addToQueue(contextBeat.beat)} onAction={action=>showProjectAction(action,{...contextBeat.beat,kind:'beat'})}/>}
  {actionDialog&&<ProjectActionDialogV2
   key={actionDialog.action+':'+actionDialog.project.kind+':'+actionDialog.project.id}
@@ -368,7 +367,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
    </div>
   </div>
  </div>}
- {current&&<div className="onece-player-dock v2-active-player" aria-label="Audio player">
+ {current&&createPortal(<div className="onece-player-dock v2-active-player" aria-label="Audio player">
   <div className="onece-global-player">
    <div className="onece-player-cover" aria-hidden="true">{coverUrl?<img src={coverUrl} alt=""/>:<Music2 size={20}/>}</div>
    <div className="onece-player-meta"><span className="onece-player-title" title={current.title}>{current.title}</span><span className="onece-player-author">1CE</span></div>
@@ -383,7 +382,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
     <button type="button" className="onece-player-icon" title="Next" aria-label="Next" disabled={queue.length<2&&repeat!=='all'} onClick={next}><V1SkipForward/></button>
     <button type="button" className={'onece-player-icon'+(shuffle?' is-active':'')} title="Shuffle" aria-label="Shuffle" aria-pressed={shuffle} onClick={()=>setShuffle(v=>!v)}><Shuffle/></button>
     <button type="button" className={'onece-player-icon'+(repeat!=='off'?' is-active':'')} title={'Repeat: '+repeat} aria-label="Repeat" aria-pressed={repeat!=='off'} onClick={()=>setRepeat(v=>v==='off'?'all':v==='all'?'one':'off')}>{repeat==='one'?<Repeat1/>:<Repeat/>}</button>
-    <button type="button" className={'onece-player-icon onece-player-queue'+(popup==='queue'?' is-active':'')} title="Playback queue" aria-label="Playback queue" aria-expanded={popup==='queue'} onClick={()=>setPopup(v=>v==='queue'?null:'queue')}><ListMusic/>{queue.length>1&&<span className="onece-queue-count">{queue.length}</span>}</button>
+    <button type="button" className={'onece-player-icon onece-player-queue'+(popup==='queue'?' is-active':'')} title="Playback queue" aria-label="Playback queue" aria-expanded={popup==='queue'} onClick={()=>setPopup(v=>v==='queue'?null:'queue')}><ListMusic/>{upcomingQueueV2(queue,current).length>0&&<span className="onece-queue-count">{upcomingQueueV2(queue,current).length}</span>}</button>
     <div className="onece-player-volume">
      <button type="button" className={'onece-player-icon'+(popup==='volume'?' is-active':'')} title="Volume" aria-label="Volume" aria-expanded={popup==='volume'} onClick={()=>setPopup(v=>v==='volume'?null:'volume')}>{muted||volume===0?<VolumeX/>:<Volume2/>}</button>
      {popup==='volume'&&<div className="onece-volume-popup v2-volume-popup" role="group" aria-label="Volume control"><div className="v2-volume-track"><input type="range" min="0" max="1" step="0.01" value={muted?0:volume} style={{'--volume-level':((muted?0:volume)*100)+'%'} as React.CSSProperties} onChange={e=>{setMuted(false);setVolume(Number(e.target.value))}} aria-label="Volume level" aria-orientation="vertical"/></div></div>}
@@ -391,10 +390,10 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
    </div>
   </div>
   {playerError&&<p className="onece-player-error" role="alert">{playerError}</p>}
-  {popup==='queue'&&<section className="onece-queue-popup" role="region" aria-label="Playback queue"><header><h2>Playback queue</h2><button type="button" className="onece-player-icon" aria-label="Close queue" onClick={()=>setPopup(null)}><X/></button></header><div className="onece-queue-current"><small>Now playing</small><p>{current.title}</p></div><ol>{queue.map((beat,index)=><li key={beat.id}><button type="button" className="onece-queue-track" onClick={()=>{setCurrent(beat);setPopup(null)}}><span>{String(index+1).padStart(2,'0')}</span><span>{beat.title}</span></button></li>)}</ol></section>}
- </div>}
- {playerError&&!current&&<p className="v2-player-error v2-player-notice" role="alert">{playerError}</p>}
- {current&&<audio ref={audioRef} crossOrigin="use-credentials" preload="metadata" src={api+'/api/public/audio/'+(current.owner_id??userId)+'/'+current.audio_file_id} onTimeUpdate={e=>setElapsed(e.currentTarget.currentTime)} onLoadedMetadata={e=>setDuration(Number.isFinite(e.currentTarget.duration)?e.currentTarget.duration:0)} onEnded={next} onPause={()=>setPlaying(false)} onPlay={()=>setPlaying(true)} onError={()=>{setPlaying(false);setPlayerError('Audio could not be loaded')}}/>}
+  {popup==='queue'&&<section className="onece-queue-popup" role="region" aria-label="Playback queue"><header><h2>Playback queue</h2><button type="button" className="onece-player-icon" aria-label="Close queue" onClick={()=>setPopup(null)}><X/></button></header><div className="onece-queue-current"><small>Now playing</small><p>{current.title}</p></div><ol>{upcomingQueueV2(queue,current).map((beat,index)=><li key={queueTrackKeyV2(beat)}><button type="button" className="onece-queue-track" onClick={()=>{setCurrent(beat);setActivePackId(beat.queue_pack_id??null);setElapsed(0);setPopup(null)}}><span>{String(index+1).padStart(2,'0')}</span><span>{beat.title}</span></button></li>)}</ol></section>}
+ </div>,document.body)}
+ {playerError&&!current&&createPortal(<p className="v2-player-error v2-player-notice" role="alert">{playerError}</p>,document.body)}
+ {current&&createPortal(<audio ref={audioRef} crossOrigin="use-credentials" preload="metadata" src={api+'/api/public/audio/'+(current.owner_id??userId)+'/'+current.audio_file_id} onTimeUpdate={e=>setElapsed(e.currentTarget.currentTime)} onLoadedMetadata={e=>setDuration(Number.isFinite(e.currentTarget.duration)?e.currentTarget.duration:0)} onEnded={next} onPause={()=>setPlaying(false)} onPlay={()=>setPlaying(true)} onError={()=>{setPlaying(false);setPlayerError('Audio could not be loaded')}}/>,document.body)}
  </section>;
 }
 

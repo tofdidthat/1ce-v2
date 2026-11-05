@@ -301,6 +301,8 @@ export default function WorkspaceV2({user,profileId}:{user:AccountUserV2|null;pr
  const [playback,setPlayback]=useState<{ownerId:number;kind:'beat'|'pack';id:string;playing:boolean}|null>(null);
  const requestPlayback=(ownerId:number,kind:'beat'|'pack',id:string)=>setPlayRequest(previous=>({ownerId,kind,id,nonce:(previous?.nonce||0)+1}));
  const requestQueue=(ownerId:number,kind:'beat'|'pack',id:string)=>setQueueRequest(previous=>({ownerId,kind,id,nonce:(previous?.nonce||0)+1}));
+ // Cancel stale cross-page commands when a different account signs in.
+ useEffect(()=>{setPlayRequest(null);setQueueRequest(null);setPlayback(null);},[account?.id]);
  const view:WorkspaceView=profileId?'profile':location.pathname==='/app/library'?'library':location.pathname.endsWith('/discover')?'discover':location.pathname.endsWith('/upload')?'upload':location.pathname.endsWith('/settings')?'account':location.pathname.endsWith('/profile/edit')?'edit-profile':'profile';
  // Keep up to three recent profile read-models mounted, but without offscreen
  // cards/image leases. The one Workspace cover cache supplies immediate URLs

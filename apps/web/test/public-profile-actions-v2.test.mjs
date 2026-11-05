@@ -18,7 +18,10 @@ test('queue appends authorized manifest tracks without replacing current audio',
  assert.ok(workspace.includes('queueRequest={queueRequest}'));
  assert.ok(workspace.includes('onQueueProject={requestQueue}'));
  assert.ok(player.includes('fetchPlayableProjectV2(ownerId,kind,id,controller.signal)'));
- assert.ok(player.includes('setQueue(previous=>[...previous,...tracks])'));
+ assert.ok(player.includes('setQueue(previous=>appendDistinctQueueV2(previous,tracks))'));
+ assert.ok(player.includes('tracksFromPlayableProjectV2(project)'));
+ assert.ok(player.includes('createPortal(<div className="onece-player-dock'));
+ assert.doesNotMatch(player,/setQueue\(previous=>\[\.\.\.previous,\.\.\.tracks\]\)/);
  assert.ok(player.includes('if(!currentRef.current)'));
 });
 test('other-user Copy link uses stable public profile route without private token',()=>{
