@@ -133,3 +133,13 @@ test('anonymous pack reads cannot query the database or access storage',async()=
  assert.equal(f.queries.length,0);
  assert.equal(f.storageCalls.length,0);
 });
+
+test('malformed 36-character pack UUIDs fail closed before PostgreSQL type casts',async()=>{
+ const f=fixture();
+ const malformed='f'.repeat(36); // Old loose ID check sent this to UUID casts (500).
+ const response=await f.invoke(malformed);
+ assert.equal(response.status,404);
+ assert.deepEqual(response.body,{error:'Not found'});
+ assert.equal(f.queries.length,0,'No SQL must receive an invalid pack UUID');
+ assert.equal(f.storageCalls.length,0);
+});
