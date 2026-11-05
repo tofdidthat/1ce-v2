@@ -17,7 +17,10 @@
 | --- | --- |
 | Frontend routes and session entry | `apps/web/src/main.tsx` |
 | Workspace, Home, World, upload views | `apps/web/src/workspace-v1.tsx`, `world-v2.tsx`, `library-upload-v1.tsx` |
-| Library grid, beats/packs, player | `apps/web/src/library-items-v2.tsx`, `library-items-v2.css` |
+| Home UI and persistent playback owner | `apps/web/src/library-items-v2.tsx` |
+| Source-authorized Home/pack read adapter | `apps/web/src/library-home-api-v2.ts`; normalization in `project-read-v2.ts` |
+| Stateless global player UI | `apps/web/src/player-dock-v2.tsx`; styling remains in `library-items-v2.css` |
+| Owner-keyed waveform preload and React hook | `apps/web/src/player-waveform-v2.ts` |
 | Project menu and actions | `apps/web/src/project-context-menu-v2.tsx`, `project-action-dialog-v2.tsx`, `project-requests-v2.ts` |
 | Cover and project data | `apps/web/src/project-cover-v2.tsx`, `project-cover-cache-v2.ts`, `project-read-v2.ts` |
 | Profile, follows, edit controls | `apps/web/src/public-profile-v2.tsx`, `edit-profile-panel-v2.tsx`, `profile-follows-v2.ts` |
@@ -40,6 +43,19 @@ The entry point `apps/api/src/server.ts` (emitted as `dist/server.js`) delegates
 - Profile Catalog/Saves/Following use viewer-appropriate visibility. A **Save** is not by itself a permission grant to stream a private asset; publishing or an explicit share grant establishes access. Private media stays in R2 and is served only through authorized backend endpoints.
 - Audio streaming supports standard and byte-range responses; verify `200`, `206`, `416` and cache/security headers. Stems must remain owner-restricted until a separate access policy is expressly approved.
 - Use shared refresh notifications and source-backed project identity. Do not reset upload destinations, player state or project listing on routine refresh. Test rapid navigation, playback, saves, shares and profile changes in two distinct browser sessions.
+
+
+### Player and Home maintainability boundaries (refactor candidate; not released)
+
+The v2 Home component is a **persistent playback coordinator**, not just a page. The Workspace renders **exactly one** `LibraryItemsV2` instance and keeps it mounted while switching Home, World, Upload, Settings, and Profile. Preserve the single `<audio ref={audioRef}>` portal and its owner-scoped `current`, queue, elapsed/duration, repeat/shuffle/volume, account-switch cleanup, and profile-origin requests. Do not move audio to a conditional per-page component or add a second audio element.
+
+- **`player-dock-v2.tsx` is purely presentational.** It receives current playback data and typed callbacks; it renders the existing waveform/transport/volume/queue DOM with the same classes and accessible labels. No hook, storage write, fetch, new audio, or portal lifecycle belongs here. CSS values and design must remain unchanged in this refactor.
+- **`player-waveform-v2.ts` owns the existing browser-only decoding and bounded 16-item waveform cache.** Cache/in-flight request IDs include both original owner and file ID. Closing the temporary `AudioContext` after decoding, silent visual waveform failure, and warming waveform before playback are intentional. Never cache private audio or cover bytes in persistent browser storage.
+- **`library-home-api-v2.ts` reads the existing authorized v2 endpoints and normalizes pack tracks.** Do not use v1 endpoints or bypass auth with frontend assumptions. `LibraryItemsV2` still owns viewer-scoped `loadedViewerId`, abort-on-revalidation, handling HTTP 401/403 by clearing private Home metadata, refresh notifications, and retained cards during same-viewer revalidation. Only a verified current viewer's data becomes visible.
+- **`playback-queue-v2.ts` remains the pure source-backed ordering/identity helper**; beat identity is `owner_id + id`, no duplicate media files, no accidental rearrangement of pack order. `project-card-v2.tsx` remains the one shared card for Home and Profile.
+
+**Test gates for this refactor before merge:** web builds on Node 22/26 and all frontend/API CI; source contracts for exactly one audio portal, queue controls and waveform access; profile play and queue while navigating; Home update after upload without F5; packs, beat modal, controls, Escape, volume capsule, progress seek, shuffle/repeat, switching accounts and session revocation. CI pattern tests cannot prove browser playback; run an authenticated browser smoke against a non-production preview and obtain approval before merging. Do not start CSS/profile medium-priority refactors until player/Home browser acceptance is confirmed. The user has *not* authorized a production merge or deploy for this batch.
+
 
 ## 3. Database, storage and migrations
 
