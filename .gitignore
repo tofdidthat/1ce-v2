@@ -4,3 +4,8 @@ dist/
 .env.*
 !.env.example
 .DS_Store
+
+# CircleCI Smarter Testing local state and test output
+.circleci/state*
+.circleci/impact-*.json
+test-reports/
