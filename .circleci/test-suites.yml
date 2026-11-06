@@ -1,15 +1,17 @@
-# Node's native test runner + its built-in JUnit reporter. No paid
-# test-impact-analysis, dynamic splitting, dynamic parallelism or auto-rerun.
+# Node's native test runner + its built-in JUnit reporter via an adapter.
+# The adapter annotates every testcase with its source file so CircleCI can
+# associate JUnit outcomes with the discover command's test atoms.
+# No paid test-impact analysis, dynamic splitting or auto-rerun.
 # These commands operate from the monorepo root (the job working_directory).
 ---
 name: web-source-tests
 discover: find apps/web/test -maxdepth 1 -type f -name '*.test.mjs' | LC_ALL=C sort
-run: node --experimental-strip-types --test --test-reporter=junit --test-reporter-destination="<< outputs.junit >>" << test.atoms >>
+run: node .circleci/run-node-tests.mjs web "<< outputs.junit >>" << test.atoms >>
 outputs:
   junit: test-reports/web/junit.xml
 ---
 name: api-unit-tests
 discover: find apps/api/test -maxdepth 1 -type f -name '*.test.js' | LC_ALL=C sort
-run: node --test --test-reporter=junit --test-reporter-destination="<< outputs.junit >>" << test.atoms >>
+run: node .circleci/run-node-tests.mjs api "<< outputs.junit >>" << test.atoms >>
 outputs:
   junit: test-reports/api/junit.xml
