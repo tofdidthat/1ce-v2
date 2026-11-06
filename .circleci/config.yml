@@ -1,0 +1,147 @@
+# 1CE v2: cost-aware CircleCI pilot. No deploys, OAuth tokens or live R2.
+# Trigger this pipeline for PRs ready for review or manually in CircleCI;
+# avoid "All pushes" in CircleCI Project Settings -> Triggers.
+version: 2.1
+
+jobs:
+  web-checks:
+    docker:
+      - image: cimg/node:22.14
+    resource_class: small
+    working_directory: ~/project
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - v1-pnpm-node22-{{ checksum "pnpm-lock.yaml" }}
+      - run:
+          name: Install frozen workspace dependencies
+          command: |
+            corepack pnpm install --frozen-lockfile --ignore-scripts --store-dir ~/.local/share/pnpm/store
+      - save_cache:
+          key: v1-pnpm-node22-{{ checksum "pnpm-lock.yaml" }}
+          paths:
+            - ~/.local/share/pnpm/store
+      - run:
+          name: Check TypeScript source policy
+          command: node scripts/check-typescript-policy.mjs
+      - run:
+          name: Validate web test discovery on setup branch
+          command: |
+            if [ "${CIRCLE_BRANCH:-}" = "circleci-project-setup" ]; then
+              circleci testsuite doctor "web-source-tests"
+            fi
+      - run:
+          name: Run existing frontend tests
+          command: circleci testsuite run "web-source-tests"
+      - store_test_results:
+          path: test-reports/web
+      - run:
+          name: Typecheck and build frontend
+          command: corepack pnpm --filter @1ce/web build
+
+  api-checks:
+    docker:
+      - image: cimg/node:22.14
+      - image: postgres:16-alpine
+        environment:
+          POSTGRES_USER: s2_ci
+          POSTGRES_PASSWORD: isolated-ci-only
+          POSTGRES_DB: onece_s2_ci
+    resource_class: small
+    working_directory: ~/project
+    environment:
+      CI: "true"
+      S2_TEST_DATABASE_URL: postgresql://s2_ci:isolated-ci-only@127.0.0.1:5432/onece_s2_ci
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - v1-pnpm-node22-{{ checksum "pnpm-lock.yaml" }}
+      - run:
+          name: Install frozen workspace dependencies
+          command: |
+            corepack pnpm install --frozen-lockfile --ignore-scripts --store-dir ~/.local/share/pnpm/store
+      - save_cache:
+          key: v1-pnpm-node22-{{ checksum "pnpm-lock.yaml" }}
+          paths:
+            - ~/.local/share/pnpm/store
+      - run:
+          name: Audit dependencies and TypeScript policy
+          command: |
+            node scripts/audit-dependencies.mjs
+            node scripts/check-typescript-policy.mjs
+      - run:
+          name: Build API once
+          command: |
+            corepack pnpm --filter @1ce/api build
+            node --check apps/api/dist/server.js
+      - run:
+          name: Validate API test discovery on setup branch
+          command: |
+            if [ "${CIRCLE_BRANCH:-}" = "circleci-project-setup" ]; then
+              circleci testsuite doctor "api-unit-tests"
+            fi
+      - run:
+          name: Run existing API unit tests
+          command: circleci testsuite run "api-unit-tests"
+      - store_test_results:
+          path: test-reports/api
+      - run:
+          name: Validate opt-in R2 and maintenance scripts (syntax only)
+          command: |
+            node --check apps/api/scripts/s2-local-storage-integration.mjs
+            node --check apps/api/scripts/s2-orphan-audit.mjs
+            node --check apps/api/scripts/s2-r2-smoke.mjs
+            node --check apps/api/scripts/pr57-r2-zip-stems-smoke.mjs
+            node --check apps/api/scripts/s2-rate-limit-cleanup.mjs
+            node --check apps/api/scripts/s2-pg-library-integration.mjs
+      - run:
+          name: Wait for disposable local PostgreSQL
+          command: |
+            for attempt in $(seq 1 30); do
+              if (cd apps/api && node -e 'const {Client}=require("pg");const db=new Client({connectionString:process.env.S2_TEST_DATABASE_URL,connectionTimeoutMillis:1000});db.connect().then(()=>db.end()).catch(()=>process.exit(1));' >/dev/null 2>&1); then
+                echo "Disposable PostgreSQL is ready"
+                exit 0
+              fi
+              sleep 1
+            done
+            echo "Disposable PostgreSQL did not become ready" >&2
+            exit 1
+      - run:
+          name: Apply and verify additive migrations on disposable PostgreSQL
+          command: node apps/api/scripts/s2-migration-smoke.mjs
+      - run:
+          name: Run ownership, quota and upload contracts on disposable PostgreSQL
+          command: node apps/api/scripts/s2-pg-library-integration.mjs
+      - run:
+          name: Smoke compiled API without external credentials or database
+          command: |
+            node --input-type=module <<'NODE'
+            import assert from 'node:assert/strict';
+            import {apiServer,apiPool} from './apps/api/dist/server.js';
+            try {
+              await new Promise((resolve,reject)=>{
+                apiServer.once('error',reject);
+                apiServer.listen(0,'127.0.0.1',resolve);
+              });
+              const url='http://127.0.0.1:'+apiServer.address().port;
+              const health=await fetch(url+'/health');
+              assert.equal(health.status,200);
+              assert.match(health.headers.get('cache-control')||'',/no-store/i);
+              assert.deepEqual(await health.json(),{ok:true,service:'1ce-v2-api'});
+              assert.equal((await fetch(url+'/auth/me')).status,401);
+              assert.equal((await fetch(url+'/auth/me',{
+                headers:{Origin:'https://untrusted.invalid'}
+              })).status,403);
+            } finally {
+              await new Promise(resolve=>apiServer.close(resolve));
+              await apiPool.end();
+            }
+            NODE
+
+workflows:
+  verify:
+    jobs:
+      - web-checks
+      - api-checks
