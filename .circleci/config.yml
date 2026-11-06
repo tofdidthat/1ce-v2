@@ -122,29 +122,7 @@ jobs:
           command: node apps/api/scripts/s2-pg-library-integration.mjs
       - run:
           name: Smoke compiled API without external credentials or database
-          command: |
-            node --input-type=module <<'NODE'
-            import assert from 'node:assert/strict';
-            import {apiServer,apiPool} from './apps/api/dist/server.js';
-            try {
-              await new Promise((resolve,reject)=>{
-                apiServer.once('error',reject);
-                apiServer.listen(0,'127.0.0.1',resolve);
-              });
-              const url='http://127.0.0.1:'+apiServer.address().port;
-              const health=await fetch(url+'/health');
-              assert.equal(health.status,200);
-              assert.match(health.headers.get('cache-control')||'',/no-store/i);
-              assert.deepEqual(await health.json(),{ok:true,service:'1ce-v2-api'});
-              assert.equal((await fetch(url+'/auth/me')).status,401);
-              assert.equal((await fetch(url+'/auth/me',{
-                headers:{Origin:'https://untrusted.invalid'}
-              })).status,403);
-            } finally {
-              await new Promise(resolve=>apiServer.close(resolve));
-              await apiPool.end();
-            }
-            NODE
+          command: node apps/api/scripts/s2-ci-compiled-api-smoke.mjs
 
 workflows:
   verify:
