@@ -26,6 +26,9 @@ jobs:
           name: Check TypeScript source policy
           command: node scripts/check-typescript-policy.mjs
       - run:
+          name: Prepare JUnit output directory
+          command: mkdir -p test-reports/web
+      - run:
           name: Validate web test discovery on setup branch
           command: |
             if [ "${CIRCLE_BRANCH:-}" = "circleci-project-setup" ]; then
@@ -76,6 +79,9 @@ jobs:
           command: |
             corepack pnpm --filter @1ce/api build
             node --check apps/api/dist/server.js
+      - run:
+          name: Prepare JUnit output directory
+          command: mkdir -p test-reports/api
       - run:
           name: Validate API test discovery on setup branch
           command: |
