@@ -29,12 +29,6 @@ jobs:
           name: Prepare JUnit output directory
           command: mkdir -p test-reports/web
       - run:
-          name: Validate web test discovery on setup branch
-          command: |
-            if [ "${CIRCLE_BRANCH:-}" = "circleci-project-setup" ]; then
-              circleci testsuite doctor "web-source-tests"
-            fi
-      - run:
           name: Run existing frontend tests
           command: circleci testsuite run "web-source-tests"
       - store_test_results:
@@ -82,12 +76,6 @@ jobs:
       - run:
           name: Prepare JUnit output directory
           command: mkdir -p test-reports/api
-      - run:
-          name: Validate API test discovery on setup branch
-          command: |
-            if [ "${CIRCLE_BRANCH:-}" = "circleci-project-setup" ]; then
-              circleci testsuite doctor "api-unit-tests"
-            fi
       - run:
           name: Run existing API unit tests
           command: circleci testsuite run "api-unit-tests"
