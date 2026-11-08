@@ -348,7 +348,7 @@ export default function WorkspaceV2({user,profileId}:{user:AccountUserV2|null;pr
   else onNavigate('library');
  };
  useEffect(()=>{document.title=({library:'Home',discover:'World',upload:'Upload',account:'Settings',profile:'Profile','edit-profile':'Edit Profile'}[view]||'Home')+' — 1CE'},[view]);
- return <ProjectCoverCacheProviderV2 viewerId={Number(account?.id)||null}><ProjectFlagsProviderV2 viewerId={Number(account?.id)||null}><div className={'onece-workspace-shell'+(view==='library'?' onece-library-view':'')}>
+ return <ProjectCoverCacheProviderV2 viewerId={Number(account?.id)||null}><ProjectFlagsProviderV2 viewerId={Number(account?.id)||null}><div className={'onece-workspace-shell'+(view==='library'&&!homePackVisible?' onece-library-view':'')}>
  <style>{`.onece-library-inactive{position:static!important;padding:0!important;margin:0!important;min-height:0!important;height:0!important;overflow:visible!important}.onece-library-inactive>.beat-profile-content{display:none!important}`}</style>
  {!(view==='library'&&homePackVisible)&&<HeaderV2 view={view} user={account} onNavigate={onNavigate} showBack={showContextBack} onBack={onWorkspaceBack}/>}
  <main className="onece-v2-workspace-main">
