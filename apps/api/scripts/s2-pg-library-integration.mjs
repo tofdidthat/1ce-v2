@@ -42,7 +42,7 @@ async function patchProject(path,data,userId){
 }
 async function getFile(path,userId){
  const req=Readable.from([]);req.method='GET';req.headers={};
- const res={status:0,body:null,writeHead(status){this.status=status;},end(raw){this.body=raw?JSON.parse(raw):null;}};
+ const res={status:0,headers:{},body:null,writeHead(status,headers={}){this.status=status;this.headers=headers;},end(raw){this.body=raw?JSON.parse(raw):null;}};
  assert.equal(await handleLibraryFiles(req,res,'/api/library/files/'+path,db,async()=>userId==null?null:{id:userId},opts),true);
  return res;
 }
