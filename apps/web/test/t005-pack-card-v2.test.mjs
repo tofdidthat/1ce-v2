@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {isBackdropDismissV2} from '../src/overlay-dismiss-v2.ts';
 
 const read=name=>readFileSync(new URL('../src/'+name,import.meta.url),'utf8');
 const details=read('library-items-v2.tsx');
@@ -56,4 +57,38 @@ test('Existing pack actions and the global player are preserved',()=>{
  assert.match(details,/import PlayerDockV2 from '\.\/player-dock-v2'/);
  assert.doesNotMatch(details,/localStorage\.setItem\(.+pack/);
  assert.doesNotMatch(details,/new Audio\(/);
+});
+
+test('Backdrop dismissal ignores the scrollbar and presses that start inside',()=>{
+ const box={getBoundingClientRect:()=>({left:0,top:0}),clientWidth:800,clientHeight:600};
+ const event=(target,currentTarget,clientX,clientY)=>({target,currentTarget,clientX,clientY});
+ assert.equal(isBackdropDismissV2(event(box,box,100,100),box),true);
+ assert.equal(isBackdropDismissV2(event(box,box,799,100),box),true);
+ // The vertical scrollbar sits past clientWidth; dragging it must not close.
+ assert.equal(isBackdropDismissV2(event(box,box,800,100),box),false);
+ assert.equal(isBackdropDismissV2(event(box,box,850,300),box),false);
+ assert.equal(isBackdropDismissV2(event(box,box,100,600),box),false);
+ // A press that starts on the card keeps bubbling but never dismisses.
+ assert.equal(isBackdropDismissV2(event({},box,100,100),box),false);
+ assert.equal(isBackdropDismissV2(event(box,{},100,100),box),false);
+});
+
+test('Both pack overlays close only through the guarded backdrop click',()=>{
+ assert.equal((details.match(/onPointerDown=\{onPackBackdropPointerDown\} onClick=\{onPackBackdropClick\}/g)||[]).length,2);
+ assert.match(details,/packPressedBackdrop\.current=isBackdropDismissV2\(event,event\.currentTarget\)/);
+ assert.match(details,/const dismiss=packPressedBackdrop\.current&&isBackdropDismissV2\(event,event\.currentTarget\)/);
+ assert.doesNotMatch(details,/onMouseDown=\{event=>\{if\(event\.target===event\.currentTarget\)closeProjectDetails\(\)\}\}/);
+ assert.match(details,/detailOrigin==='profile'&&!openedPack&&\(detailPending\|\|detailError\)/);
+ assert.match(css,/scrollbar-gutter:stable/);
+});
+
+test('Pack dialog closes on Escape, traps Tab and restores the opener focus',()=>{
+ assert.match(details,/if\(event\.key==='Escape'\)\{event\.preventDefault\(\);closeProjectDetails\(\);return;\}/);
+ assert.match(details,/if\(event\.key!=='Tab'\)return/);
+ assert.match(details,/event\.shiftKey&&\(active===first\|\|!layer\.contains\(active\)\)/);
+ assert.match(details,/!event\.shiftKey&&\(active===last\|\|!layer\.contains\(active\)\)/);
+ assert.match(details,/packReturnFocus\.current=document\.activeElement instanceof HTMLElement\?document\.activeElement:null/);
+ assert.match(details,/if\(previous\?\.isConnected\)previous\.focus\(\)/);
+ assert.match(details,/querySelector<HTMLElement>\('\.v2-pack-detail-back'\)/);
+ assert.equal((details.match(/ref=\{packLayer\} tabIndex=\{-1\} role="dialog" aria-modal="true"/g)||[]).length,2);
 });

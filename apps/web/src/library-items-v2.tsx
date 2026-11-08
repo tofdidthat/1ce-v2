@@ -18,6 +18,7 @@ import {fetchPlayableProjectV2} from './public-project-actions-v2';
 import {downloadOwnedProjectV2} from './owner-download-v2';
 import {appendDistinctQueueV2,upcomingQueueV2,queueTrackKeyV2,tracksFromPlayableProjectV2,type PlaybackQueueTrackV2} from './playback-queue-v2';
 import ProjectActionDialogV2,{type ContextProject,type ProjectAction,type ChangedProject} from './project-action-dialog-v2';
+import {isBackdropDismissV2} from './overlay-dismiss-v2';
 const api=import.meta.env.VITE_API_URL;
 type BeatItem = LibraryBeatV2;
 type PackItem = LibraryPackV2;
@@ -50,6 +51,10 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
  const [packLoading,setPackLoading]=useState(false);
  const [packError,setPackError]=useState('');
  const packRequest=useRef<AbortController|null>(null);
+ const packLayer=useRef<HTMLDivElement|null>(null);
+ const packReturnFocus=useRef<HTMLElement|null>(null);
+ const packWasOpen=useRef(false);
+ const packPressedBackdrop=useRef(false);
  useEffect(()=>()=>packRequest.current?.abort(),[]);
  const [openedBeat,setOpenedBeat]=useState<BeatItem|null>(null);
  // Home owns one project-detail state, reused for Home, Catalog and Saves.
@@ -326,25 +331,70 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
   setOpenedBeat(null);setOpenedPack(null);setOpenedTracks([]);
   setDetailOrigin(null);setDetailPending(false);setDetailError('');
  };
+ // Home, Catalog and Saves reuse one pack dialog. Escape closes it, Tab stays
+ // inside the dialog, the Back button receives focus and the opener gets focus
+ // back on close. Clicking the dim backdrop also closes it, except on its
+ // scrollbar, so dragging the long-pack scrollbar never dismisses the card.
+ const packDialogOpen=!!openedPack||(detailOrigin==='profile'&&(detailPending||detailError));
+ const packDialogKey=openedPack?openedPack.owner_id+':'+openedPack.id:detailPending?'loading':detailError?'error':'';
+ useEffect(()=>{
+  if(packDialogOpen){
+   if(!packWasOpen.current)packReturnFocus.current=document.activeElement instanceof HTMLElement?document.activeElement:null;
+   packWasOpen.current=true;
+   const layer=packLayer.current;
+   (layer?.querySelector<HTMLElement>('.v2-pack-detail-back')??layer)?.focus();
+  }else if(packWasOpen.current){
+   packWasOpen.current=false;
+   const previous=packReturnFocus.current;
+   packReturnFocus.current=null;
+   if(previous?.isConnected)previous.focus();
+  }
+ },[packDialogOpen,packDialogKey]);
+ useEffect(()=>{
+  if(!packDialogOpen)return;
+  const onKey=(event:KeyboardEvent)=>{
+   if(event.key==='Escape'){event.preventDefault();closeProjectDetails();return;}
+   if(event.key!=='Tab')return;
+   const layer=packLayer.current;
+   if(!layer)return;
+   const focusables=[...layer.querySelectorAll<HTMLElement>('button:not([disabled]),[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])')];
+   if(!focusables.length){event.preventDefault();layer.focus();return;}
+   const first=focusables[0],last=focusables[focusables.length-1],active=document.activeElement;
+   if(event.shiftKey&&(active===first||!layer.contains(active))){event.preventDefault();last.focus();}
+   else if(!event.shiftKey&&(active===last||!layer.contains(active))){event.preventDefault();first.focus();}
+  };
+  document.addEventListener('keydown',onKey);
+  return()=>document.removeEventListener('keydown',onKey);
+ },[packDialogOpen]);
  const packDetail=openedPack?<div className="library-pack-detail v2-pack-detail">
        <div className="library-pack-cover beat-art-0"><ProjectCoverV2 ownerId={openedPack.owner_id} fileId={openedPack.cover_file_id} title={openedPack.title} className="v2-item-cover"/></div>
        <header className="library-pack-info"><div className="library-pack-title-row"><div className="library-pack-title-block"><h2>{openedPack.title}</h2><p>{openedTracks.length} {openedTracks.length===1?'beat':'beats'}</p></div><div className="library-pack-play-controls"><button type="button" className="library-pack-shuffle" aria-label="Shuffle pack" onClick={()=>{if(openedTracks.length){const mixed=[...openedTracks].sort(()=>Math.random()-.5);choose(mixed[0],mixed,openedPack.id)}}}><Shuffle size={19}/></button><button type="button" className="library-pack-play" aria-label={(activePackId===openedPack.id&&playing?'Pause ':'Play ')+openedPack.title} onClick={()=>playPack(openedPack)}>{activePackId===openedPack.id&&playing?<Pause/>:<Play/>}</button></div></div><button type="button" className="library-pack-add" disabled title="Add tracks is not yet available in v2"><span>+</span><span>Add tracks</span></button></header>
        {packLoading?<p className="v2-library-status">Loading beats…</p>:packError?<p role="alert">{packError}</p>:<ol className="beat-track-list">{openedTracks.map((beat,index)=><li key={beat.id} onContextMenu={e=>{if(beat.owner_id===userId)showBeatMenu(e,beat)}} className={current?.id===beat.id&&current?.owner_id===beat.owner_id?'beat-track-active':''}><button type="button" className="beat-track-play" onClick={()=>choose(beat,openedTracks,openedPack.id)} aria-label={(current?.id===beat.id&&playing?'Pause ':'Play ')+beat.title}><span className="beat-track-number">{current?.id===beat.id&&playing?'▥':index+1}</span><span><strong>{beat.title}</strong></span></button><div className="beat-track-menu"><button type="button" aria-label={'Open '+beat.title} onClick={()=>setOpenedBeat(beat)}>•••</button></div></li>)}</ol>}
       </div>:null;
  const packBackLabel=detailOrigin==='profile'?'Back to Profile':'Back to Home';
+ // The dim backdrop closes the dialog only when the press starts and ends on
+ // the backdrop itself, never on its scrollbar or when dragging out of the card.
+ const onPackBackdropPointerDown=(event:React.PointerEvent<HTMLDivElement>)=>{
+  packPressedBackdrop.current=isBackdropDismissV2(event,event.currentTarget);
+ };
+ const onPackBackdropClick=(event:React.MouseEvent<HTMLDivElement>)=>{
+  const dismiss=packPressedBackdrop.current&&isBackdropDismissV2(event,event.currentTarget);
+  packPressedBackdrop.current=false;
+  if(dismiss)closeProjectDetails();
+ };
  // Home and Profile open packs in the same overlay card. Back sits outside the
  // card so it works before the track list grows and never replaces the origin.
  const packOverlay=openedPack&&(detailOrigin==='home'||(detailOrigin==='profile'&&profileRouteKey!==null))
-  ?createPortal(<div className="v2-pack-detail-layer" role="dialog" aria-modal="true" aria-label={'Open pack '+openedPack.title}>
+  ?createPortal(<div className="v2-pack-detail-layer" ref={packLayer} tabIndex={-1} role="dialog" aria-modal="true" aria-label={'Open pack '+openedPack.title}>
     <button type="button" className="library-pack-back v2-pack-detail-back" aria-label={packBackLabel} title={packBackLabel} onClick={closeProjectDetails}><ChevronLeft size={20}/></button>
-    <div className="v2-pack-detail-overlay" onMouseDown={event=>{if(event.target===event.currentTarget)closeProjectDetails()}}>
+    <div className="v2-pack-detail-overlay" onPointerDown={onPackBackdropPointerDown} onClick={onPackBackdropClick}>
      <section className="v2-pack-detail-card beat-profile library-page onece-v2-library">{packDetail}</section>
     </div>
    </div>,document.body):null;
- const packMessageOverlay=detailOrigin==='profile'&&(detailPending||detailError)
-  ?createPortal(<div className="v2-pack-detail-layer" role="dialog" aria-modal="true" aria-label="Open project">
+ const packMessageOverlay=detailOrigin==='profile'&&!openedPack&&(detailPending||detailError)
+  ?createPortal(<div className="v2-pack-detail-layer" ref={packLayer} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Open project">
     <button type="button" className="library-pack-back v2-pack-detail-back" aria-label="Back to Profile" title="Back to Profile" onClick={closeProjectDetails}><ChevronLeft size={20}/></button>
-    <div className="v2-pack-detail-overlay">
+    <div className="v2-pack-detail-overlay" onPointerDown={onPackBackdropPointerDown} onClick={onPackBackdropClick}>
      <section className="v2-pack-detail-card v2-pack-detail-message beat-profile library-page onece-v2-library">
       {detailPending?<p role="status">Loading project…</p>:<p role="alert">{detailError}</p>}
      </section>
