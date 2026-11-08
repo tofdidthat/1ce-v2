@@ -25,8 +25,12 @@ test('Following keeps the same verified target while focus/tab revalidation runs
  assert.match(follows,/\?\{key:followKey,status:'ready',data:previous\.data\}/);
  assert.match(follows,/previous\.key===followKey&&previous\.data[\s\S]*?\{\.\.\.previous,status:'ready'\}/);
  assert.match(follows,/setFollowError\(caught instanceof Error\?caught\.message:'Unable to load following'\)/);
- assert.match(world,/previous\.viewerId===viewerId&&previous\.status==='ready'/);
- assert.match(world,/\?\{\.\.\.previous,error:''\}/);
+ assert.match(world,/previous\.viewerId===viewerId[\s\S]*?\?previous[\s\S]*?:\{viewerId,status:'loading',users:\[\],error:''\}/);
+ // A revalidation no longer clears the error before it settles, and a failed
+ // refresh keeps the already verified list on screen.
+ assert.doesNotMatch(world,/\{\.\.\.previous,error:''\}/);
+ assert.match(world,/previous\.users\.length[\s\S]*?\{\.\.\.previous,status:'error',error:message\}/);
+ assert.match(world,/visibleFollowing\.status==='error'&&<div className="onece-world-status" role="alert"/);
  assert.match(world,/visibleFollowing\.status==='loading'\|\|visibleFollowing\.status==='idle'/);
 });
 

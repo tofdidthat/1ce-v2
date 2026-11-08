@@ -133,6 +133,50 @@ test('viewer switch or workspace teardown aborts pending requests and prevents l
  lease.release();
 });
 
+test('an owner mutation invalidates only that account and refetches at once',async()=>{
+ const calls=[];
+ const {cache,revoked}=setup(async(owner,file)=>{calls.push(owner+':'+file);return image()});
+ const mine=cache.acquire(1,10);assert.equal(await mine.ready,'blob:cover-1');mine.release();
+ const other=cache.acquire(2,10);assert.equal(await other.ready,'blob:cover-2');other.release();
+ cache.invalidateOwner(1);
+ assert.equal(cache.peek(1,10),null);
+ assert.deepEqual(revoked,['blob:cover-1']);
+ // Another account shown on the same page keeps its authorized image.
+ assert.equal(cache.peek(2,10),'blob:cover-2');
+ const again=cache.acquire(1,10);
+ assert.equal(await again.ready,'blob:cover-3');
+ assert.equal(calls.filter(call=>call==='1:10').length,2);
+ again.release();cache.clear();
+});
+
+test('a cover still displayed is marked stale and refetched after its lease ends',async()=>{
+ const {cache,revoked}=setup(async()=>image());
+ const held=cache.acquire(1,4);
+ assert.equal(await held.ready,'blob:cover-1');
+ cache.invalidateOwner(1);
+ // No stale bytes are rendered as soon as the mutation is known.
+ assert.equal(cache.peek(1,4),null);
+ held.release();
+ assert.deepEqual(revoked,['blob:cover-1']);
+ const fresh=cache.acquire(1,4);
+ assert.equal(await fresh.ready,'blob:cover-2');
+ fresh.release();cache.clear();
+});
+
+test('invalidating during a pending cover fetch aborts it instead of caching old bytes',async()=>{
+ let resolve,signal;
+ const pending=new Promise(done=>{resolve=done});
+ const {cache,revoked}=setup(async(_owner,_file,s)=>{signal=s;return pending});
+ const lease=cache.acquire(1,6);
+ cache.invalidateOwner(1);
+ assert.equal(signal.aborted,true);
+ resolve(image());
+ assert.equal(await lease.ready,null);
+ assert.equal(cache.peek(1,6),null);
+ assert.deepEqual(revoked,[]);
+ lease.release();
+});
+
 test('shared provider covers Library, Catalog, Saves and player; no persistent storage or audio changes',()=>{
  const read=name=>readFileSync(new URL('../src/'+name,import.meta.url),'utf8');
  const cover=read('project-cover-v2.tsx');
@@ -142,8 +186,12 @@ test('shared provider covers Library, Catalog, Saves and player; no persistent s
  const cache=read('project-cover-cache-v2.ts');
  assert.match(workspace,/<ProjectCoverCacheProviderV2 viewerId=\{Number\(account\?\.id\)\|\|null\}>/);
  assert.match(cover,/const cache=useMemo\(\(\)=>new ProjectCoverCacheV2\(loadAuthorizedCover\),\[viewerId\]\)/);
- assert.match(cover,/loaded\?\.cache===cache&&loaded.key===key/);
+ assert.match(cover,/loaded\?\.cache===cache&&loaded.key===key&&cached/);
+ assert.match(cover,/subscribeV2DataChanges\(\['library','publications'\],change=>\{/);
+ assert.match(cover,/invalidateOwner\(change.actorId\)/);
  assert.match(cover,/credentials:'include',cache:'no-store'/);
+ assert.match(cover,/setRevision\(value=>value\+1\)/);
+ assert.match(cache,/invalidateOwner\(ownerId:number\)/);
  assert.match(card,/<ProjectCoverV2/);
  assert.match(library,/useProjectCoverUrlV2\(current\?\.owner_id/);
  assert.doesNotMatch(library,/setCoverLoadedId|setCoverUrl|URL.createObjectURL/);

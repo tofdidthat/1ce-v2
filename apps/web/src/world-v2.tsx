@@ -24,10 +24,11 @@ export default function WorldV2({userId,onOpenProfile}:{userId?:number;onOpenPro
  useEffect(()=>{
   if(tab!=='following'||!viewerId)return;
   const controller=new AbortController();
-  // Returning to the Following tab or resuming the window revalidates in the
-  // background while the last verified list for this viewer stays visible.
-  setFollowing(previous=>previous.viewerId===viewerId&&previous.status==='ready'
-   ?{...previous,error:''}
+  // Revalidation keeps the last verified list for this viewer visible. The
+  // state changes only for a different viewer (first read) or when the request
+  // settles, so an error is never cleared before the new result arrives.
+  setFollowing(previous=>previous.viewerId===viewerId
+   ?previous
    :{viewerId,status:'loading',users:[],error:''});
   getProfileFollowsV2(viewerId,controller.signal)
    .then(result=>{
@@ -36,9 +37,13 @@ export default function WorldV2({userId,onOpenProfile}:{userId?:number;onOpenPro
     });
    })
    .catch(error=>{
-    if(!controller.signal.aborted)setFollowing({
-     viewerId,status:'error',users:[],error:error instanceof Error?error.message:'Unable to load following'
-    });
+    if(controller.signal.aborted)return;
+    const message=error instanceof Error?error.message:'Unable to load following';
+    // A transient revalidation failure must not discard the list the user was
+    // already seeing; the alert renders above it with a Retry action.
+    setFollowing(previous=>previous.viewerId===viewerId&&previous.users.length
+     ?{...previous,status:'error',error:message}
+     :{viewerId,status:'error',users:[],error:message});
    });
   return()=>controller.abort();
  },[tab,viewerId,refresh]);
@@ -74,22 +79,27 @@ export default function WorldV2({userId,onOpenProfile}:{userId?:number;onOpenPro
      {!viewerId?<div className="onece-world-empty"><Users size={27} strokeWidth={1.45}/><h3>Sign in to see who you follow</h3></div>:
       visibleFollowing.status==='loading'||visibleFollowing.status==='idle'?
        <p className="onece-world-status" role="status">Loading following…</p>:
+      visibleFollowing.users.length?
+       <>
+        {visibleFollowing.status==='error'&&<div className="onece-world-status" role="alert">{visibleFollowing.error}
+         <button type="button" onClick={()=>setRefresh(value=>value+1)}>Retry</button>
+        </div>}
+        <div className="onece-world-people">{visibleFollowing.users.map(person=>{
+         const name=person.username||person.name||'Artist';
+         const picture=profilePictureV2(person);
+         return <button key={person.id} type="button" className="onece-world-person"
+          onClick={()=>onOpenProfile(person.username||String(person.id))}
+          aria-label={'Open '+name+' profile'}>
+          <span className="onece-world-avatar">{picture?<img src={picture} alt="" referrerPolicy="no-referrer"/>:name.charAt(0).toUpperCase()}</span>
+          <span className="onece-world-person-name"><strong>{name}</strong><small>Artist</small></span>
+          <ChevronRight size={18} aria-hidden="true"/>
+         </button>;
+        })}</div>
+       </>:
       visibleFollowing.status==='error'?
        <div className="onece-world-status" role="alert">{visibleFollowing.error}
         <button type="button" onClick={()=>setRefresh(value=>value+1)}>Retry</button>
        </div>:
-      visibleFollowing.users.length?
-       <div className="onece-world-people">{visibleFollowing.users.map(person=>{
-        const name=person.username||person.name||'Artist';
-        const picture=profilePictureV2(person);
-        return <button key={person.id} type="button" className="onece-world-person"
-         onClick={()=>onOpenProfile(person.username||String(person.id))}
-         aria-label={'Open '+name+' profile'}>
-         <span className="onece-world-avatar">{picture?<img src={picture} alt="" referrerPolicy="no-referrer"/>:name.charAt(0).toUpperCase()}</span>
-         <span className="onece-world-person-name"><strong>{name}</strong><small>Artist</small></span>
-         <ChevronRight size={18} aria-hidden="true"/>
-        </button>;
-       })}</div>:
        <div className="onece-world-empty"><Users size={27} strokeWidth={1.45}/>
         <h3>No artists followed yet</h3>
         <p>When you follow someone, their profile will show up here.</p>

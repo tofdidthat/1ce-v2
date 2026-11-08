@@ -8,7 +8,7 @@ export type CoverCacheOptionsV2={
 };
 type Entry={
  refs:number;url:string|null;bytes:number;loadedAt:number;usedAt:number;
- pending:Promise<string|null>|null;controller:AbortController|null;removed:boolean;
+ pending:Promise<string|null>|null;controller:AbortController|null;removed:boolean;stale:boolean;
 };
 
 export class ProjectCoverCacheV2{
@@ -75,16 +75,16 @@ export class ProjectCoverCacheV2{
  }
  peek(ownerId:number,fileId:number):string|null{
   const key=this.key(ownerId,fileId),entry=this.entries.get(key);
-  if(!entry)return null;
+  if(!entry||entry.stale)return null;
   if(this.expired(entry)){this.drop(key,entry);return null;}
   return entry.url;
  }
  acquire(ownerId:number,fileId:number):CoverLeaseV2{
   const key=this.key(ownerId,fileId);
   let entry=this.entries.get(key);
-  if(entry&&this.expired(entry)){this.drop(key,entry);entry=undefined;}
+  if(entry&&(entry.stale||this.expired(entry))){this.drop(key,entry);entry=undefined;}
   if(!entry){
-   entry={refs:0,url:null,bytes:0,loadedAt:0,usedAt:0,pending:null,controller:null,removed:false};
+   entry={refs:0,url:null,bytes:0,loadedAt:0,usedAt:0,pending:null,controller:null,removed:false,stale:false};
    this.entries.set(key,entry);
    entry.pending=this.load(key,entry,ownerId,fileId);
   }
@@ -100,10 +100,24 @@ export class ProjectCoverCacheV2{
     released=true;
     ownedEntry.refs=Math.max(0,ownedEntry.refs-1);
     if(this.entries.get(key)!==ownedEntry)return;
-    if(this.expired(ownedEntry))this.drop(key,ownedEntry);
+    if(ownedEntry.stale||this.expired(ownedEntry))this.drop(key,ownedEntry);
     else this.trim();
    }
   };
+ }
+ // A mutation by this owner (cover change, delete/testing, publish) drops only
+ // that owner's cached covers. A cover still displayed stays valid until its
+ // consumer re-acquires, then the stale entry is revoked and fetched again.
+ // Other accounts mentioned on the same page keep their own entries.
+ invalidateOwner(ownerId:number){
+  if(!Number.isSafeInteger(ownerId)||ownerId<1)return;
+  const prefix=ownerId+':';
+  for(const [key,entry] of [...this.entries]){
+   if(!key.startsWith(prefix))continue;
+   entry.stale=true;
+   if(entry.refs===0){this.drop(key,entry);continue;}
+   entry.controller?.abort();
+  }
  }
  // Workspace unmount or viewer change: abort and revoke all previously seen images.
  clear(){
