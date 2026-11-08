@@ -11,18 +11,20 @@ const EMPTY:FollowingState={viewerId:null,status:'idle',users:[],error:''};
 
 // The World feed UI is intentionally independent from the Catalog/Following
 // tabs on another user's public profile. No invented recommendations or grants.
-export default function WorldV2({userId,onOpenProfile}:{userId?:number;onOpenProfile:(identifier:string)=>void}){
+export default function WorldV2({userId,onOpenProfile,active=true}:{userId?:number;onOpenProfile:(identifier:string)=>void;active?:boolean}){
  const [tab,setTab]=useState<WorldTab>('for-you');
  const [refresh,setRefresh]=useState(0);
  const [following,setFollowing]=useState<FollowingState>(EMPTY);
  const viewerId=Number.isSafeInteger(userId)&&Number(userId)>0?Number(userId):null;
- const visibleFollowing=following.viewerId===viewerId?following:EMPTY;
  const tabButtons=React.useRef<Array<HTMLButtonElement|null>>([]);
-
- useEffect(()=>subscribeV2DataChanges(['follows'],()=>setRefresh(value=>value+1),viewerId),[viewerId]);
- useEffect(()=>subscribeV2Resume(()=>setRefresh(value=>value+1)),[viewerId]);
+ // A different signed-in account must not see any of the previous account's
+ // Following data, even for a single render while the component stays mounted.
+ useEffect(()=>{setFollowing(EMPTY)},[viewerId]);
+ const visibleFollowing=following.viewerId===viewerId?following:EMPTY;
+ useEffect(()=>{if(!active)return;return subscribeV2DataChanges(['follows'],()=>setRefresh(value=>value+1),viewerId)},[active,viewerId]);
+ useEffect(()=>{if(!active)return;return subscribeV2Resume(()=>setRefresh(value=>value+1))},[active,viewerId]);
  useEffect(()=>{
-  if(tab!=='following'||!viewerId)return;
+  if(!active||tab!=='following'||!viewerId)return;
   const controller=new AbortController();
   // Revalidation keeps the last verified list for this viewer visible. The
   // state changes only for a different viewer (first read) or when the request
@@ -46,10 +48,14 @@ export default function WorldV2({userId,onOpenProfile}:{userId?:number;onOpenPro
      :{viewerId,status:'error',users:[],error:message});
    });
   return()=>controller.abort();
- },[tab,viewerId,refresh]);
+ },[active,tab,viewerId,refresh]);
+ // `active` must keep the effect in sync: flipping it runs the cleanup above
+ // and aborts any in-flight Following request without a state update, and
+ // reactivating the view triggers exactly one revalidation that keeps the
+ // retained verified list visible while it runs.
 
  const tabs:{id:WorldTab;label:string}[]=[{id:'for-you',label:'For you'},{id:'following',label:'Following'}];
- return <section className="onece-world" aria-label="World">
+ return <section className={'onece-world'+(active?'':' onece-world-inactive')} aria-label="World" aria-hidden={active?undefined:true}>
   <div className="onece-world-heading"><h1>World</h1></div>
   <nav className="onece-world-tabs" role="tablist" aria-label="World sections">
    {tabs.map((item,index)=><button

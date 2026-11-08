@@ -30,7 +30,7 @@ test('names are user-facing; old route keys and persistent player stay unchanged
  assert.match(workspace,/location\.pathname\.endsWith\('\/discover'\)\?'discover'/);
  assert.match(workspace,/next==='library'\?'\/app\/library'/);
  assert.match(workspace,/document\.title=\(\{library:'Home',discover:'World'/);
- assert.match(workspace,/view==='discover'\?<WorldV2/);
+ assert.match(workspace,/<WorldV2 active=\{view==='discover'\} userId=\{account\?\.id\}/);
  assert.match(workspace,/<LibraryItemsV2 active=\{view==='library'\}/);
  assert.match(main,/<Route path="\/app\/library" element=\{<WorkspaceRoute\/>\}/);
  assert.match(main,/<Route path="\/app\/discover" element=\{<WorkspaceRoute\/>\}/);

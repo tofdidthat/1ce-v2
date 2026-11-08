@@ -366,8 +366,8 @@ export default function WorkspaceV2({user,profileId}:{user:AccountUserV2|null;pr
   onBack={()=>{const index=window.history.state?.idx;if(typeof index==='number'&&index>0)navigate(-1);else navigate(account?.id?'/app/library':'/');}}
   onLogin={()=>navigate('/login')}
   onOpenProfile={identifier=>navigate('/u/'+encodeURIComponent(identifier),{state:{oneceFromPath:location.pathname}})}/>)}
- {view==='library'||view==='profile'?null:
- view==='discover'?<WorldV2 userId={account?.id} onOpenProfile={identifier=>navigate('/u/'+encodeURIComponent(identifier),{state:{oneceFromPath:location.pathname}})}/>:
+ <WorldV2 active={view==='discover'} userId={account?.id} onOpenProfile={identifier=>navigate('/u/'+encodeURIComponent(identifier),{state:{oneceFromPath:location.pathname}})}/>
+ {view==='library'||view==='profile'||view==='discover'?null:
  view==='upload'?<LibraryUploadV2 userId={account?.id}/>:
  view==='account'&&account?<AccountSettingsV2 user={account} onUserChange={setAccount} onViewProfile={()=>onNavigate('profile')} onLogout={logout}/>:
 view==='edit-profile'?<section className="onece-workspace-placeholder"><h1>Edit Profile</h1><p>Profile editing is not yet available in v2.</p></section>:
