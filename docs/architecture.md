@@ -39,6 +39,19 @@
 
 The entry point `apps/api/src/server.ts` (emitted as `dist/server.js`) delegates to feature handlers, which must perform authorization **again on the server**. File IDs and project IDs are not interchangeable; project identity should include owner, kind and project ID. Preserve existing HTTP routes until frontend consumers have migrated and been regression-tested.
 
+### CI migration — GitHub Actions on public repository (in progress, Nov 2026)
+
+The repository `tofdidthat/1ce-v2` is now **public**. The source code and full Git history are public; runtime secrets must remain in GitHub/Vercel/Railway environment stores, never in commits. GitHub-hosted standard Actions runners are free for public repositories. The desired steady state is **one CI provider**: GitHub Actions. The prior CircleCI pilot (#67) succeeded but should be disabled only after replacing branch protection checks.
+
+**Four-step reversible cutover:**
+
+1. On branch `ci-return-to-github-actions`, adjust `.github/workflows/api-tests.yml` so `pull_request` always runs on `opened`, `synchronize`, `reopened`, and `ready_for_review` **without path filters**. This ensures documentation-only and agent-authored PRs also receive required checks; cancel stale PR runs when new commits arrive. Preserve the `main` push trigger, existing jobs and safety gates.
+2. Open a non-draft PR, inspect **all seven** job check names (six job definitions, including Node 22 and 26 matrix for `web-build`) and wait for a green run at the **latest PR HEAD SHA**. Jobs: `dependency-audit`, `s2-postgres-migration-smoke`, `s2-local-s3-syntax-preflight`, `api-tests`, `railway-api-smoke`, `web-build (22)`, `web-build (26)`. The PostgreSQL service must be disposable; R2 scripts are syntax-only and must not access production. No release authorization is implied by CI passing.
+3. In GitHub Settings → Rules → Rulesets → `1ce-main-protection`, edit the existing active rule **in one save**: remove the required CircleCI checks `ci/circleci: api-checks` and `ci/circleci: web-checks`, and add the actual observed **GitHub Actions** checks from step 2 (all seven, unless the check names differ). Preserve pull-request-only merges, squash, no required approvals, deletion and force-push protection. Confirm the updated ruleset is **active** and a new commit receives fresh checks. Do not remove the old requirements without adding the replacement checks in the same edit.
+4. Only after the Actions checks are enforced, disable the three CircleCI GitHub App triggers in CircleCI Project Settings → Project Setup → `1ce-v2-ci`: non-draft PR opened, pushes to open non-draft PRs, and PR marked ready for review. Keep CircleCI config files for rollback initially, then optionally remove them in a separate cleanup PR after verifying there are no CircleCI-only required checks.
+
+**Operational caveats:** Do not merge the transition PR or trigger production deployments without explicit approval. CircleCI may run once during the transition because the current ruleset still requires it. GitHub Actions does not need CircleCI's CLI, JUnit adapter or credentials. For new PRs, ensure the final HEAD SHA is green; never infer that an old green commit approves new changes. Preserve strict TypeScript, auth, storage, and disposable-DB security tests.
+
 ### Frontend behavior and media access
 
 - Home lists owned standalone beats and packs; a pack-only beat must not appear as an extra standalone card. A beat previously visible individually remains so when added to a pack.

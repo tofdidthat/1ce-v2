@@ -1,5 +1,5 @@
 // Phase 4C: exercise real PostgreSQL schema/transactions with compiled API.
-// Only runs inside GitHub Actions against the existing disposable S2 CI DB.
+// Runs only in GitHub Actions or CircleCI against the existing disposable S2 CI DB.
 // Fake signer/storage forbid accidental external R2 network calls.
 import assert from 'node:assert/strict';
 import {createHash,randomUUID} from 'node:crypto';
@@ -10,7 +10,7 @@ import {handleProjectActions} from '../dist/project-actions.js';
 
 const connectionString=process.env.S2_TEST_DATABASE_URL;
 const address=connectionString?new URL(connectionString):null;
-if(process.env.CI!=='true'||process.env.GITHUB_ACTIONS!=='true'||
+if(process.env.CI!=='true'||!(process.env.GITHUB_ACTIONS==='true'||process.env.CIRCLECI==='true')||
  !address||!['postgres:','postgresql:'].includes(address.protocol)||
  !['localhost','127.0.0.1'].includes(address.hostname)||
  address.pathname!=='/onece_s2_ci'||address.port!=='5432')
