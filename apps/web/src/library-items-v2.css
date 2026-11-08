@@ -899,7 +899,7 @@
 }
 .v2-pack-detail-back{
  position:absolute;top:calc(var(--v2-detail-card-top) - 72px);
- left:max(16px,calc((100vw - 1050px)/2));z-index:1;
+ left:max(24px,calc((100% - 1050px)/2));z-index:1;
  display:grid;place-items:center;box-sizing:border-box;width:44px;height:44px;padding:0;border-radius:15px;
  border:1px solid #ffffff0b;background:#ffffff09;color:#aaa1b6;cursor:pointer;
  transition:background 160ms ease,color 160ms ease
@@ -917,7 +917,7 @@
 @media(max-width:680px){
  .v2-beat-overlay,.v2-pack-detail-layer{--v2-detail-card-top:clamp(76px,14vh,120px)}
  .v2-pack-detail-overlay{padding:var(--v2-detail-card-top) 12px 100px}
- .v2-pack-detail-back{top:calc(var(--v2-detail-card-top) - 50px);left:12px;width:40px;height:40px}
+ .v2-pack-detail-back{top:calc(var(--v2-detail-card-top) - 50px);left:12px}
  .v2-pack-detail-card.beat-profile.library-page.onece-v2-library{padding:20px 14px}
 }
 
