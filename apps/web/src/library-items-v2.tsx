@@ -19,6 +19,7 @@ import {downloadOwnedProjectV2} from './owner-download-v2';
 import {appendDistinctQueueV2,upcomingQueueV2,queueTrackKeyV2,tracksFromPlayableProjectV2,type PlaybackQueueTrackV2} from './playback-queue-v2';
 import ProjectActionDialogV2,{type ContextProject,type ProjectAction,type ChangedProject} from './project-action-dialog-v2';
 import {isBackdropDismissV2} from './overlay-dismiss-v2';
+import {OwnedPackCacheV2} from './owned-pack-cache-v2';
 const api=import.meta.env.VITE_API_URL;
 type BeatItem = LibraryBeatV2;
 type PackItem = LibraryPackV2;
@@ -27,10 +28,13 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
  const [data,setData]=useState<LibraryData>({beats:[],packs:[]});
  const [loadedViewerId,setLoadedViewerId]=useState<number|null>(null);
  const [libraryRevision,setLibraryRevision]=useState(0);
+ const ownPackCache=useRef(new OwnedPackCacheV2<BeatItem[]>());
+ ownPackCache.current.setViewer(userId);
  const lastLibraryFetch=useRef(0);
  const wasActive=useRef(active);
- useEffect(()=>subscribeV2DataChanges(['library'],()=>setLibraryRevision(v=>v+1),userId),[userId]);
+ useEffect(()=>subscribeV2DataChanges(['library'],()=>{ownPackCache.current.clear();setLibraryRevision(v=>v+1)},userId),[userId]);
  useEffect(()=>subscribeV2Resume(()=>{
+  ownPackCache.current.clear();
   if(!active)return;
   if(Date.now()-lastLibraryFetch.current>3000)setLibraryRevision(v=>v+1);
  }),[active,userId]);
@@ -79,6 +83,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
   setContextBeat(null);setContextPack(null);setActionDialog({action,project});
  };
  const onProjectChanged=(change:ChangedProject)=>{
+  ownPackCache.current.clear();
   const {source,action}=change;
   if(action==='delete'){
    if(source.kind==='beat'){
@@ -174,11 +179,13 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
   packRequest.current?.abort();
   const controller=new AbortController();
   packRequest.current=controller;
-  setOpenedPack(pack);setOpenedTracks([]);setPackError('');setPackLoading(true);
+  const cached=ownPackCache.current.get(userId,pack.owner_id,pack.id);
+  const generation=ownPackCache.current.token();
+  setOpenedPack(pack);setOpenedTracks(cached??[]);setPackError('');setPackLoading(cached===undefined);
   try{
    const tracks=await fetchLibraryPackTracksV2(pack,controller.signal,'Unable to load pack');
-   if(!controller.signal.aborted)setOpenedTracks(tracks);
-  }catch(e){if(!controller.signal.aborted)setPackError(e instanceof Error?e.message:'Unable to load pack')}
+   if(!controller.signal.aborted&&generation===ownPackCache.current.token()){ownPackCache.current.put(userId,pack.owner_id,pack.id,tracks,generation);setOpenedTracks(tracks)}
+  }catch(e){if(!controller.signal.aborted){setOpenedTracks([]);setPackError(e instanceof Error?e.message:'Unable to load pack')}}
   finally{if(!controller.signal.aborted)setPackLoading(false)}
  };
  useEffect(()=>{if(!openedBeat)return;const close=(event:KeyboardEvent)=>{if(event.key==='Escape')setOpenedBeat(null)};document.addEventListener('keydown',close);return()=>document.removeEventListener('keydown',close)},[openedBeat]);
