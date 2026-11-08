@@ -365,7 +365,7 @@ export default function WorkspaceV2({user,profileId}:{user:AccountUserV2|null;pr
    }}
   onBack={()=>{const index=window.history.state?.idx;if(typeof index==='number'&&index>0)navigate(-1);else navigate(account?.id?'/app/library':'/');}}
   onLogin={()=>navigate('/login')}
-  onOpenProfile={identifier=>navigate('/u/'+encodeURIComponent(identifier),{state:{oneceFromPath:location.pathname}})} onGoHome={()=>onNavigate('library')}/>)} 
+  onOpenProfile={identifier=>navigate('/u/'+encodeURIComponent(identifier),{state:{oneceFromPath:location.pathname}})}/>)}
  {view==='library'||view==='profile'?null:
  view==='discover'?<WorldV2 userId={account?.id} onOpenProfile={identifier=>navigate('/u/'+encodeURIComponent(identifier),{state:{oneceFromPath:location.pathname}})}/>:
  view==='upload'?<LibraryUploadV2 userId={account?.id}/>:

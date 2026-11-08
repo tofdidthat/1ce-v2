@@ -16,7 +16,8 @@ test('profile and all desktop workspaces use the approved shared HeaderV2 placem
  assert.match(workspace,/\{view==='profile'\?null:<header className="onece-workspace-header"/);
  assert.match(profile,/<header className="onece-workspace-header onece-profile-navbar"/);
  assert.match(profile,/<div className="onece-workspace-brand onece-profile-header-brand">/);
- assert.match(profile,/onClick=\{onGoHome\}><img src="\/1ce-logo.png" alt="1CE"\/>/);
+ // Profile navigation intentionally has no 1CE logo; the shared header keeps it.
+ assert.doesNotMatch(profile,/onece-workspace-logo-home|1ce-logo\.png/);
  assert.match(workspace,/onece-workspace-back/);
  assert.match(profile,/<div className="onece-workspace-actions onece-profile-nav-actions">/);
  for(const cls of ['onece-profile-nav-back','onece-profile-nav-edit','onece-profile-nav-follow','onece-profile-nav-copy']){

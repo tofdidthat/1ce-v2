@@ -29,7 +29,7 @@ test('Workspace header provides consistent brand geometry and back buttons acros
  assert.match(workspace,/\.onece-workspace-brand \{ display: flex; align-items: center; gap: 14px/);
  assert.match(profile,/onece-workspace-brand onece-profile-header-brand/);
  assert.match(profile,/onClick=\{onBack\}/);
- assert.match(profile,/onClick=\{onGoHome\}><img src="\/1ce-logo.png" alt="1CE"\/>/);
+ assert.doesNotMatch(profile,/onece-workspace-logo-home|1ce-logo\.png/);
  assert.match(profile,/onClick=\{\(\)=>void changeFollow\(\)\}/);
  assert.match(profile,/onClick=\{\(\)=>setEditorOpen\(true\)\}/);
  assert.match(profile,/onClick=\{\(\)=>void copyProfileLink\(\)\}/);
@@ -63,7 +63,7 @@ test('Back is context-sensitive: Home origin hides the arrow, other origins pres
  assert.match(workspace,/state:\{oneceFromPath:location\.pathname\}/);
  assert.match(profile,/\{showBack&&<button type="button" className="library-settings onece-profile-nav-back"/);
  assert.match(workspace,/showBack=\{showContextBack\} profileId=/);
- assert.match(profile,/onClick=\{onGoHome\}><img src="\/1ce-logo.png" alt="1CE"\/>/);
+ assert.doesNotMatch(profile,/onece-workspace-logo-home|1ce-logo\.png/);
  assert.match(workspace,/onClick=\{\(\)=>onNavigate\('library'\)\}><img src="\/1ce-logo.png" alt="1CE"\/>/);
 });
 
