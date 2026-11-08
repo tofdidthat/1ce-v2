@@ -352,7 +352,7 @@ export default function WorkspaceV2({user,profileId}:{user:AccountUserV2|null;pr
  <main className="onece-v2-workspace-main">
  <LibraryItemsV2 active={view==='library'} playRequest={playRequest} queueRequest={queueRequest} openRequest={openRequest} profileRouteKey={view==='profile'?(profileId||'own'):null} userId={account?.id} onUpload={()=>onNavigate('upload')} onPlayerVisibility={setPlayerVisible} onPlaybackChange={setPlayback}/>
  {visibleProfileKeys.map(profileKey=><PublicProfileV2 key={String(account?.id||'anonymous')+':'+profileKey}
-  active={activeProfileKey===profileKey} user={account} showBack={showContextBack} profileId={profileKey==='own'?undefined:profileKey.slice('public:'.length)}
+  active={activeProfileKey===profileKey} user={account} showBack profileId={profileKey==='own'?undefined:profileKey.slice('public:'.length)}
   playback={playback} onPlayProject={requestPlayback} onQueueProject={requestQueue} onOpenProject={requestOpen}
   onIdentityUpdated={updated=>{
    if(!isAccountUserV2(updated))return;
@@ -365,7 +365,7 @@ export default function WorkspaceV2({user,profileId}:{user:AccountUserV2|null;pr
    }}
   onBack={()=>{const index=window.history.state?.idx;if(typeof index==='number'&&index>0)navigate(-1);else navigate(account?.id?'/app/library':'/');}}
   onLogin={()=>navigate('/login')}
-  onOpenProfile={identifier=>navigate('/u/'+encodeURIComponent(identifier),{state:{oneceFromPath:location.pathname}})} onGoHome={()=>onNavigate('library')}/>)} 
+  onOpenProfile={identifier=>navigate('/u/'+encodeURIComponent(identifier),{state:{oneceFromPath:location.pathname}})}/>)}
  {view==='library'||view==='profile'?null:
  view==='discover'?<WorldV2 userId={account?.id} onOpenProfile={identifier=>navigate('/u/'+encodeURIComponent(identifier),{state:{oneceFromPath:location.pathname}})}/>:
  view==='upload'?<LibraryUploadV2 userId={account?.id}/>:
