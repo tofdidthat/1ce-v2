@@ -1,6 +1,28 @@
 # 1CE v2 — Architecture, operations and release guide
 
-> **Canonical technical reference.** Last consolidated on 2026-11-04 UTC from `main` at `9f0bd2c89e49a3d332e11e805799c07710a47ace`. It describes repository source and dated operational evidence, **not** an automatic report of the live Railway/Vercel deployments. Recheck GitHub, Railway, Vercel and Cloudflare before making release or deletion decisions. Previous Markdown ledgers remain available via Git history and their pull requests; they are intentionally not kept as separate files.
+> **Canonical technical reference.** Current-state checkpoint verified on **2026-11-08 UTC** against `main` commit `c31c9a121aaf63aa35754954601f7022736f2746` (PR #70), before this documentation-only update. Historical plans below retain their original dates. GitHub, Railway and Vercel state may change; recheck them before any new release. Private environment settings, credentials, Cloudflare state and complete browser E2E coverage are not proven by this document. Keep historical notes recoverable through Git/PR history, without creating duplicate Markdown files.
+
+## 0. Verified current baseline and next work (2026-11-08 UTC)
+
+**Source of truth:** Public GitHub repository [`tofdidthat/1ce-v2`](https://github.com/tofdidthat/1ce-v2), production source commit **`c31c9a121aaf63aa35754954601f7022736f2746`** from [PR #70](https://github.com/tofdidthat/1ce-v2/pull/70). Keep legacy v1 `tofdidthat/1ce` strictly read-only. The v2 API is TypeScript/Node 22 on Railway with v2 PostgreSQL and private Cloudflare R2; the React/TypeScript web app is on Vercel. Frontend: https://1ce-v2-tofdidthat.vercel.app. API: https://1ce-v2-production.up.railway.app.
+
+**Verified progression (source/CI facts, not permission for another deployment):**
+
+| PR | State | Result |
+| --- | --- | --- |
+| [#63](https://github.com/tofdidthat/1ce-v2/pull/63), [#64](https://github.com/tofdidthat/1ce-v2/pull/64) | Merged | Player/Home and shared CSS/Public Profile maintainability work; keep one persistent player and shared components |
+| [#67](https://github.com/tofdidthat/1ce-v2/pull/67) | Merged | Previously successful CircleCI two-job pilot, retained for reference only |
+| [#68](https://github.com/tofdidthat/1ce-v2/pull/68) | Merged | Return to GitHub Actions on public repo; every non-draft PR receives required full CI |
+| [#66](https://github.com/tofdidthat/1ce-v2/pull/66) | Merged | Pack-tracks owner, media-kind and READY checks; owned empty pack returns 200, missing/foreign/deleted pack 404 |
+| [#65](https://github.com/tofdidthat/1ce-v2/pull/65) | Merged | Read-contract characterization tests and disposable PostgreSQL coverage, reconciled with #66 |
+| [#69](https://github.com/tofdidthat/1ce-v2/pull/69) | Merged | Removed stale API contract instructions from this guide |
+| [#70](https://github.com/tofdidthat/1ce-v2/pull/70) | Merged, `c31c9a1` | First API-B extraction: four private metadata GET handlers into `apps/api/src/library-read-metadata.ts`, original dispatcher and all upload/streaming paths preserved |
+
+**Release evidence at that commit:** [GitHub Actions main run 42433343084](https://github.com/tofdidthat/1ce-v2/actions/runs/42433343084) completed **7/7 success**; Railway deployment of `c31c9a1` reported **SUCCESS**, including a successful `/health` deployment healthcheck; Vercel production deployment of the same commit reported **READY**. The user subsequently reported that the site was functioning correctly after the PR #70 deployment (**manual user report**, not an independently recorded two-account or exhaustive browser E2E test).
+
+**CI and branch safety:** Active GitHub ruleset `1ce-main-protection` requires a PR, squash merge, prohibits deletion/force-push, and requires seven passing GitHub Actions checks: `dependency-audit`, `s2-local-s3-syntax-preflight`, `s2-postgres-migration-smoke`, `api-tests`, `railway-api-smoke`, `web-build (22)`, `web-build (26)`. CircleCI checks are no longer required; its three automated triggers were disabled **per user report**, not directly verified through CircleCI. `.circleci/` remains for rollback. A public repository is **not** permission to commit secrets or run destructive tests on real R2/DB.
+
+**Next technical milestone, not yet authorized or implemented:** Review whether to extract owner-only GET media streaming (`audio`, `stems`, `cover`) from `library-files.ts` as a **separate small branch/PR**, adding or retaining rigorous 200/206/416 Range, 404 ownership, 503 R2 failures, streaming interruption and header tests. Keep upload `POST /beats`, `/packs`, `/init` and `/:id/complete` fully untouched in this phase. Test with two real authenticated accounts in a controlled environment before making any new claim of complete E2E validation. The Create Video/social publishing architecture is a separate later product phase; no YouTube/TikTok/Reels uploader is being implemented here.
 
 ## 1. Mission, boundaries and product decisions
 
@@ -29,7 +51,8 @@
 | Settings and Trash UI | `apps/web/src/account-settings-v2.tsx`, `trash-settings-v2.tsx` |
 | Frontend data refresh | `apps/web/src/data-refresh-v2.ts` |
 | API entry, auth/sessions/OAuth | `apps/api/src/server.ts` |
-| Private uploads and Library files | `apps/api/src/library-files.ts`, `upload-security.ts`, `upload-leases.ts` |
+| Private Library facade, upload and completion | `apps/api/src/library-files.ts`, `upload-security.ts`, `upload-leases.ts` |
+| Private library metadata GET (owner scoped, Phase API-B) | `apps/api/src/library-read-metadata.ts`; called only after facade method/auth/R2 gates |
 | Project mutations | `apps/api/src/project-actions.ts` |
 | Trash, restoration and R2 outbox | `apps/api/src/trash.ts` |
 | Public profiles, saves, publications, links | `apps/api/src/public-profiles.ts`, `profile-identity.ts`, `profile-follows.ts` |
@@ -39,18 +62,13 @@
 
 The entry point `apps/api/src/server.ts` (emitted as `dist/server.js`) delegates to feature handlers, which must perform authorization **again on the server**. File IDs and project IDs are not interchangeable; project identity should include owner, kind and project ID. Preserve existing HTTP routes until frontend consumers have migrated and been regression-tested.
 
-### CI migration — GitHub Actions on public repository (in progress, Nov 2026)
+### CI — GitHub Actions on public repository (cutover completed, 2026-11-08 UTC)
 
-The repository `tofdidthat/1ce-v2` is now **public**. The source code and full Git history are public; runtime secrets must remain in GitHub/Vercel/Railway environment stores, never in commits. GitHub-hosted standard Actions runners are free for public repositories. The desired steady state is **one CI provider**: GitHub Actions. The prior CircleCI pilot (#67) succeeded but should be disabled only after replacing branch protection checks.
+The repository is **public**. [PR #68](https://github.com/tofdidthat/1ce-v2/pull/68) enabled complete GitHub Actions checks for PR `opened`, `synchronize`, `reopened` and `ready_for_review`, without PR path filters, and cancels superseded PR runs. A `main` push workflow remains. GitHub-hosted **standard** Actions runners are free on public repositories; protect secrets from untrusted fork PRs.
 
-**Four-step reversible cutover:**
+The active `1ce-main-protection` ruleset (verified on 2026-11-08 UTC) requires all **seven** checks listed in §0 from the **GitHub Actions** app. Merges are via PR/squash; direct deletion/force-push are blocked. Do not weaken the checks or merge an untested final HEAD SHA. GitHub Actions API tests and PostgreSQL use disposable infrastructure; the real R2 canary remains a separate operator-controlled smoke test, **not** executed automatically.
 
-1. On branch `ci-return-to-github-actions`, adjust `.github/workflows/api-tests.yml` so `pull_request` always runs on `opened`, `synchronize`, `reopened`, and `ready_for_review` **without path filters**. This ensures documentation-only and agent-authored PRs also receive required checks; cancel stale PR runs when new commits arrive. Preserve the `main` push trigger, existing jobs and safety gates.
-2. Open a non-draft PR, inspect **all seven** job check names (six job definitions, including Node 22 and 26 matrix for `web-build`) and wait for a green run at the **latest PR HEAD SHA**. Jobs: `dependency-audit`, `s2-postgres-migration-smoke`, `s2-local-s3-syntax-preflight`, `api-tests`, `railway-api-smoke`, `web-build (22)`, `web-build (26)`. The PostgreSQL service must be disposable; R2 scripts are syntax-only and must not access production. No release authorization is implied by CI passing.
-3. In GitHub Settings → Rules → Rulesets → `1ce-main-protection`, edit the existing active rule **in one save**: remove the required CircleCI checks `ci/circleci: api-checks` and `ci/circleci: web-checks`, and add the actual observed **GitHub Actions** checks from step 2 (all seven, unless the check names differ). Preserve pull-request-only merges, squash, no required approvals, deletion and force-push protection. Confirm the updated ruleset is **active** and a new commit receives fresh checks. Do not remove the old requirements without adding the replacement checks in the same edit.
-4. Only after the Actions checks are enforced, disable the three CircleCI GitHub App triggers in CircleCI Project Settings → Project Setup → `1ce-v2-ci`: non-draft PR opened, pushes to open non-draft PRs, and PR marked ready for review. Keep CircleCI config files for rollback initially, then optionally remove them in a separate cleanup PR after verifying there are no CircleCI-only required checks.
-
-**Operational caveats:** Do not merge the transition PR or trigger production deployments without explicit approval. CircleCI may run once during the transition because the current ruleset still requires it. GitHub Actions does not need CircleCI's CLI, JUnit adapter or credentials. For new PRs, ensure the final HEAD SHA is green; never infer that an old green commit approves new changes. Preserve strict TypeScript, auth, storage, and disposable-DB security tests.
+CircleCI was used for pilot [PR #67](https://github.com/tofdidthat/1ce-v2/pull/67), but is no longer required for branch protection. Its three PR triggers were disabled according to the user; direct CircleCI settings verification is unavailable here. Retained `.circleci/` files may be removed in a later separate cleanup PR after confirming no trigger or required check depends on them. Do not reactivate duplicate CI without authorization.
 
 ### Frontend behavior and media access
 
@@ -139,16 +157,16 @@ The current `apps/api/src/library-files.ts` exports **one stable** `handleLibrar
 
 **Remaining security-review checkpoints before extracting GET:** the pack-tracks SQL join now enforces same-owner, correct-kind, READY file predicates and returns 404 for unauthorized or nonexistent packs (PR #66; confirmed by disposable-PostgreSQL tests in #66 and #65). Continue reviewing all response headers and out-of-scope paths, two sessions with session revocation, query cancellations, read errors and streamed R2 interruption. Preserve the **current** 404/200 contracts rather than the obsolete unowned-pack 200 behavior; no further server contract change is authorized by these notes.
 
-**Completed API-A gate:** PR #65 contained tests and documentation only; it was merged after 7/7 GitHub Actions checks passed, including disposable PostgreSQL, with PR #66's authorization fix already integrated. The next independent branch may extract only GET handlers behind the original dispatcher after reviewing current contracts. Upload init and completion stay untouched.
+**Completed API-A gate:** PR #65 contained tests and documentation only; it was merged after 7/7 GitHub Actions checks passed, including disposable PostgreSQL, with PR #66's authorization fix already integrated. The first four metadata GET handlers were subsequently extracted in merged PR #70 behind the original dispatcher; the server's upload init and completion handlers remain untouched.
 
 
 
-#### Phase API-B — first GET extraction (branch `refactor/api-private-metadata-reads`; pending review)
+#### Phase API-B — first metadata GET extraction (PR #70 merged, CI 7/7, user smoke reported)
 
-- Move **only four authenticated metadata GET routes** (`/api/library/files`, `/items`, `/beat/:uuid`, `/pack-tracks/:uuid`) into `apps/api/src/library-read-metadata.ts`. Preserve their exact SQL, owner-scoping, status codes, JSON response fields, ordering, cache headers and invalid-path fallthrough. The `pack-tracks` same-owner, correct-kind, READY audio/cover/stems joins introduced by #66 must remain unchanged.
-- Keep `handleLibraryFiles` as the stable facade and **sole entry** after path and method checks, `currentUser` session validation, and R2 configuration. The extracted handler accepts an already-authorized numeric owner id; it must never authenticate via caller-controlled identity or be mounted under public endpoints. The original JSON sender remains shared by passing it to the private helper rather than duplicating headers.
-- **Not moved:** GET `audio`/`stems`/`cover` R2 streaming, POST `beats`/`packs`/`init`/`complete`, completion leases, R2 verification, account rate limits, public profiles, or any SQL schema. Streaming and upload route blocks are byte-for-byte preserved; existing 200/206/416 media semantics remain the facade's responsibility.
-- Acceptance: original API unit suite and #65/#66 characterization tests, both web builds, compilation with strict TypeScript, read-only/syntax R2 preflight, and **real disposable PostgreSQL** checks must pass at the final PR HEAD. Confirm R2 credentials are never required for tests. This refactor must not be merged or deployed until separately approved. Subsequent GET media extraction requires its own narrowly scoped PR and streaming/range regression tests.
+- [PR #70](https://github.com/tofdidthat/1ce-v2/pull/70) extracted **four** authenticated owner-only metadata GETs (`/api/library/files`, `/items`, `/beat/:uuid`, `/pack-tracks/:uuid`) into `apps/api/src/library-read-metadata.ts`. `library-files.ts` remains the sole HTTP facade: check path and method, validate `currentUser`, obtain R2 configuration, then pass an already-authorized owner ID to the private read handler. Preserve exact SQL owner/kind/READY predicates, 404 responses and 200 empty-pack semantics, order, JSON fields and cache headers. The helper is **not** a public route or a new authentication authority.
+- **Excluded and preserved byte-for-byte in that PR:** R2 GET `audio`/`stems`/`cover` streaming blocks and POST `beats`/`packs`/`init`/`complete`, along with lease fencing, R2 object verification, storage quotas, login and other endpoint behavior. No SQL migration and no real R2 test operations were introduced.
+- **Checks:** All seven required GitHub Actions checks passed at PR HEAD and again after the merge in [main run 42433343084](https://github.com/tofdidthat/1ce-v2/actions/runs/42433343084). Railway `SUCCESS` and Vercel `READY` for `c31c9a1`. User reported the deployed site working correctly; specific two-account adversarial browser tests and real R2 error-path coverage are not established by that report.
+- **Next, separate decision:** If further extraction is valuable, isolate streaming GET routes in a new narrow PR with strict authorization, 200/206/416, 404, cache/no-sniff, failed/partial R2 read and lifecycle regression tests. Do **not** combine with frontend CSS, upload POST, migration or social-publishing changes. Obtain specific user authorization before merge and account for automatic main-to-production deployment.
 
 ## 3. Database, storage and migrations
 
@@ -349,7 +367,7 @@ Maior dependência externa: **validação de comportamentos reais entre contas, 
 
 ### 8.7 Recomendação e andamento
 
-**Situação consolidada em 2026-11-04 (UTC).** Os registros abaixo distinguem CI, compatibilidade R2 real, disponibilidade de produção e testes manuais. O status efetivo de cada PR deve ser conferido no GitHub.
+**Historical TypeScript migration snapshot (2026-11-04 UTC); see §0 for current Phase API-B status.** Os registros abaixo distinguem CI, compatibilidade R2 real, disponibilidade de produção e testes manuais. O status efetivo de cada PR deve ser conferido no GitHub.
 
 - **Fases 1 e 2 — publicadas:** PR #30 (https://github.com/tofdidthat/1ce-v2/pull/30, 5e75afb) e PR #31 (https://github.com/tofdidthat/1ce-v2/pull/31, eb505e6): API compilada em TypeScript, iniciada com node dist/server.js, contratos compartilhados, tipagens Node e módulos básicos convertidos.
 - **Fase 3 — publicada em ordem controlada:** PR #32 (f190278), #33 (8930f34), #35 (535899b) e #34 (fd27b7e): permissões, mídia, identidade, perfis, Saves/shares e projetos. CI main 41773946388: 6/6; Railway SUCCESS, frontend preservado.
@@ -364,7 +382,7 @@ Maior dependência externa: **validação de comportamentos reais entre contas, 
 - **Limites e próxima validação de produto:** CI + /health + /health/db não equivalem a testes manuais completos de login Google, uploads reais, streaming, share links, permissões entre duas contas, restores/packs/stems e exclusão. Essas jornadas exigem validação adicional não destrutiva. Não realizar exclusões de produção para demonstrar comportamento.
 - **Protocolo de lotes e rollback:** consultar este guia antes de implementar; alterações em branches pequenas, build/testes, CI na HEAD da PR, merge individual somente quando autorizado, CI da main + Railway SUCCESS + HTTP health + banco conectados sem alertas antes da PR seguinte. Preservar rollback por commit e reduzir rebuilds Vercel desnecessários. Manter apenas README.md e docs/architecture.md como Markdown no repositório.
 
-**Status atual:** Fases 4C, 5 e 6 receberam merge individual (#38, #39, #40). A CI da PR #40 passou 7/7. A compilação `src/server.ts` → `dist/server.js` é intencional. A validação completa da interface e do armazenamento ainda não pode ser inferida do CI. Nenhuma operação destrutiva em R2 de produção foi autorizada.
+**Status histórico em 2026-11-04 (não é o status atual da §0):** Fases 4C, 5 e 6 receberam merge individual (#38, #39, #40). A CI da PR #40 passou 7/7. A compilação `src/server.ts` → `dist/server.js` é intencional. A validação completa da interface e do armazenamento ainda não pode ser inferida do CI. Nenhuma operação destrutiva em R2 de produção foi autorizada.
 
 
 ### TypeScript hardening follow-up (2026-11-04; PR branch, not a release)
