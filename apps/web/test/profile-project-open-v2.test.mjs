@@ -25,11 +25,9 @@ test('Catalog and Saves open original UUID/owner through the same API-authorized
  assert.match(details,/fetchPlayableProjectV2\(ownerId,kind,id,controller\.signal\)/);
  assert.match(details,/tracksFromPlayableProjectV2\(project\)/);
  assert.match(details,/const packDetail=openedPack\?</);
- assert.equal((details.match(/className="library-pack-detail v2-pack-detail"/g)||[]).length,1);
- assert.match(details,/const packOverlay=openedPack&&\(detailOrigin==='home'\|\|\(detailOrigin==='profile'&&profileRouteKey!==null\)\)/);
- assert.match(details,/className="v2-pack-detail-layer"/);
- assert.match(details,/className="library-pack-back v2-pack-detail-back"/);
- assert.match(details,/className="v2-pack-detail-card beat-profile library-page onece-v2-library">\{packDetail\}/);
+ assert.match(details,/const profilePackPage=/);
+ assert.match(details,/profilePackPage\?\(packDetail\|\|profilePackMessage\)/);
+ assert.match(details,/className="library-pack-back"/);
  assert.match(details,/\{openedBeat&&createPortal\(/);
  assert.match(details,/ownerId=\{openedPack\.owner_id\}/);
  assert.match(details,/ownerId=\{openedBeat\.owner_id\}/);

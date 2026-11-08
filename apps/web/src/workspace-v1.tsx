@@ -308,6 +308,7 @@ export default function WorkspaceV2({user,profileId}:{user:AccountUserV2|null;pr
  },[account?.id]);
  const logout=async()=>{const api=import.meta.env.VITE_API_URL;if(!api)throw Error('API is not configured');const response=await fetch(api+'/auth/logout',{method:'POST',credentials:'include'});if(!response.ok)throw Error('Could not log out');window.location.assign('/login');};
  const [playerVisible,setPlayerVisible]=useState(false);
+ const [profilePackVisible,setProfilePackVisible]=useState(false);
  const [playRequest,setPlayRequest]=useState<{ownerId:number;kind:'beat'|'pack';id:string;nonce:number}|null>(null);
  const [queueRequest,setQueueRequest]=useState<{ownerId:number;kind:'beat'|'pack';id:string;nonce:number}|null>(null);
  const [openRequest,setOpenRequest]=useState<{ownerId:number;kind:'beat'|'pack';id:string;nonce:number}|null>(null);
@@ -350,9 +351,9 @@ export default function WorkspaceV2({user,profileId}:{user:AccountUserV2|null;pr
  <style>{`.onece-library-inactive{position:static!important;padding:0!important;margin:0!important;min-height:0!important;height:0!important;overflow:visible!important}.onece-library-inactive>.beat-profile-content{display:none!important}`}</style>
  <HeaderV2 view={view} user={account} onNavigate={onNavigate} showBack={showContextBack} onBack={onWorkspaceBack}/>
  <main className="onece-v2-workspace-main">
- <LibraryItemsV2 active={view==='library'} playRequest={playRequest} queueRequest={queueRequest} openRequest={openRequest} profileRouteKey={view==='profile'?(profileId||'own'):null} userId={account?.id} onUpload={()=>onNavigate('upload')} onPlayerVisibility={setPlayerVisible} onPlaybackChange={setPlayback}/>
+ <LibraryItemsV2 active={view==='library'} playRequest={playRequest} queueRequest={queueRequest} openRequest={openRequest} profileRouteKey={view==='profile'?(profileId||'own'):null} onProfilePackVisibility={setProfilePackVisible} userId={account?.id} onUpload={()=>onNavigate('upload')} onPlayerVisibility={setPlayerVisible} onPlaybackChange={setPlayback}/>
  {visibleProfileKeys.map(profileKey=><PublicProfileV2 key={String(account?.id||'anonymous')+':'+profileKey}
-  active={activeProfileKey===profileKey} user={account} showBack profileId={profileKey==='own'?undefined:profileKey.slice('public:'.length)}
+  active={activeProfileKey===profileKey&&!profilePackVisible} user={account} showBack profileId={profileKey==='own'?undefined:profileKey.slice('public:'.length)}
   playback={playback} onPlayProject={requestPlayback} onQueueProject={requestQueue} onOpenProject={requestOpen}
   onIdentityUpdated={updated=>{
    if(!isAccountUserV2(updated))return;
