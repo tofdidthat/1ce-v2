@@ -192,8 +192,8 @@ try{
  assert.deepEqual(homeAnonymous.body,{error:'Not authenticated'});
  assert.deepEqual(homeA.body.beats.map(row=>row.id).sort(),[beatOne.body.id,beatTwo.body.id].sort());
  assert.deepEqual(homeB.body.beats.map(row=>row.id),[beatOther.body.id]);
- assert.deepEqual(homeA.body.packs.map(row=>row.id),[good.body.id]);
- assert.deepEqual(homeB.body.packs,[],'Foreign packs must not appear in another Home');
+ assert.deepEqual(homeA.body.packs.map(row=>row.id).sort(),[good.body.id,emptyPackId].sort());
+ assert.deepEqual(homeB.body.packs.map(row=>row.id),[foreignPackId]);
  assert.equal(homeA.body.beats.find(row=>row.id===beatOne.body.id).library_visible,true);
  assert.equal(homeA.body.beats.find(row=>row.id===beatTwo.body.id).library_visible,false);
  const tracksA=await getFile('pack-tracks/'+good.body.id,a);
