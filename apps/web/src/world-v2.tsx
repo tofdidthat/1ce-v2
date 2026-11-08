@@ -21,13 +21,6 @@ export default function WorldV2({userId,onOpenProfile,active=true}:{userId?:numb
  // Following data, even for a single render while the component stays mounted.
  useEffect(()=>{setFollowing(EMPTY)},[viewerId]);
  const visibleFollowing=following.viewerId===viewerId?following:EMPTY;
- const previouslyActive=React.useRef(active);
- // Returning to the World view revalidates once; the retained verified list
- // stays visible while the refresh runs.
- useEffect(()=>{
-  if(active&&!previouslyActive.current)setRefresh(value=>value+1);
-  previouslyActive.current=active;
- },[active]);
  useEffect(()=>{if(!active)return;return subscribeV2DataChanges(['follows'],()=>setRefresh(value=>value+1),viewerId)},[active,viewerId]);
  useEffect(()=>{if(!active)return;return subscribeV2Resume(()=>setRefresh(value=>value+1))},[active,viewerId]);
  useEffect(()=>{
@@ -55,7 +48,11 @@ export default function WorldV2({userId,onOpenProfile,active=true}:{userId?:numb
      :{viewerId,status:'error',users:[],error:message});
    });
   return()=>controller.abort();
- },[tab,viewerId,refresh]);
+ },[active,tab,viewerId,refresh]);
+ // `active` must keep the effect in sync: flipping it runs the cleanup above
+ // and aborts any in-flight Following request without a state update, and
+ // reactivating the view triggers exactly one revalidation that keeps the
+ // retained verified list visible while it runs.
 
  const tabs:{id:WorldTab;label:string}[]=[{id:'for-you',label:'For you'},{id:'following',label:'Following'}];
  return <section className={'onece-world'+(active?'':' onece-world-inactive')} aria-label="World" aria-hidden={active?undefined:true}>

@@ -21,8 +21,9 @@ test('inactive World pauses subscriptions, focus resume and data fetching',()=>{
 });
 
 test('returning to World keeps verified Following data and revalidates once',()=>{
- // Per activation bump: a revalidation runs when the view becomes active again.
- assert.match(world,/if\(active&&!previouslyActive\.current\)setRefresh\(value=>value\+1\)/);
+ // active sits in the fetch effect's dependency list: flipping it back to
+ // true triggers the revalidation without any extra manual refresh bump.
+ assert.match(world,/},\[active,tab,viewerId,refresh\]\);/);
  // Same-viewer revalidation retains the verified list instead of loading state.
  assert.match(world,/setFollowing\(previous=>previous\.viewerId===viewerId\s*\n\s*\?previous/);
  assert.doesNotMatch(world,/setFollowing\(\{viewerId,status:'loading'/);
