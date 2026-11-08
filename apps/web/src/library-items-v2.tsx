@@ -327,11 +327,29 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
   setDetailOrigin(null);setDetailPending(false);setDetailError('');
  };
  const packDetail=openedPack?<div className="library-pack-detail v2-pack-detail">
-      <button type="button" className="library-pack-back" aria-label={detailOrigin==='profile'?'Back to Profile':'Back to Home'} onClick={closeProjectDetails}><ChevronLeft size={20}/></button>
-      <div className="library-pack-cover beat-art-0"><ProjectCoverV2 ownerId={openedPack.owner_id} fileId={openedPack.cover_file_id} title={openedPack.title} className="v2-item-cover"/></div>
-      <header className="library-pack-info"><div className="library-pack-title-row"><div className="library-pack-title-block"><h2>{openedPack.title}</h2><p>{openedTracks.length} {openedTracks.length===1?'beat':'beats'}</p></div><div className="library-pack-play-controls"><button type="button" className="library-pack-shuffle" aria-label="Shuffle pack" onClick={()=>{if(openedTracks.length){const mixed=[...openedTracks].sort(()=>Math.random()-.5);choose(mixed[0],mixed,openedPack.id)}}}><Shuffle size={19}/></button><button type="button" className="library-pack-play" aria-label={(activePackId===openedPack.id&&playing?'Pause ':'Play ')+openedPack.title} onClick={()=>playPack(openedPack)}>{activePackId===openedPack.id&&playing?<Pause/>:<Play/>}</button></div></div><button type="button" className="library-pack-add" disabled title="Add tracks is not yet available in v2"><span>+</span><span>Add tracks</span></button></header>
-      {packLoading?<p className="v2-library-status">Loading beats…</p>:packError?<p role="alert">{packError}</p>:<ol className="beat-track-list">{openedTracks.map((beat,index)=><li key={beat.id} onContextMenu={e=>{if(beat.owner_id===userId)showBeatMenu(e,beat)}} className={current?.id===beat.id&&current?.owner_id===beat.owner_id?'beat-track-active':''}><button type="button" className="beat-track-play" onClick={()=>choose(beat,openedTracks,openedPack.id)} aria-label={(current?.id===beat.id&&playing?'Pause ':'Play ')+beat.title}><span className="beat-track-number">{current?.id===beat.id&&playing?'▥':index+1}</span><span><strong>{beat.title}</strong></span></button><div className="beat-track-menu"><button type="button" aria-label={'Open '+beat.title} onClick={()=>setOpenedBeat(beat)}>•••</button></div></li>)}</ol>}
-     </div>:null;
+       <div className="library-pack-cover beat-art-0"><ProjectCoverV2 ownerId={openedPack.owner_id} fileId={openedPack.cover_file_id} title={openedPack.title} className="v2-item-cover"/></div>
+       <header className="library-pack-info"><div className="library-pack-title-row"><div className="library-pack-title-block"><h2>{openedPack.title}</h2><p>{openedTracks.length} {openedTracks.length===1?'beat':'beats'}</p></div><div className="library-pack-play-controls"><button type="button" className="library-pack-shuffle" aria-label="Shuffle pack" onClick={()=>{if(openedTracks.length){const mixed=[...openedTracks].sort(()=>Math.random()-.5);choose(mixed[0],mixed,openedPack.id)}}}><Shuffle size={19}/></button><button type="button" className="library-pack-play" aria-label={(activePackId===openedPack.id&&playing?'Pause ':'Play ')+openedPack.title} onClick={()=>playPack(openedPack)}>{activePackId===openedPack.id&&playing?<Pause/>:<Play/>}</button></div></div><button type="button" className="library-pack-add" disabled title="Add tracks is not yet available in v2"><span>+</span><span>Add tracks</span></button></header>
+       {packLoading?<p className="v2-library-status">Loading beats…</p>:packError?<p role="alert">{packError}</p>:<ol className="beat-track-list">{openedTracks.map((beat,index)=><li key={beat.id} onContextMenu={e=>{if(beat.owner_id===userId)showBeatMenu(e,beat)}} className={current?.id===beat.id&&current?.owner_id===beat.owner_id?'beat-track-active':''}><button type="button" className="beat-track-play" onClick={()=>choose(beat,openedTracks,openedPack.id)} aria-label={(current?.id===beat.id&&playing?'Pause ':'Play ')+beat.title}><span className="beat-track-number">{current?.id===beat.id&&playing?'▥':index+1}</span><span><strong>{beat.title}</strong></span></button><div className="beat-track-menu"><button type="button" aria-label={'Open '+beat.title} onClick={()=>setOpenedBeat(beat)}>•••</button></div></li>)}</ol>}
+      </div>:null;
+ const packBackLabel=detailOrigin==='profile'?'Back to Profile':'Back to Home';
+ // Home and Profile open packs in the same overlay card. Back sits outside the
+ // card so it works before the track list grows and never replaces the origin.
+ const packOverlay=openedPack&&(detailOrigin==='home'||(detailOrigin==='profile'&&profileRouteKey!==null))
+  ?createPortal(<div className="v2-pack-detail-layer" role="dialog" aria-modal="true" aria-label={'Open pack '+openedPack.title}>
+    <button type="button" className="library-pack-back v2-pack-detail-back" aria-label={packBackLabel} title={packBackLabel} onClick={closeProjectDetails}><ChevronLeft size={20}/></button>
+    <div className="v2-pack-detail-overlay" onMouseDown={event=>{if(event.target===event.currentTarget)closeProjectDetails()}}>
+     <section className="v2-pack-detail-card beat-profile library-page onece-v2-library">{packDetail}</section>
+    </div>
+   </div>,document.body):null;
+ const packMessageOverlay=detailOrigin==='profile'&&(detailPending||detailError)
+  ?createPortal(<div className="v2-pack-detail-layer" role="dialog" aria-modal="true" aria-label="Open project">
+    <button type="button" className="library-pack-back v2-pack-detail-back" aria-label="Back to Profile" title="Back to Profile" onClick={closeProjectDetails}><ChevronLeft size={20}/></button>
+    <div className="v2-pack-detail-overlay">
+     <section className="v2-pack-detail-card v2-pack-detail-message beat-profile library-page onece-v2-library">
+      {detailPending?<p role="status">Loading project…</p>:<p role="alert">{detailError}</p>}
+     </section>
+    </div>
+   </div>,document.body):null;
 
  return <section className={"beat-profile library-page onece-v2-library"+(!active?" onece-library-inactive":"")}><div className="beat-profile-content"><div className="library-items">
   {actionError&&<p role="alert" className="v2-library-status">{actionError}</p>}
@@ -341,28 +359,18 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
   {loadedViewerId!==Number(userId)?(loading||!error?<p className="v2-library-status">Loading your Home…</p>:null):
    empty?<div className="library-empty"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M4 4v16M9 4v16M14 4l4 16"/></svg><h2>Your Home is empty</h2><button type="button" className="library-add-audio" onClick={onUpload}>Add Audio</button></div>:
    <div className="v2-library-contents">
-    {openedPack&&detailOrigin!=='profile'?packDetail:<div className="beat-pack-grid">
+    <div className="beat-pack-grid">
      {visibleData.packs.map((p,index)=><ProjectCardV2 key={'pack-'+p.id} variant="library" project={{...p,kind:'pack'}} ownerId={userId} tone={index%3} secondary={p.track_count+' beats'} playing={activePackId===p.id&&playing}
        onContextMenu={e=>showPackMenu(e,p)} onOpen={()=>openPack(p)} onPlay={()=>playPack(p)}/>)}
      {standaloneBeats.map((b,index)=><ProjectCardV2 key={'beat-'+b.id} variant="library" className="beat-single-card" project={{...b,kind:'beat'}} ownerId={userId} tone={(visibleData.packs.length+index)%3} secondary={b.created_at?new Date(b.created_at).toLocaleDateString('en-US',{month:'short',day:'2-digit'}):'Beat'} playing={current?.id===b.id&&playing}
        onContextMenu={e=>showBeatMenu(e,b)} onOpen={()=>{setDetailOrigin('home');setOpenedPack(null);setOpenedBeat(b)}} onPlay={()=>choose(b,[b])}
        onPointerEnter={()=>{if(userId)void loadWaveform(b.audio_file_id,userId).catch(()=>{})}}
        onFocusCapture={()=>{if(userId)void loadWaveform(b.audio_file_id,userId).catch(()=>{})}}/>)}
-    </div>}
+    </div>
    </div>}
  </div></div>
- {detailOrigin==='profile'&&(detailPending||detailError)&&createPortal(
-  <div className="v2-profile-project-detail-overlay" role="dialog" aria-modal="true" aria-label="Open project">
-   <div className="v2-profile-project-detail-sheet">
-    <button type="button" className="library-pack-back" aria-label="Back to Profile" onClick={closeProjectDetails}><ChevronLeft size={20}/></button>
-    {detailPending?<p role="status">Loading project…</p>:<p role="alert">{detailError}</p>}
-   </div>
-  </div>,document.body)}
- {detailOrigin==='profile'&&openedPack&&profileRouteKey!==null&&createPortal(
-  <div className="v2-profile-project-detail-overlay" role="dialog" aria-modal="true" aria-label={'Open pack '+openedPack.title}
-    onMouseDown={event=>{if(event.target===event.currentTarget)closeProjectDetails()}}>
-   <section className="beat-profile library-page onece-v2-library v2-profile-project-detail-sheet">{packDetail}</section>
-  </div>,document.body)}
+ {packMessageOverlay}
+ {packOverlay}
  {contextPack&&<ProjectContextMenuV2 project={{...contextPack.pack,kind:'pack'}} x={contextPack.x} y={contextPack.y} owner published={published.has(publicationKey('pack',contextPack.pack.id))} saved={savedPackIds.has(contextPack.pack.id)} onPublish={flagsStatus==='ready'?()=>void togglePublish('pack',contextPack.pack.id):undefined} onSave={flagsStatus==='ready'?()=>{const id=contextPack.pack.id;setContextPack(null);void toggleSavedProject('pack',id)}:undefined} onShare={()=>void copyProjectLink('pack',contextPack.pack.id)} onQueue={()=>{const pack=contextPack.pack;setContextPack(null);void (async()=>{try{const tracks=await fetchLibraryPackTracksV2(pack,undefined,'Unable to load pack tracks');if(!tracks.length)return;if(!current)choose(tracks[0],tracks,pack.id);else setQueue(previous=>appendDistinctQueueV2(previous,tracks.map(beat=>({...beat,queue_pack_id:pack.id}))))}catch(error){setPlayerError(error instanceof Error?error.message:'Unable to add pack to queue')}})()}} onDownload={downloadBusy?undefined:()=>void downloadOwnerProject({kind:'pack',id:contextPack.pack.id,title:contextPack.pack.title})} onAction={action=>showProjectAction(action,{...contextPack.pack,kind:'pack'})}/>}
  {contextBeat&&<ProjectContextMenuV2 project={{...contextBeat.beat,kind:'beat'}} x={contextBeat.x} y={contextBeat.y} owner published={published.has(publicationKey('beat',contextBeat.beat.id))} saved={savedBeatIds.has(contextBeat.beat.id)} onPublish={flagsStatus==='ready'?()=>void togglePublish('beat',contextBeat.beat.id):undefined} onSave={flagsStatus==='ready'?()=>{const id=contextBeat.beat.id;setContextBeat(null);void toggleSavedProject('beat',id)}:undefined} onShare={()=>void copyProjectLink('beat',contextBeat.beat.id)} onQueue={()=>addToQueue(contextBeat.beat)} onDownload={downloadBusy?undefined:()=>void downloadOwnerProject({kind:'beat',id:contextBeat.beat.id,title:contextBeat.beat.title})} onAction={action=>showProjectAction(action,{...contextBeat.beat,kind:'beat'})}/>}
  {actionDialog&&<ProjectActionDialogV2
