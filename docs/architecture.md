@@ -91,7 +91,7 @@ To avoid a two-query authorization race, `GET /api/library/files/pack-tracks/:uu
 
 **Release gate:** Treat this as a backend/security behavior change, unlike the earlier frontend CSS refactor. Full API tests, disposable PG, S3 syntax, web builds and CI must run and pass; separately request merge/production deployment approval, and verify Railway read endpoints plus Home pack navigation after release. Browser smoke alone is not sufficient.
 
-### Cautious API refactor — design only; DO NOT implement or deploy with CSS/Profile work
+### Cautious API refactor — isolated, test-gated implementation; no mixed CSS/Profile changes
 
 **Motivation:** `apps/api/src/library-files.ts` is roughly 368 lines but is a security-critical dispatcher. It combines owner-only beat/pack writes; authorized audio/stems/cover/items/pack reads; R2 signed `init`; verification and concurrent `complete` with DB leases. **A file length alone is not authorization to change these behaviors.** The other existing boundary modules (`upload-security.ts`, `upload-leases.ts`, `project-media.ts`, `project-actions.ts`, `trash.ts`) should remain separate, not be folded into another facade.
 
@@ -142,6 +142,13 @@ The current `apps/api/src/library-files.ts` exports **one stable** `handleLibrar
 **Completed API-A gate:** PR #65 contained tests and documentation only; it was merged after 7/7 GitHub Actions checks passed, including disposable PostgreSQL, with PR #66's authorization fix already integrated. The next independent branch may extract only GET handlers behind the original dispatcher after reviewing current contracts. Upload init and completion stay untouched.
 
 
+
+#### Phase API-B — first GET extraction (branch `refactor/api-private-metadata-reads`; pending review)
+
+- Move **only four authenticated metadata GET routes** (`/api/library/files`, `/items`, `/beat/:uuid`, `/pack-tracks/:uuid`) into `apps/api/src/library-read-metadata.ts`. Preserve their exact SQL, owner-scoping, status codes, JSON response fields, ordering, cache headers and invalid-path fallthrough. The `pack-tracks` same-owner, correct-kind, READY audio/cover/stems joins introduced by #66 must remain unchanged.
+- Keep `handleLibraryFiles` as the stable facade and **sole entry** after path and method checks, `currentUser` session validation, and R2 configuration. The extracted handler accepts an already-authorized numeric owner id; it must never authenticate via caller-controlled identity or be mounted under public endpoints. The original JSON sender remains shared by passing it to the private helper rather than duplicating headers.
+- **Not moved:** GET `audio`/`stems`/`cover` R2 streaming, POST `beats`/`packs`/`init`/`complete`, completion leases, R2 verification, account rate limits, public profiles, or any SQL schema. Streaming and upload route blocks are byte-for-byte preserved; existing 200/206/416 media semantics remain the facade's responsibility.
+- Acceptance: original API unit suite and #65/#66 characterization tests, both web builds, compilation with strict TypeScript, read-only/syntax R2 preflight, and **real disposable PostgreSQL** checks must pass at the final PR HEAD. Confirm R2 credentials are never required for tests. This refactor must not be merged or deployed until separately approved. Subsequent GET media extraction requires its own narrowly scoped PR and streaming/range regression tests.
 
 ## 3. Database, storage and migrations
 
