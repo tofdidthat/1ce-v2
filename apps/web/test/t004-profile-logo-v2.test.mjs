@@ -25,6 +25,18 @@ test('Shared workspace header still exposes the logo Home action outside Profile
  assert.match(workspace,/\{view==='profile'\?null:<header className="onece-workspace-header"/);
 });
 
+test('Profile keeps its Back arrow when opened from Home after the logo removal',()=>{
+ // showContextBack is false for Home-origin views, so the Profile must not use
+ // it: with no logo there would be no in-page way back.
+ assert.match(workspace,/const showContextBack=previousWorkspacePath!=='\/app\/library'/);
+ assert.match(workspace,/showBack profileId=/);
+ assert.doesNotMatch(workspace,/showBack=\{showContextBack\} profileId=/);
+});
+
+test('Profile Back returns to the originating page, falling back to Home',()=>{
+ assert.ok(workspace.includes("onBack={()=>{const index=window.history.state?.idx;if(typeof index==='number'&&index>0)navigate(-1);else navigate(account?.id?'/app/library':'/');}}"));
+});
+
 test('Profile caller wiring no longer passes the removed onGoHome prop',()=>{
  assert.doesNotMatch(workspace,/onGoHome/);
  assert.match(workspace,/onOpenProfile=\{identifier=>navigate\('\/u\/'\+encodeURIComponent\(identifier\),\{state:\{oneceFromPath:location\.pathname\}\}\)\}\/>\)\}/);

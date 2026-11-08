@@ -352,7 +352,7 @@ export default function WorkspaceV2({user,profileId}:{user:AccountUserV2|null;pr
  <main className="onece-v2-workspace-main">
  <LibraryItemsV2 active={view==='library'} playRequest={playRequest} queueRequest={queueRequest} openRequest={openRequest} profileRouteKey={view==='profile'?(profileId||'own'):null} userId={account?.id} onUpload={()=>onNavigate('upload')} onPlayerVisibility={setPlayerVisible} onPlaybackChange={setPlayback}/>
  {visibleProfileKeys.map(profileKey=><PublicProfileV2 key={String(account?.id||'anonymous')+':'+profileKey}
-  active={activeProfileKey===profileKey} user={account} showBack={showContextBack} profileId={profileKey==='own'?undefined:profileKey.slice('public:'.length)}
+  active={activeProfileKey===profileKey} user={account} showBack profileId={profileKey==='own'?undefined:profileKey.slice('public:'.length)}
   playback={playback} onPlayProject={requestPlayback} onQueueProject={requestQueue} onOpenProject={requestOpen}
   onIdentityUpdated={updated=>{
    if(!isAccountUserV2(updated))return;
