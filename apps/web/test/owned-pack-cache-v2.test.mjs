@@ -1,6 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {OwnedPackCacheV2} from '../src/owned-pack-cache-v2.ts';
+import {findOwnProjectV2,OwnedPackCacheV2} from '../src/owned-pack-cache-v2.ts';
+
+test('profile fast path only reads projects verified for the active owner',()=>{
+ const projects=[{id:'a',owner_id:1},{id:'b',owner_id:2}];
+ assert.equal(findOwnProjectV2(1,1,1,'a',projects),projects[0]);
+ assert.equal(findOwnProjectV2(1,1,2,'b',projects),undefined);
+ assert.equal(findOwnProjectV2(2,1,2,'b',projects),undefined);
+ assert.equal(findOwnProjectV2(undefined,1,1,'a',projects),undefined);
+});
 
 test('only the active owner can reuse tracks and account switches clear them',()=>{
  const cache=new OwnedPackCacheV2();cache.setViewer(1);
