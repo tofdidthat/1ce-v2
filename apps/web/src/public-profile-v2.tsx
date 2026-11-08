@@ -26,7 +26,7 @@ function CatalogLibraryIcon({size=17}:{size?:number}){
 const api=import.meta.env.VITE_API_URL;
 type PublicProject=ProfileProjectV2;
 type ProfileTab='catalog'|'saves'|'following';
-export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,onOpenProfile,showBack=true,profileId,onPlayProject,onQueueProject,onOpenProject,playback,active=true}:{user:AccountUserV2|null;active?:boolean;onIdentityUpdated:(updated:AccountUserV2)=>void;onBack:()=>void;onLogin:()=>void;onOpenProfile:(identifier:string)=>void;showBack?:boolean;profileId?:string;onPlayProject?:(ownerId:number,kind:'beat'|'pack',id:string)=>void;onQueueProject?:(ownerId:number,kind:'beat'|'pack',id:string)=>void;onOpenProject?:(ownerId:number,kind:'beat'|'pack',id:string)=>void;playback?:{ownerId:number;kind:'beat'|'pack';id:string;playing:boolean}|null}){
+export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,onOpenProfile,profileId,onPlayProject,onQueueProject,onOpenProject,playback,active=true}:{user:AccountUserV2|null;active?:boolean;onIdentityUpdated:(updated:AccountUserV2)=>void;onBack:()=>void;onLogin:()=>void;onOpenProfile:(identifier:string)=>void;profileId?:string;onPlayProject?:(ownerId:number,kind:'beat'|'pack',id:string)=>void;onQueueProject?:(ownerId:number,kind:'beat'|'pack',id:string)=>void;onOpenProject?:(ownerId:number,kind:'beat'|'pack',id:string)=>void;playback?:{ownerId:number;kind:'beat'|'pack';id:string;playing:boolean}|null}){
  const [tab,setTab]=useState<ProfileTab>('catalog');
  const [editorOpen,setEditorOpen]=useState(false);
  const [projects,setProjects]=useState<{catalog:PublicProject[];saves:PublicProject[]}>({catalog:[],saves:[]});
@@ -237,7 +237,7 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
  return <section className="onece-public-profile" aria-label="Public profile">
   <header className="onece-workspace-header onece-profile-navbar" aria-label="Profile navigation">
    <div className="onece-workspace-brand onece-profile-header-brand">
-    {showBack&&<button type="button" className="library-settings onece-profile-nav-back" aria-label="Go back" title="Back" onClick={onBack}><ChevronLeft size={20}/></button>}
+    <button type="button" className="library-settings onece-profile-nav-back" aria-label="Go back" title="Back" onClick={onBack}><ChevronLeft size={20}/></button>
    </div>
    <div className="onece-workspace-actions onece-profile-nav-actions">
     {(verifiedProfile||!profileId)&&(isOwner?

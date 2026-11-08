@@ -71,6 +71,10 @@
 /* HeaderV2 now owns desktop geometry for every workspace, including Profile.
    Keep only profile-specific placement for the copy-link feedback popover. */
 .onece-profile-navbar .onece-profile-nav-actions { position:relative; }
+/* The Profile's top-left slot holds the Back button and nothing else. The Back
+   button is structural (not prop-driven), and this guard keeps a reused logo or
+   any other shared-workspace control out of that corner on every breakpoint. */
+.onece-workspace-header.onece-profile-navbar .onece-profile-header-brand > :not(.onece-profile-nav-back){display:none!important}
 .onece-workspace-header.onece-profile-navbar .library-settings.onece-profile-nav-follow{
  flex:0 0 44px;width:44px;min-width:44px;height:44px;padding:0;
  display:grid;place-items:center;

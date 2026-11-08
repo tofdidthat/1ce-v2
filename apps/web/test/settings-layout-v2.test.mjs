@@ -61,8 +61,8 @@ test('Back is context-sensitive: Home origin hides the arrow, other origins pres
  assert.match(workspace,/if\(previousWorkspacePath&&typeof window\.history\.state\?\.idx==='number'&&window\.history\.state\.idx>0\)navigate\(-1\)/);
  assert.match(workspace,/else onNavigate\('library'\)/);
  assert.match(workspace,/state:\{oneceFromPath:location\.pathname\}/);
- assert.match(profile,/\{showBack&&<button type="button" className="library-settings onece-profile-nav-back"/);
- assert.match(workspace,/showBack profileId=/);
+ assert.match(profile,/<button type="button" className="library-settings onece-profile-nav-back"/);
+ assert.doesNotMatch(workspace,/user=\{account\} showBack profileId=/);
  assert.doesNotMatch(profile,/onece-workspace-logo-home|1ce-logo\.png/);
  assert.match(workspace,/onClick=\{\(\)=>onNavigate\('library'\)\}><img src="\/1ce-logo.png" alt="1CE"\/>/);
 });
@@ -73,6 +73,6 @@ test('World, Upload and Settings show only the 1CE logo on the header left, rega
  assert.match(workspace,/onClick=\{\(\)=>onNavigate\('library'\)\}><img src="\/1ce-logo.png" alt="1CE"\/>/);
  assert.match(workspace,/view==='profile'\?null:<header className="onece-workspace-header"/);
  assert.match(workspace,/<CompactWorkspaceNav view=\{view\} disabled=\{false\} onNavigate=\{onNavigate\}\/>/);
- assert.match(workspace,/showBack profileId=/);
- assert.match(profile,/\{showBack&&<button type="button" className="library-settings onece-profile-nav-back"/);
+ assert.doesNotMatch(workspace,/user=\{account\} showBack profileId=/);
+ assert.match(profile,/<button type="button" className="library-settings onece-profile-nav-back"/);
 });

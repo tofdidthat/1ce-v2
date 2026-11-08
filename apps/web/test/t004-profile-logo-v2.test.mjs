@@ -15,7 +15,7 @@ test('Profile page no longer renders the top-left 1CE logo',()=>{
 
 test('Profile keeps the Back control and its navbar brand container',()=>{
  assert.match(profile,/<div className="onece-workspace-brand onece-profile-header-brand">/);
- assert.match(profile,/\{showBack&&<button type="button" className="library-settings onece-profile-nav-back" aria-label="Go back" title="Back" onClick=\{onBack\}>/);
+ assert.match(profile,/<button type="button" className="library-settings onece-profile-nav-back" aria-label="Go back" title="Back" onClick=\{onBack\}>/);
  assert.match(profile,/<ChevronLeft size=\{20\}\/>/);
 });
 
@@ -25,12 +25,12 @@ test('Shared workspace header still exposes the logo Home action outside Profile
  assert.match(workspace,/\{view==='profile'\?null:<header className="onece-workspace-header"/);
 });
 
-test('Profile keeps its Back arrow when opened from Home after the logo removal',()=>{
- // showContextBack is false for Home-origin views, so the Profile must not use
- // it: with no logo there would be no in-page way back.
+test('Profile always renders its Back arrow, even when opened from Home',()=>{
+ // showContextBack is false for Home-origin views. The Profile must not depend
+ // on it: with no logo there would be no in-page way back.
  assert.match(workspace,/const showContextBack=previousWorkspacePath!=='\/app\/library'/);
- assert.match(workspace,/showBack profileId=/);
- assert.doesNotMatch(workspace,/showBack=\{showContextBack\} profileId=/);
+ assert.doesNotMatch(workspace,/user=\{account\} showBack profileId=/);
+ assert.doesNotMatch(profile,/showBack/);
 });
 
 test('Profile Back returns to the originating page, falling back to Home',()=>{
