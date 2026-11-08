@@ -23,6 +23,13 @@ const api=import.meta.env.VITE_API_URL;
 type BeatItem = LibraryBeatV2;
 type PackItem = LibraryPackV2;
 type LibraryData = LibraryProjectsV2;
+// Reopening the same project must not drop the overlay back into a fresh
+// loading state. The cache is keyed per owner kind:owner id so account
+// switches and cross-user access stay separated; entries only ever hold
+// tracks obtained through the authorized owner viewer.
+type OpenedTrackEntry={kind:'beat'|'pack';tracks:BeatItem[];title:string;coverFileId:number|null};
+const openedTrackCache=new Map<string,OpenedTrackEntry>();
+const openedTrackCacheKey=(ownerId:number,kind:'beat'|'pack',id:string)=>ownerId+':'+kind+':'+id;
 export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackChange,userId,active=true,playRequest,queueRequest,openRequest,profileRouteKey=null}:{onUpload:()=>void;onPlayerVisibility?:(visible:boolean)=>void;onPlaybackChange?:(state:{ownerId:number;kind:'beat'|'pack';id:string;playing:boolean}|null)=>void;userId?:number;active?:boolean;playRequest?:{ownerId:number;kind:'beat'|'pack';id:string;nonce:number}|null;queueRequest?:{ownerId:number;kind:'beat'|'pack';id:string;nonce:number}|null;openRequest?:{ownerId:number;kind:'beat'|'pack';id:string;nonce:number}|null;profileRouteKey?:string|null}){
  const [data,setData]=useState<LibraryData>({beats:[],packs:[]});
  const [loadedViewerId,setLoadedViewerId]=useState<number|null>(null);
@@ -67,6 +74,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
  const [actionDialog,setActionDialog]=useState<{project:ContextProject;action:ProjectAction}|null>(null);
  // A hidden, persistent Library must not retain another viewer's open metadata panels.
  useEffect(()=>{
+  openedTrackCache.clear();
   packRequest.current?.abort();
   setOpenedPack(null);setOpenedTracks([]);setOpenedBeat(null);
   setContextBeat(null);setContextPack(null);setActionDialog(null);
@@ -172,11 +180,21 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
  const openPack=async(pack:PackItem)=>{
   setDetailOrigin('home');setOpenedBeat(null);setDetailPending(false);setDetailError('');
   packRequest.current?.abort();
+  const cacheKey=openedTrackCacheKey(pack.owner_id??userId??0,'pack',pack.id);
+  const cached=openedTrackCache.get(cacheKey);
+  setOpenedPack(pack);
+  setOpenedTracks(cached&&cached.kind==='pack'?cached.tracks:[]);
+  setPackError('');
+  if(cached&&cached.kind==='pack'){
+   setPackLoading(false);
+   return;
+  }
   const controller=new AbortController();
   packRequest.current=controller;
-  setOpenedPack(pack);setOpenedTracks([]);setPackError('');setPackLoading(true);
+  setPackLoading(true);
   try{
    const tracks=await fetchLibraryPackTracksV2(pack,controller.signal,'Unable to load pack');
+   openedTrackCache.set(cacheKey,{kind:'pack',tracks,title:pack.title,coverFileId:pack.cover_file_id});
    if(!controller.signal.aborted)setOpenedTracks(tracks);
   }catch(e){if(!controller.signal.aborted)setPackError(e instanceof Error?e.message:'Unable to load pack')}
   finally{if(!controller.signal.aborted)setPackLoading(false)}
@@ -266,9 +284,21 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
   const {ownerId,kind,id}=openRequest,controller=new AbortController();
   detailRequest.current?.abort();detailRequest.current=controller;
   packRequest.current?.abort();setContextBeat(null);setContextPack(null);
+  const cacheKey=openedTrackCacheKey(ownerId,kind,id);
+  const cached=openedTrackCache.get(cacheKey);
   setOpenedBeat(null);setOpenedPack(null);setOpenedTracks([]);
   setDetailOrigin('profile');setDetailPending(true);setDetailError('');
   void (async()=>{
+   if(cached&&cached.kind){
+    if(kind==='beat'){
+     if(cached.tracks&&cached.tracks.length&&(!controller.signal.aborted)){setOpenedBeat(cached.tracks[0]);setDetailPending(false);}
+    }else if(cached.kind==='pack'&&cached.tracks&&cached.tracks.length&&(!controller.signal.aborted)){
+     setOpenedPack({ownerId,projectId:id,kind:'pack',id,owner_id:ownerId,title:cached.title,cover_file_id:cached.coverFileId,track_count:cached.tracks.length,created_at:''});
+     setOpenedTracks(cached.tracks);
+     setDetailPending(false);
+    }
+    return;
+   }
    try{
     const project=await fetchPlayableProjectV2(ownerId,kind,id,controller.signal);
     const tracks=tracksFromPlayableProjectV2(project);
