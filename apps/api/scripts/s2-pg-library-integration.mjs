@@ -1,5 +1,5 @@
 // Phase 4C: exercise real PostgreSQL schema/transactions with compiled API.
-// Only runs inside GitHub Actions against the existing disposable S2 CI DB.
+// Runs only in GitHub Actions or CircleCI against the existing disposable S2 CI DB.
 // Fake signer/storage forbid accidental external R2 network calls.
 import assert from 'node:assert/strict';
 import {createHash,randomUUID} from 'node:crypto';
@@ -10,7 +10,7 @@ import {handleProjectActions} from '../dist/project-actions.js';
 
 const connectionString=process.env.S2_TEST_DATABASE_URL;
 const address=connectionString?new URL(connectionString):null;
-if(process.env.CI!=='true'||process.env.GITHUB_ACTIONS!=='true'||
+if(process.env.CI!=='true'||!(process.env.GITHUB_ACTIONS==='true'||process.env.CIRCLECI==='true')||
  !address||!['postgres:','postgresql:'].includes(address.protocol)||
  !['localhost','127.0.0.1'].includes(address.hostname)||
  address.pathname!=='/onece_s2_ci'||address.port!=='5432')
@@ -42,7 +42,7 @@ async function patchProject(path,data,userId){
 }
 async function getFile(path,userId){
  const req=Readable.from([]);req.method='GET';req.headers={};
- const res={status:0,headers:{},body:null,writeHead(status,headers={}){this.status=status;this.headers=headers;},end(raw){this.body=raw?JSON.parse(raw):null;}};
+ const res={status:0,body:null,writeHead(status){this.status=status;},end(raw){this.body=raw?JSON.parse(raw):null;}};
  assert.equal(await handleLibraryFiles(req,res,'/api/library/files/'+path,db,async()=>userId==null?null:{id:userId},opts),true);
  return res;
 }
@@ -128,6 +128,57 @@ try{
  assert.equal(visible.get(beatTwo.body.id),false);
  assert.equal(await count('SELECT count(*)::int AS n FROM library_packs WHERE user_id=$1',[a]),1);
 
+ // Pack-read security: a single authorized pack row distinguishes an empty
+ // pack from an inaccessible/deleted pack. This is a disposable PostgreSQL
+ // schema, never a live account or production R2 object.
+ const readPack=async(packId,viewer)=>getFile('pack-tracks/'+packId,viewer);
+ const ownedPack=await readPack(good.body.id,a);
+ assert.equal(ownedPack.status,200);
+ assert.deepEqual(ownedPack.body.beats.map(row=>row.id),[beatOne.body.id,beatTwo.body.id],
+  'Canonical pack order must be unchanged');
+ assert.equal((await readPack(good.body.id,b)).status,404,'Foreign owner cannot enumerate pack members');
+ assert.deepEqual((await readPack(good.body.id,b)).body,{error:'Pack not found'});
+ assert.equal((await readPack(randomUUID(),a)).status,404,'Missing pack cannot look like an empty pack');
+ assert.equal((await readPack('f'.repeat(36),a)).status,404,'Malformed 36-character pack IDs must not reach a PostgreSQL UUID cast');
+ const emptyPackId=randomUUID(),foreignPackId=randomUUID(),deletedPackId=randomUUID();
+ await db.query('INSERT INTO library_packs(id,user_id,title) VALUES($1,$2,$3)',[emptyPackId,a,'Empty active pack']);
+ await db.query('INSERT INTO library_packs(id,user_id,title) VALUES($1,$2,$3)',[foreignPackId,b,'Foreign private pack']);
+ await db.query('INSERT INTO library_packs(id,user_id,title,deleted_at) VALUES($1,$2,$3,now())',[deletedPackId,a,'Deleted private pack']);
+ assert.deepEqual((await readPack(emptyPackId,a)).body,{beats:[]},'An existing pack with zero playable tracks is valid');
+ assert.equal((await readPack(foreignPackId,a)).status,404);
+ assert.equal((await readPack(foreignPackId,b)).status,200);
+ assert.equal((await readPack(deletedPackId,a)).status,404);
+
+ // FKs in schema 004 protect existence, NOT owner or media kind. Simulate
+ // malformed legacy references; restore them even if an assertion fails.
+ const foreignStems=await ready(b,'stems','other-owner-pack-stems.zip');
+ try{
+  await db.query('UPDATE library_beats SET cover_file_id=$1,stems_file_id=$2 WHERE id=$3 AND user_id=$4',
+   [coverB,foreignStems,beatOne.body.id,a]);
+  const sanitized=await readPack(good.body.id,a);
+  assert.equal(sanitized.status,200);
+  assert.equal(sanitized.body.beats.length,2);
+  const row=sanitized.body.beats.find(item=>item.id===beatOne.body.id);
+  assert.equal(row.cover_file_id,null,'Foreign cover ID must never escape the owner boundary');
+  assert.equal(row.stems_file_id,null,'Foreign stems ID must never escape the owner boundary');
+ }finally{
+  await db.query('UPDATE library_beats SET cover_file_id=$1,stems_file_id=$2 WHERE id=$3 AND user_id=$4',
+   [coverA,stemsA,beatOne.body.id,a]);
+ }
+ for(const [label,fileId] of [['foreign audio',audioB],['wrong media kind',coverA]]){
+  try{
+   await db.query('UPDATE library_beats SET audio_file_id=$1 WHERE id=$2 AND user_id=$3',[fileId,beatTwo.body.id,a]);
+   const guarded=await readPack(good.body.id,a);
+   assert.equal(guarded.status,200,label);
+   assert.deepEqual(guarded.body.beats.map(row=>row.id),[beatOne.body.id],
+    label+' must not appear among original pack audio tracks');
+  }finally{
+   await db.query('UPDATE library_beats SET audio_file_id=$1 WHERE id=$2 AND user_id=$3',[audioA2,beatTwo.body.id,a]);
+  }
+ }
+ assert.deepEqual((await readPack(good.body.id,a)).body.beats.map(row=>row.id),
+  [beatOne.body.id,beatTwo.body.id],'Restored ownership and membership preserve original order');
+
  // Owner-scoped read contracts: real PostgreSQL, no real S3 requests.
  // These must stay stable when GET dispatch is extracted in a future PR.
  const [homeA,homeB,homeAnonymous]=await Promise.all([
@@ -147,10 +198,10 @@ try{
  assert.equal(homeA.body.beats.find(row=>row.id===beatTwo.body.id).library_visible,false);
  const tracksA=await getFile('pack-tracks/'+good.body.id,a);
  const tracksB=await getFile('pack-tracks/'+good.body.id,b);
- assert.equal(tracksA.status,200);assert.equal(tracksB.status,200);
+ assert.equal(tracksA.status,200);assert.equal(tracksB.status,404);
  assert.deepEqual(tracksA.body.beats.map(row=>row.id),[beatOne.body.id,beatTwo.body.id],
   'Pack membership and original order must remain unchanged');
- assert.deepEqual(tracksB.body,{beats:[]},'Unowned pack ID is indistinguishable from an empty pack under the current GET contract');
+ assert.deepEqual(tracksB.body,{error:'Pack not found'},'Unowned pack must be indistinguishable from a nonexistent pack');
  assert.equal((await getFile('pack-tracks/'+good.body.id,null)).status,401);
  const filesA=await getFile('',a);
  const filesB=await getFile('',b);
@@ -210,5 +261,5 @@ try{
  assert.equal(existing.status,200);
  assert.deepEqual(existing.body,{id:String(audioA),reused:true});
  assert.equal(signed.length,11,'Reused READY asset must never issue a signed PUT');
- console.log('Phase 4C + PR57 + API read contracts disposable PostgreSQL PASS: concurrent quota locks, READY dedup, per-owner grants, pack membership, stems owner-only attach/replace/unlink persistence, foreign and anonymous access denied; R2 intentionally not used');
+ console.log('Phase 4C + PR57 + pack owner and GET contracts disposable PostgreSQL PASS: concurrent quota locks, READY dedup, per-owner grants, pack membership, stems owner-only attach/replace/unlink persistence, foreign and anonymous access denied; R2 intentionally not used');
 }finally{await db.end();}

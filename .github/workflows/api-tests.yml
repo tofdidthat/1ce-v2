@@ -14,17 +14,15 @@ on:
       - 'history/database/**'
       - 'docs/architecture.md'
       - '.github/workflows/api-tests.yml'
+  # Every PR must receive the same checks as its latest commit. A path
+  # filter here would leave required checks pending on documentation-only PRs.
   pull_request:
-    paths:
-      - 'apps/api/**'
-      - 'apps/web/**'
-      - 'packages/**'
-      - 'package.json'
-      - 'pnpm-workspace.yaml'
-      - 'pnpm-lock.yaml'
-      - 'scripts/**'
-      - 'docs/architecture.md'
-      - '.github/workflows/api-tests.yml'
+    types: [opened, synchronize, reopened, ready_for_review]
+
+# Do not spend compute on stale runs when agents push multiple revisions.
+concurrency:
+  group: 1ce-v2-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read

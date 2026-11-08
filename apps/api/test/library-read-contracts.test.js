@@ -30,12 +30,18 @@ function fixture(){
  const db={
   async query(sql,args=[]){
    queries.push({sql,args});
-   if(sql.includes('FROM library_packs p JOIN library_pack_beats pb')){
+   if(sql.includes('FROM library_packs p\n   LEFT JOIN LATERAL (')){
     assert.match(sql,/p.user_id=\$2/,'pack tracks must be owner-scoped');
-    assert.match(sql,/ORDER BY pb.position ASC/,'pack order is meaningful');
-    assert.match(sql,/p.deleted_at IS NULL AND b.deleted_at IS NULL/);
+    assert.match(sql,/ORDER BY tracks.position ASC/,'pack order is meaningful');
+    assert.match(sql,/p.deleted_at IS NULL/);
+    assert.match(sql,/b.user_id=p.user_id AND b.deleted_at IS NULL/);
+    assert.match(sql,/audio.user_id=p.user_id AND audio.kind='audio' AND audio.status='ready'/);
+    assert.match(sql,/cover.user_id=p.user_id AND cover.kind='cover' AND cover.status='ready'/);
+    assert.match(sql,/stems.user_id=p.user_id AND stems.kind='stems' AND stems.status='ready'/);
     const matching=args[0]===packA&&args[1]===ownerA;
-    return result(matching?[{id:beatA,title:'First',audio_file_id:11,cover_file_id:12,stems_file_id:13}]:[]);
+    return result(matching?[{
+     pack_id:packA,id:beatA,title:'First',audio_file_id:11,cover_file_id:12,stems_file_id:13
+    }]:[]);
    }
    if(sql.includes('FROM library_beats b JOIN library_files audio')){
     assert.match(sql,/b.user_id=\$2/);
@@ -127,8 +133,8 @@ test('pack-tracks and beat metadata honor original owner and preserve existing r
  assert.deepEqual(tracks.body().beats.map(x=>x.id),[beatA]);
  assert.equal(tracks.body().beats[0].stems_file_id,13);
  const foreign=await f.invoke('/api/library/files/pack-tracks/'+packA,{viewer:ownerB});
- assert.equal(foreign.status,200,'existing contract: unknown pack appears as empty tracks');
- assert.deepEqual(foreign.body(),{beats:[]});
+ assert.equal(foreign.status,404,'other-user pack must return 404');
+ assert.deepEqual(foreign.body(),{error:'Pack not found'});
  const beat=await f.invoke('/api/library/files/beat/'+beatA);
  assert.equal(beat.status,200);
  assert.deepEqual(beat.body(),{beat:{id:beatA,title:'First',audio_file_id:11,stems_file_id:13}});
@@ -233,7 +239,7 @@ test('JSON responses preserve no-store and content type on empty or denied metad
   ['/api/library/files/items',ownerA,200],
   ['/api/library/files/items',null,401],
   ['/api/library/files/beat/'+beatB,ownerA,404],
-  ['/api/library/files/pack-tracks/'+packA,ownerB,200],
+  ['/api/library/files/pack-tracks/'+packA,ownerB,404],
   ['/api/library/files',ownerB,200],
   ['/api/library/files/unknown',ownerA,404]
  ]){
