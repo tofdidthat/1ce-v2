@@ -23,7 +23,7 @@ const api=import.meta.env.VITE_API_URL;
 type BeatItem = LibraryBeatV2;
 type PackItem = LibraryPackV2;
 type LibraryData = LibraryProjectsV2;
-export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackChange,userId,active=true,playRequest,queueRequest,openRequest,profileRouteKey=null,onProfilePackVisibility}:{onUpload:()=>void;onPlayerVisibility?:(visible:boolean)=>void;onPlaybackChange?:(state:{ownerId:number;kind:'beat'|'pack';id:string;playing:boolean}|null)=>void;userId?:number;active?:boolean;playRequest?:{ownerId:number;kind:'beat'|'pack';id:string;nonce:number}|null;queueRequest?:{ownerId:number;kind:'beat'|'pack';id:string;nonce:number}|null;openRequest?:{ownerId:number;kind:'beat'|'pack';id:string;nonce:number}|null;profileRouteKey?:string|null;onProfilePackVisibility?:(visible:boolean)=>void}){
+export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackChange,userId,active=true,playRequest,queueRequest,openRequest,profileRouteKey=null,onProfilePackVisibility,onHomePackVisibility}:{onUpload:()=>void;onPlayerVisibility?:(visible:boolean)=>void;onPlaybackChange?:(state:{ownerId:number;kind:'beat'|'pack';id:string;playing:boolean}|null)=>void;userId?:number;active?:boolean;playRequest?:{ownerId:number;kind:'beat'|'pack';id:string;nonce:number}|null;queueRequest?:{ownerId:number;kind:'beat'|'pack';id:string;nonce:number}|null;openRequest?:{ownerId:number;kind:'beat'|'pack';id:string;nonce:number}|null;profileRouteKey?:string|null;onProfilePackVisibility?:(visible:boolean)=>void;onHomePackVisibility?:(visible:boolean)=>void}){
  const [data,setData]=useState<LibraryData>({beats:[],packs:[]});
  const [loadedViewerId,setLoadedViewerId]=useState<number|null>(null);
  const [libraryRevision,setLibraryRevision]=useState(0);
@@ -351,6 +351,8 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
       </div>:null;
  const profilePackPage=Boolean(profileRouteKey!==null&&detailOrigin==='profile'&&((openRequest?.kind==='pack'&&(detailPending||detailError))||openedPack));
  useEffect(()=>{onProfilePackVisibility?.(profilePackPage);return()=>onProfilePackVisibility?.(false)},[profilePackPage,onProfilePackVisibility]);
+ const homePackPage=Boolean(active&&detailOrigin==='home'&&openedPack);
+ useEffect(()=>{onHomePackVisibility?.(homePackPage);return()=>onHomePackVisibility?.(false)},[homePackPage,onHomePackVisibility]);
  const profilePackMessage=profilePackPage&&!openedPack?<div className="library-pack-detail v2-pack-detail"><button type="button" className="library-pack-back" aria-label="Back to Profile" onClick={closeProjectDetails}><ChevronLeft size={20}/></button>{detailPending?<p role="status">Loading project?</p>:<p role="alert">{detailError}</p>}</div>:null;
  return <section className={"beat-profile library-page onece-v2-library"+(!active&&!profilePackPage?" onece-library-inactive":"")}><div className="beat-profile-content"><div className="library-items">
   {actionError&&<p role="alert" className="v2-library-status">{actionError}</p>}
