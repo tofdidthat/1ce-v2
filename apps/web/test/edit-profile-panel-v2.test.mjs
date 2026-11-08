@@ -31,7 +31,8 @@ test('own external profile editor stays open while same-profile Catalog revalida
  assert.match(profile,/const lastVerifiedProfileKey=React\.useRef\(''\)/);
  assert.match(profile,/const sameVerifiedProfile=lastVerifiedProfileKey\.current===requestKey/);
  assert.match(profile,/lastVerifiedProfileKey\.current=requestKey/);
- assert.match(profile,/const visibleProfileUser=\(profileStatus==='ready'\|\|sameVerifiedProfile\)\?profileUser:null/);
+ assert.match(profile,/const verifiedProfile=profileStatus==='ready'\|\|sameVerifiedProfile/);
+ assert.match(profile,/const visibleProfileUser=verifiedProfile\?profileUser:null/);
  assert.match(profile,/editorOpen&&isOwner/);
  assert.match(profile,/React\.useEffect\(\(\)=>setEditorOpen\(false\),\[targetId,user\?\.id\]\)/);
 });

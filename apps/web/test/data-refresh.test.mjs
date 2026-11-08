@@ -26,6 +26,13 @@ test('same-tab changes update only subscribed scopes and matching users',()=>{
  notifyV2DataChanged(['library'],7);
  assert.equal(library,1);
 });
+test('change subscribers receive the actor and scopes for owner invalidation',()=>{
+ let seen=null;
+ const unsub=subscribeV2DataChanges(['library','publications'],change=>{seen=change});
+ notifyV2DataChanged(['library'],42);
+ assert.deepEqual(seen,{scopes:['library'],actorId:42});
+ unsub();
+});
 test('unknown notifications are ignored; shared link notifications refresh all listeners',()=>{
  let count=0;
  const unsub=subscribeV2DataChanges(['shares'],()=>count++,23);

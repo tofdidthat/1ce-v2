@@ -47,7 +47,10 @@ test('cover bytes stay in viewer scoped Workspace cache, offscreen cards release
  assert.match(covers,/useEffect\(\(\)=>\(\)=>cache\.clear\(\),\[cache\]\)/);
  assert.match(covers,/credentials:'include',cache:'no-store'/);
  assert.match(cache,/maxEntries\?\?48/);
- assert.match(cache,/ttlMs\?\?2\*60\*1000/);
+ assert.match(cache,/ttlMs\?\?30\*60\*1000/);
  assert.match(covers,/lease\.release\(\)/);
+ assert.match(covers,/subscribeV2DataChanges\(\['library','publications'\]/);
+ assert.match(covers,/cache\.invalidateOwner\(change\.actorId\)/);
+ assert.match(cache,/invalidateOwner\(ownerId:number\)/);
  assert.doesNotMatch(main+workspace+profile,/localStorage\.setItem\(.*(?:cover|profile|project)/);
 });

@@ -39,15 +39,15 @@ export function notifyV2DataChanged(scopes:readonly V2DataScope[],actorId?:numbe
  channel()?.postMessage(change);
 }
 
-export function subscribeV2DataChanges(scopes:readonly V2DataScope[],callback:()=>void,userId?:number|null){
+export function subscribeV2DataChanges(scopes:readonly V2DataScope[],callback:(change:V2DataChange)=>void,userId?:number|null){
  if(typeof window==='undefined')return ()=>{};
  const onChange=(event:Event)=>{
   const change=parseChange((event as CustomEvent<unknown>).detail);
-  if(change&&matchesV2DataChange(change,scopes,userId))callback();
+  if(change&&matchesV2DataChange(change,scopes,userId))callback(change);
  };
  const onMessage=(event:MessageEvent)=>{
   const change=parseChange(event.data);
-  if(change&&matchesV2DataChange(change,scopes,userId))callback();
+  if(change&&matchesV2DataChange(change,scopes,userId))callback(change);
  };
  window.addEventListener(EVENT,onChange);
  const bc=channel();
