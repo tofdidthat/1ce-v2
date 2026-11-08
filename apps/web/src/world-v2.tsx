@@ -24,7 +24,11 @@ export default function WorldV2({userId,onOpenProfile}:{userId?:number;onOpenPro
  useEffect(()=>{
   if(tab!=='following'||!viewerId)return;
   const controller=new AbortController();
-  setFollowing({viewerId,status:'loading',users:[],error:''});
+  // Returning to the Following tab or resuming the window revalidates in the
+  // background while the last verified list for this viewer stays visible.
+  setFollowing(previous=>previous.viewerId===viewerId&&previous.status==='ready'
+   ?{...previous,error:''}
+   :{viewerId,status:'loading',users:[],error:''});
   getProfileFollowsV2(viewerId,controller.signal)
    .then(result=>{
     if(!controller.signal.aborted)setFollowing({

@@ -68,6 +68,24 @@ test('unused covers expire and are revalidated without clearing currently mounte
  again.release();cache.clear();
 });
 
+test('default cache survives normal back navigation without refetching and still expires later',async()=>{
+ let clock=0,calls=0;
+ const {cache,revoked}=setup(async()=>{calls++;return image()},{now:()=>clock});
+ const first=cache.acquire(7,9);
+ assert.equal(await first.ready,'blob:cover-1');
+ first.release();
+ clock=25*60*1000;
+ const revisit=cache.acquire(7,9);
+ assert.equal(revisit.url,'blob:cover-1');
+ assert.equal(await revisit.ready,'blob:cover-1');
+ assert.equal(calls,1);
+ revisit.release();
+ clock=31*60*1000;
+ assert.equal(cache.peek(7,9),null);
+ assert.deepEqual(revoked,['blob:cover-1']);
+ cache.clear();
+});
+
 test('LRU and byte budget evict only unused URLs and revoke them',async()=>{
  const {cache,revoked}=setup(async()=>image(4),{maxEntries:2,maxBytes:8});
  const first=cache.acquire(1,1);await first.ready;first.release();

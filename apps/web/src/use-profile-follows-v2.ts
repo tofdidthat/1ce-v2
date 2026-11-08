@@ -34,12 +34,19 @@ export default function useProfileFollowsV2({active,targetId,userId,followKey,re
  React.useEffect(()=>{
   if(!resolvedTargetId){setFollowState({key:followKey,status:'loading',data:null});return;}
   const controller=new AbortController();
-  setFollowState(previous=>({key:followKey,status:'loading',data:previous.key===followKey?previous.data:null}));setFollowError('');
+  // Focus/tab revalidation of the same verified target keeps the current list
+  // instead of replacing it with a loading message.
+  setFollowState(previous=>previous.key===followKey&&previous.data
+   ?{key:followKey,status:'ready',data:previous.data}
+   :{key:followKey,status:'loading',data:null});
+  setFollowError('');
   void getProfileFollowsV2(resolvedTargetId,controller.signal).then(data=>{
    if(!controller.signal.aborted)setFollowState({key:followKey,status:'ready',data});
   }).catch(caught=>{
    if(!controller.signal.aborted){
-    setFollowState({key:followKey,status:'error',data:null});
+    setFollowState(previous=>previous.key===followKey&&previous.data
+     ?{...previous,status:'ready'}
+     :{key:followKey,status:'error',data:null});
     setFollowError(caught instanceof Error?caught.message:'Unable to load following');
    }
   });

@@ -27,7 +27,10 @@ export class ProjectCoverCacheV2{
   this.loader=loader;
   this.maxEntries=options.maxEntries??48;
   this.maxBytes=options.maxBytes??48*1024*1024;
-  this.ttlMs=options.ttlMs??2*60*1000;
+  // Memory-only, viewer-scoped and cleared on account/workspace change.
+  // Keep already-authorized covers through normal back navigation instead of
+  // re-downloading every card after two minutes.
+  this.ttlMs=options.ttlMs??30*60*1000;
   this.now=options.now??Date.now;
   this.makeUrl=options.makeUrl??(blob=>URL.createObjectURL(blob));
   this.revokeUrl=options.revokeUrl??(url=>URL.revokeObjectURL(url));

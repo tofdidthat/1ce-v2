@@ -54,10 +54,11 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
  // Revalidation must not close the owner's open editor, but old profile
  // data must never leak across a different viewer or target profile.
  const sameVerifiedProfile=lastVerifiedProfileKey.current===requestKey;
- const visibleProjects=(profileStatus==='ready'||sameVerifiedProfile)?projects:{catalog:[],saves:[]};
- const visibleProfileUser=(profileStatus==='ready'||sameVerifiedProfile)?profileUser:null;
+ const verifiedProfile=profileStatus==='ready'||sameVerifiedProfile;
+ const visibleProjects=verifiedProfile?projects:{catalog:[],saves:[]};
+ const visibleProfileUser=verifiedProfile?profileUser:null;
  const isOwner=!!user?.id&&(!profileId||String(user.id)===String(visibleProfileUser?.id));
- const resolvedTargetId=profileStatus==='ready'&&Number.isSafeInteger(Number(visibleProfileUser?.id))?Number(visibleProfileUser?.id):null;
+ const resolvedTargetId=verifiedProfile&&Number.isSafeInteger(Number(visibleProfileUser?.id))?Number(visibleProfileUser?.id):null;
  const followKey=requestKey+':'+String(resolvedTargetId??'');
  const {followStatus,followData,followError,followBusy,changeFollow,retryFollow}=useProfileFollowsV2({
   active,targetId,userId:user?.id,followKey,resolvedTargetId,isOwner,onLogin
@@ -95,7 +96,12 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
    setLoadState({key:requestKey,status:'error'});setError('Profile API is not configured');return;
   }
   const controller=new AbortController();
-  setLoadState({key:requestKey,status:'loading'});setError('');
+  // Same viewer/target revalidation keeps the verified profile ready; only a
+  // new request key can replace it with the initial loading state.
+  setLoadState(previous=>previous.key===requestKey&&previous.status==='ready'
+   ?previous
+   :{key:requestKey,status:'loading'});
+  setError('');
   fetch(api+'/api/public/profile/'+targetId,{credentials:'include',signal:controller.signal,cache:'no-store'})
     .then(async response=>{
      if(!response.ok){
@@ -235,10 +241,10 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
     <button type="button" className="onece-workspace-logo-home" aria-label="Go to Home" title="Home" onClick={onGoHome}><img src="/1ce-logo.png" alt="1CE"/></button>
    </div>
    <div className="onece-workspace-actions onece-profile-nav-actions">
-    {(profileStatus==='ready'||!profileId)&&(isOwner?
+    {(verifiedProfile||!profileId)&&(isOwner?
      <>
       <button type="button" className="library-settings onece-profile-nav-copy" aria-label="Copy profile link" title="Copy profile link" onClick={()=>void copyProfileLink()}><CopyLinkIconV2 size={22}/></button>
-      <button type="button" className="library-settings onece-profile-nav-edit" aria-label="Edit profile" title="Edit profile" disabled={profileStatus!=='ready'} onClick={()=>setEditorOpen(true)}><Pencil size={22}/></button>
+      <button type="button" className="library-settings onece-profile-nav-edit" aria-label="Edit profile" title="Edit profile" disabled={!verifiedProfile} onClick={()=>setEditorOpen(true)}><Pencil size={22}/></button>
      </>:
      <>
       <button type="button" className="library-settings onece-profile-nav-follow" onClick={()=>void changeFollow()}

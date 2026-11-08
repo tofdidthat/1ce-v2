@@ -52,12 +52,18 @@ export function ProjectFlagsProviderV2({viewerId,children}:{viewerId?:number|nul
    return;
   }
   const controller=new AbortController();
-  setFlags(previous=>({
-   viewerId:id,
-   saved:previous.viewerId===id?previous.saved:EMPTY_SAVED,
-   published:previous.viewerId===id?previous.published:EMPTY_PUBLISHED,
-   status:'loading',error:null
-  }));
+  // Revalidating the same viewer keeps verified flags on screen; only a
+  // first read or an account switch may show the loading state.
+  setFlags(previous=>{
+   const sameViewer=previous.viewerId===id;
+   const keepVerified=sameViewer&&previous.status==='ready';
+   return {
+    viewerId:id,
+    saved:sameViewer?previous.saved:EMPTY_SAVED,
+    published:sameViewer?previous.published:EMPTY_PUBLISHED,
+    status:keepVerified?'ready':'loading',error:null
+   };
+  });
   void (async()=>{
    try{
     const response=await fetch(api+'/api/public/mine',{credentials:'include',cache:'no-store',signal:controller.signal});
