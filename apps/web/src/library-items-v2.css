@@ -526,8 +526,9 @@
 }
 
 /* Scope v1 modal dimensions and cover-disc layout to v2, overriding the earlier prototype. */
-.v2-beat-overlay{z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(0,0,0,.72);backdrop-filter:blur(8px)}
-.v2-beat-widget{position:relative;width:min(420px,100%);max-height:calc(100vh - 48px);padding:28px 24px 24px;border:1px solid rgba(255,255,255,.12);border-radius:22px;background:#101014;box-shadow:0 24px 70px rgba(0,0,0,.55);overflow:auto;text-align:initial}
+.v2-beat-overlay,.v2-pack-detail-layer{--v2-detail-card-top:clamp(96px,20vh,260px)}
+.v2-beat-overlay{z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:var(--v2-detail-card-top) 24px 24px;background:rgba(0,0,0,.72);backdrop-filter:blur(8px)}
+.v2-beat-widget{position:relative;width:min(420px,100%);max-height:calc(100vh - var(--v2-detail-card-top) - 48px);padding:28px 24px 24px;border:1px solid rgba(255,255,255,.12);border-radius:22px;background:#101014;box-shadow:0 24px 70px rgba(0,0,0,.55);overflow:auto;text-align:initial}
 .v2-beat-widget .beat-player-close{top:14px;right:14px;width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.06);font-size:18px;z-index:2}
 .v2-beat-widget .v2-music-card{width:100%;padding:18px;border-radius:20px;background:#111;color:#fff}
 .v2-beat-widget .v2-music-card .mask{width:180px;height:180px;margin:0 auto 18px;border-radius:50%;overflow:hidden;position:relative}
@@ -888,25 +889,34 @@
 
 /* Shared project context menu rules live in project-context-menu-v2.css. */
 
-/* Catalog/Saves use the exact Home pack detail, rendered above the public profile. */
-.v2-profile-project-detail-overlay{
- position:fixed;inset:0;z-index:9500;display:flex;justify-content:center;align-items:flex-start;
- overflow-y:auto;padding:clamp(20px,5vh,52px) 24px 110px;
+/* Home and Profile packs share one centered overlay card. Its top edge matches
+   the single-beat card; the page scrolls for long packs and Back stays outside. */
+.v2-pack-detail-layer{position:fixed;inset:0;z-index:9500}
+.v2-pack-detail-overlay{
+ position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+ overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding:var(--v2-detail-card-top) 24px 110px;
  background:rgba(0,0,0,.78);backdrop-filter:blur(8px);
 }
-.v2-profile-project-detail-sheet{
- box-sizing:border-box;width:min(1050px,100%);min-height:180px;
+.v2-pack-detail-back{
+ position:absolute;top:calc(var(--v2-detail-card-top) - 72px);
+ left:max(16px,calc((100vw - 1050px)/2));z-index:1;
+ display:grid;place-items:center;width:44px;height:44px;border-radius:12px;
+ border:1px solid #ffffff0d;background:#ffffff0a;color:#f5f3ff;cursor:pointer
+}
+.v2-pack-detail-back:hover{background:#ffffff14}
+.v2-pack-detail-back:focus-visible{outline:2px solid #c4b5fd;outline-offset:3px}
+.v2-pack-detail-card{
+ box-sizing:border-box;width:min(1050px,100%);min-height:180px;margin:0 auto;
  border:1px solid rgba(255,255,255,.09);border-radius:22px;
  background:#101014;color:#f5f3ff;padding:30px 26px;box-shadow:0 24px 70px rgba(0,0,0,.6);
 }
-.v2-profile-project-detail-sheet.beat-profile.library-page.onece-v2-library{min-height:180px;padding:30px 26px;background:#101014}
-.v2-profile-project-detail-sheet>.library-pack-back{
- display:grid;place-items:center;width:44px;height:44px;border-radius:12px;
- border:1px solid #ffffff0d;background:#ffffff0a;color:#f5f3ff;cursor:pointer;margin-bottom:20px
-}
+.v2-pack-detail-card.beat-profile.library-page.onece-v2-library{min-height:180px;padding:30px 26px;background:#101014}
+.v2-pack-detail-message{display:grid;place-items:center}
 @media(max-width:680px){
- .v2-profile-project-detail-overlay{padding:14px 12px 100px}
- .v2-profile-project-detail-sheet.beat-profile.library-page.onece-v2-library{padding:20px 14px}
+ .v2-beat-overlay,.v2-pack-detail-layer{--v2-detail-card-top:clamp(76px,14vh,120px)}
+ .v2-pack-detail-overlay{padding:var(--v2-detail-card-top) 12px 100px}
+ .v2-pack-detail-back{top:calc(var(--v2-detail-card-top) - 50px);left:12px;width:40px;height:40px}
+ .v2-pack-detail-card.beat-profile.library-page.onece-v2-library{padding:20px 14px}
 }
 
 /* Keep buttons and seek bar proportional on laptops and mobile screens. */
