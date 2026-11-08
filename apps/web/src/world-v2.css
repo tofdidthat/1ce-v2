@@ -28,3 +28,7 @@
 .onece-world-person>svg{flex-shrink:0;color:#9b8da8}
 @media(max-width:680px){.onece-world{width:calc(100% - 32px)}.onece-world-heading{margin:12px auto 24px}.onece-world-heading h1{font-size:20px}.onece-world-tabs button{min-height:48px;font-size:13px}.onece-world-content{padding:15px;border-radius:16px}.onece-world-empty{min-height:215px}}
 @media(prefers-reduced-motion:reduce){.onece-world-tabs button,.onece-world-person{transition:none}}
+
+/* The inactive World stays mounted only to preserve its verified state; it is
+   fully hidden and out of interaction like the other background views. */
+.onece-world.onece-world-inactive{display:none!important}
