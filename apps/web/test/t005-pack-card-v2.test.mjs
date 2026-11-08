@@ -15,6 +15,7 @@ test('Home header hides only while its pack page is visible',()=>{
  assert.match(details,/const homePackPage=Boolean\(active&&detailOrigin==='home'&&openedPack\)/);
  assert.match(workspace,/!\(view==='library'&&homePackVisible\)&&<HeaderV2/);
  assert.match(workspace,/onHomePackVisibility=\{setHomePackVisible\}/);
+ assert.match(workspace,/view==='library'&&!homePackVisible\?' onece-library-view':''/);
 });
 test('original Back control closes the pack and preserves its origin',()=>{
  assert.match(details,/const packDetail=openedPack\?<div className="library-pack-detail v2-pack-detail">\s*<button[^>]*className="library-pack-back"[^>]*onClick=\{closeProjectDetails\}/);
