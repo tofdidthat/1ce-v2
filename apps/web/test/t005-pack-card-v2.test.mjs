@@ -20,7 +20,7 @@ test('Home and Profile open packs in the same centered overlay card',()=>{
 
 test('Back sits outside the pack card and returns to the origin label',()=>{
  assert.match(details,/const packBackLabel=detailOrigin==='profile'\?'Back to Profile':'Back to Home'/);
- assert.match(details,/className="v2-pack-detail-layer"[^>]*>\s*<button[^>]*className="library-pack-back v2-pack-detail-back"[^>]*aria-label=\{packBackLabel\}[^>]*onClick=\{closeProjectDetails\}/);
+ assert.match(details,/className="v2-pack-detail-overlay"[^>]*>\s*<button[^>]*className="library-pack-back v2-pack-detail-back"[^>]*aria-label=\{packBackLabel\}[^>]*onClick=\{closeProjectDetails\}/);
  assert.match(details,/const packDetail=openedPack\?<div className="library-pack-detail v2-pack-detail">\s*<div className="library-pack-cover/);
  assert.doesNotMatch(details,/const packDetail=openedPack\?<div className="library-pack-detail v2-pack-detail">\s*<button/);
  assert.match(css,/\.v2-pack-detail-back\{[\s\S]*?position:absolute;top:calc\(var\(--v2-detail-card-top\) - 72px\)/);

@@ -403,15 +403,15 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
  // card so it works before the track list grows and never replaces the origin.
  const packOverlay=openedPack&&(detailOrigin==='home'||(detailOrigin==='profile'&&profileRouteKey!==null))
   ?createPortal(<div className="v2-pack-detail-layer" ref={packLayer} tabIndex={-1} role="dialog" aria-modal="true" aria-label={'Open pack '+openedPack.title}>
-    <button type="button" className="library-pack-back v2-pack-detail-back" aria-label={packBackLabel} title={packBackLabel} onClick={closeProjectDetails}><ChevronLeft size={20}/></button>
     <div className="v2-pack-detail-overlay" onPointerDown={onPackBackdropPointerDown} onClick={onPackBackdropClick}>
+     <button type="button" className="library-pack-back v2-pack-detail-back" aria-label={packBackLabel} title={packBackLabel} onClick={closeProjectDetails}><ChevronLeft size={20}/></button>
      <section className="v2-pack-detail-card beat-profile library-page onece-v2-library">{packDetail}</section>
     </div>
    </div>,document.body):null;
  const packMessageOverlay=detailOrigin==='profile'&&!openedPack&&(detailPending||detailError)
   ?createPortal(<div className="v2-pack-detail-layer" ref={packLayer} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Open project">
-    <button type="button" className="library-pack-back v2-pack-detail-back" aria-label="Back to Profile" title="Back to Profile" onClick={closeProjectDetails}><ChevronLeft size={20}/></button>
     <div className="v2-pack-detail-overlay" onPointerDown={onPackBackdropPointerDown} onClick={onPackBackdropClick}>
+     <button type="button" className="library-pack-back v2-pack-detail-back" aria-label="Back to Profile" title="Back to Profile" onClick={closeProjectDetails}><ChevronLeft size={20}/></button>
      <section className="v2-pack-detail-card v2-pack-detail-message beat-profile library-page onece-v2-library">
       {detailPending?<p role="status">Loading project…</p>:<p role="alert">{detailError}</p>}
      </section>
