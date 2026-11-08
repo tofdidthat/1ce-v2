@@ -1,15 +1,13 @@
 // Private Cloudflare R2 uploads for 1CE v2 only. No v1 resources.
 import { randomUUID, createHash } from 'node:crypto';
-import { S3Client, PutObjectCommand, HeadObjectCommand, GetObjectCommand, DeleteObjectCommand, CopyObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, HeadObjectCommand, DeleteObjectCommand, CopyObjectCommand } from '@aws-sdk/client-s3';
 import {verifyUploadedObject,InvalidMedia,VerificationUnavailable} from './upload-security.js';
 import {rateLimitExceeded,uploadLimits} from './api-rate-limits.js';
 import {accountStorageQuota} from './storage-plans.js';
 import {acquireCompletionLease,releaseCompletionLease,promoteReadyWithLease,failPendingWithLease,discardPendingWithLease} from './upload-leases.js';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import {resolveAuthorizedMediaFile} from './project-media.js';
-import {streamAuthorizedAudio} from './audio-stream.js';
-import {isR2ReadableBody} from './r2-body.js';
 import {handlePrivateLibraryMetadataRead} from './library-read-metadata.js';
+import {handlePrivateLibraryStream} from './library-streaming.js';
 import type {IncomingMessage,ServerResponse} from 'node:http';
 import type {QueryableV2,DbQueryResultV2,MediaKindV2} from '../../../packages/shared/contracts.js';
 
@@ -147,30 +145,10 @@ export async function handleLibraryFiles(
    await client.query('COMMIT');send(res,201,{id});return true;
   }catch(err){await client.query('ROLLBACK');throw err;}finally{client.release();}
  }
- // Stems remain private to the authenticated owner; public access is never granted.
- if(req.method==='GET'&&segments.length===5&&segments[3]==='stems'&&/^\d+$/.test(segments[4])){
-  const file=await resolveAuthorizedMediaFile(pool,{ownerId:user.id,viewerId:user.id,fileId:segments[4],kind:'stems'});
-  if(!file){send(res,404,{error:'Stems not found'});return true;}
-  await streamAuthorizedAudio(req,res,{file,s3,bucket:cfg.bucket});return true;
- }
- if(req.method==='GET'&&segments.length===5&&segments[3]==='audio'&&/^\d+$/.test(segments[4])){
-  const id=segments[4];
-  const file=await resolveAuthorizedMediaFile(pool,{ownerId:user.id,viewerId:user.id,fileId:id,kind:'audio'});
-  if(!file){send(res,404,{error:'Audio not found'});return true;}
-  await streamAuthorizedAudio(req,res,{file,s3,bucket:cfg.bucket});return true;
- }
+ // Streaming byte reads move as one unit; method/session/storage checks remain above.
+ if(req.method==='GET'&&await handlePrivateLibraryStream(req,res,segments,pool,user.id,s3,cfg.bucket,send))return true;
  // Only metadata reads move; method/session/storage checks remain above.
  if(req.method==='GET'&&await handlePrivateLibraryMetadataRead(res,segments,pool,user.id,send))return true;
- if(req.method==='GET'&&segments.length===5&&segments[3]==='cover'&&/^\d+$/.test(segments[4])){
-  const id=segments[4];
-  const file=await resolveAuthorizedMediaFile(pool,{ownerId:user.id,viewerId:user.id,fileId:id,kind:'cover'});
-  if(!file){send(res,404,{error:'Cover not found'});return true;}
-  const object=await s3.send(new GetObjectCommand({Bucket:cfg.bucket,Key:file.object_key}));
-  if(!isR2ReadableBody(object.Body)){send(res,503,{error:'Storage unavailable'});return true;}
-  res.writeHead(200,{'Content-Type':file.content_type,'Cache-Control':'private, max-age=300','X-Content-Type-Options':'nosniff'});
-  for await(const chunk of object.Body)res.write(chunk);
-  res.end();return true;
- }
  if(req.method==='POST'&&segments.length===4&&segments[3]==='init'){
   let data:Record<string,unknown>|null;try{data=await bodyJSON(req)}catch{send(res,400,{error:'Invalid request'});return true;}
   const {kind,name,contentType,size,sha256}=data||{};
