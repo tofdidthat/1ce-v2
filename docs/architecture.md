@@ -481,7 +481,7 @@ A green TypeScript build, a passing source-pattern test and a visually correct s
 - Close/Back returns to the same Profile, including Saves. Profile identity changes or account changes close stale details and abort pending requests, without interrupting authorized ongoing audio.
 - Cover click or keyboard Enter/Space opens detail; Play remains a separate action; right-click menu remains unchanged. Regression tests protect shared ID, original media references and same UI renderer. CI cannot substitute authenticated two-account browser acceptance.
 - This proposed fix modifies frontend/tests/docs only. No SQL, API, R2, permissions, uploads, copy, new media route or merge/deploy without explicit release authorization.
-- **Pack-card decision (2026-11-07):** Home and Profile open packs in the same centered overlay card. Back stays outside the card, above its top edge, and returns to the originating Home/Profile tab; the card grows with its beats and the overlay scrolls the page for long packs. The card's top edge matches the single-beat card, and the global player, queue and existing pack actions remain unchanged.
+- **Pack detail decision (2026-11-08):** Home and Profile open packs as the original inline Home detail page, not an overlay. Both use the original Back control and return to their originating Home/Profile tab. The global player, queue and existing pack actions remain unchanged.
 
 
 ### Settings reference layout and consistent workspace top chrome (same proposed PR #52)

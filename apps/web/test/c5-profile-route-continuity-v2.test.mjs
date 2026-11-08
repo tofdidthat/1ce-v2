@@ -33,7 +33,7 @@ test('recent profile views are bounded, target isolated, and revalidate when rev
  assert.match(workspace,/\.slice\(-3\)/);
  assert.match(workspace,/setRecentProfiles\(activeProfileKey\?\[activeProfileKey\]:\[\]\)/);
  assert.match(workspace,/key=\{String\(account\?\.id\|\|'anonymous'\)\+':'\+profileKey\}/);
- assert.match(workspace,/active=\{activeProfileKey===profileKey\}/);
+ assert.match(workspace,/active=\{activeProfileKey===profileKey&&!profilePackVisible\}/);
  assert.match(profile,/if\(active&&!previouslyActive\.current\)\{setRefreshRevision/);
  assert.match(profile,/lastVerifiedProfileKey\.current===requestKey/);
  assert.match(profile,/if\(!active\)return null;/);
