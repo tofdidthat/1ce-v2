@@ -19,7 +19,7 @@ import {downloadOwnedProjectV2} from './owner-download-v2';
 import {appendDistinctQueueV2,upcomingQueueV2,queueTrackKeyV2,tracksFromPlayableProjectV2,type PlaybackQueueTrackV2} from './playback-queue-v2';
 import ProjectActionDialogV2,{type ContextProject,type ProjectAction,type ChangedProject} from './project-action-dialog-v2';
 import {isBackdropDismissV2} from './overlay-dismiss-v2';
-import {OwnedPackCacheV2} from './owned-pack-cache-v2';
+import {findOwnProjectV2,OwnedPackCacheV2} from './owned-pack-cache-v2';
 const api=import.meta.env.VITE_API_URL;
 type BeatItem = LibraryBeatV2;
 type PackItem = LibraryPackV2;
@@ -273,13 +273,22 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
   const {ownerId,kind,id}=openRequest,controller=new AbortController();
   detailRequest.current?.abort();detailRequest.current=controller;
   packRequest.current?.abort();setContextBeat(null);setContextPack(null);
-  setOpenedBeat(null);setOpenedPack(null);setOpenedTracks([]);
-  setDetailOrigin('profile');setDetailPending(true);setDetailError('');
+  const own=Boolean(userId&&ownerId===userId&&loadedViewerId===userId);
+  const ownBeat=kind==='beat'?findOwnProjectV2(userId,loadedViewerId,ownerId,id,data.beats):undefined;
+  const ownPack=kind==='pack'?findOwnProjectV2(userId,loadedViewerId,ownerId,id,data.packs):undefined;
+  const cachedTracks=ownPack?ownPackCache.current.get(userId,ownerId,id):undefined;
+  const generation=ownPackCache.current.token();
+  setOpenedBeat(ownBeat??null);setOpenedPack(cachedTracks!==undefined?ownPack??null:null);setOpenedTracks(cachedTracks??[]);
+  setDetailOrigin('profile');setDetailPending(!ownBeat&&cachedTracks===undefined);setDetailError('');
   void (async()=>{
    try{
     const project=await fetchPlayableProjectV2(ownerId,kind,id,controller.signal);
     const tracks=tracksFromPlayableProjectV2(project);
     if(controller.signal.aborted)return;
+    if(own&&generation!==ownPackCache.current.token()){
+     setOpenedBeat(null);setOpenedPack(null);setOpenedTracks([]);
+     setDetailError('Project changed. Please open it again.');return;
+    }
     if(kind==='beat'){
      if(tracks.length!==1)throw Error('Invalid beat detail');
      setOpenedBeat(tracks[0]);
@@ -287,9 +296,10 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
      setOpenedPack({ownerId,projectId:id,kind:'pack',id,owner_id:ownerId,title:project.title,
       cover_file_id:project.cover_file_id,track_count:tracks.length,created_at:''});
      setOpenedTracks(tracks);
+     if(own)ownPackCache.current.put(userId,ownerId,id,tracks,generation);
     }
    }catch(error){
-    if(!controller.signal.aborted)setDetailError(error instanceof Error?error.message:'Unable to open project');
+    if(!controller.signal.aborted){setOpenedBeat(null);setOpenedPack(null);setOpenedTracks([]);setDetailError(error instanceof Error?error.message:'Unable to open project')}
    }finally{if(!controller.signal.aborted)setDetailPending(false);}
   })();
   return()=>controller.abort();

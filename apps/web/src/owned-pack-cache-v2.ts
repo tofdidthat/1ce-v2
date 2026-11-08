@@ -14,3 +14,10 @@ export class OwnedPackCacheV2<T>{
   if(viewer!==undefined&&viewer===this.viewer&&owner===viewer&&token===this.generation)this.entries.set(id,value);
  }
 }
+
+export function findOwnProjectV2<T extends {id:string;owner_id:number}>(
+ viewer:number|undefined,loadedViewer:number|null,owner:number,id:string,projects:readonly T[]
+){
+ if(viewer===undefined||viewer!==owner||viewer!==loadedViewer)return undefined;
+ return projects.find(project=>project.id===id&&project.owner_id===viewer);
+}
