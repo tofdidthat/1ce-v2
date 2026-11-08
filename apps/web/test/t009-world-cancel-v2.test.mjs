@@ -2,8 +2,10 @@ import test,{beforeEach} from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import fs from 'node:fs';
+import os from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {createRequire} from 'node:module';
+import * as esbuild from 'esbuild';
 
 // This file EXECUTES the real world-v2.tsx component code against a minimal
 // hook runtime, so World's request lifecycle (transition + cancellation) is
@@ -11,17 +13,13 @@ import {createRequire} from 'node:module';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
 const webRoot=path.resolve(here,'..');
-const repoRoot=path.resolve(webRoot,'..','..');
-// pnpm keeps transitive dependencies nested; resolve esbuild from its store.
-const pnpmStore=path.join(repoRoot,'node_modules','.pnpm');
-const esbuildPackage=fs.readdirSync(pnpmStore).find(dir=>dir.startsWith('esbuild@'));
-if(!esbuildPackage)throw new Error('esbuild not found in the pnpm store');
-const esbuild=createRequire(path.join(pnpmStore,esbuildPackage,'node_modules','esbuild','package.json'))('esbuild');
 const stubRequire=createRequire(path.join(here,'t009-react-stub.cjs'));
 const reactStub=stubRequire('./t009-react-stub.cjs');
 const followsStub=stubRequire('./t009-follows-stub.cjs');
 
-const bundlePath=path.join(here,'t009-world-bundle.cjs');
+const bundleDir=fs.mkdtempSync(path.join(os.tmpdir(),'1ce-world-test-'));
+const bundlePath=path.join(bundleDir,'world.cjs');
+test.after(()=>fs.rmSync(bundleDir,{recursive:true,force:true}));
 let bundleReady=null;
 function bundle(){
  if(bundleReady)return bundleReady;
@@ -41,7 +39,7 @@ function bundle(){
     return null;
    });
   }}]
- }).then(()=>stubRequire('./t009-world-bundle.cjs').default);
+ }).then(()=>stubRequire(bundlePath).default);
  return bundleReady;
 }
 
