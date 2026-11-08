@@ -6,13 +6,12 @@
 
 ## Current verified baseline (2026-11-08 UTC)
 
-- **Source:** [`tofdidthat/1ce-v2`](https://github.com/tofdidthat/1ce-v2) is **public**; production code baseline is [PR #70](https://github.com/tofdidthat/1ce-v2/pull/70), squash `c31c9a121aaf63aa35754954601f7022736f2746`. Older v1 `tofdidthat/1ce` is strictly read-only.
-- **Deploy and tests:** [GitHub Actions main run 42433343084](https://github.com/tofdidthat/1ce-v2/actions/runs/42433343084) passed **all seven checks**; the same commit's Railway API deployment was **SUCCESS** and Vercel production was **READY**. The operator later reported that the deployed site worked normally. Treat that as a **manual report**, not proof of exhaustive two-account E2E.
-- **Backend status:** PR #66 strengthened private pack-track owner/kind/READY checks and 404 behavior; PR #65 added read-contract and disposable PostgreSQL tests. PR #70 extracted four private metadata GET routes into `apps/api/src/library-read-metadata.ts` behind the unchanged `handleLibraryFiles` authorization/R2 gate. Audio/stems/cover streaming and all upload POST handlers were intentionally left in `apps/api/src/library-files.ts`.
-- **CI / branch protection:** [PR #68](https://github.com/tofdidthat/1ce-v2/pull/68) restored GitHub Actions as the sole required CI provider. Active `1ce-main-protection` requires a PR, squash and seven passing checks: `dependency-audit`, `s2-local-s3-syntax-preflight`, `s2-postgres-migration-smoke`, `api-tests`, `railway-api-smoke`, `web-build (22)`, `web-build (26)`. No CircleCI checks are required; its automatic triggers were disabled **per operator report**. Retained `.circleci/` files are historical/rollback material.
-- **Next:** Evaluate an independent, test-first refactor of private **streaming** GET routes (`audio`, `stems`, `cover`) only if requested; preserve 200/206/416, 404/503, cache headers, same-owner access, R2 behavior and playback continuity. Do not mix this with upload `init/complete`, SQL migrations, v1, Create Video or social distribution. See the current §0 and API-B sections of the [architecture guide](docs/architecture.md).
-
-
+- **Source:** [`tofdidthat/1ce-v2`](https://github.com/tofdidthat/1ce-v2) is public. This checkpoint describes main `8b195df98ef062b01a9b6ea10abc9ecf9c8fa20c` (PR #83); the older v1 repository and all its production resources are strictly read-only.
+- **Deployment:** Vercel production for `8b195df` was READY, and the login-used `1ce-v2-tofdidthat.vercel.app` alias was verified pointing to that deployment. Railway skipped this frontend-only change; its deployed API from PR #72 remains in service and `/health` returned OK. Recheck deployments and the alias after every release: this alias is manually assigned and does not automatically follow production.
+- **Backend:** PR #70 extracted four private metadata GET handlers; PR #72 extracted private audio, stems and cover streaming into `apps/api/src/library-streaming.ts`. The facade keeps method/auth/R2 gates; upload POST and completion paths were not part of these extractions.
+- **Frontend:** Home and Profile packs use the original inline Home detail and Back control; the global player remains mounted. PRs #73/#76/#78/#79 improved in-session loading and owner-scoped reuse. A full reload still needs session validation and new library/cover requests; persistent offline storage is not implemented.
+- **CI:** GitHub Actions has seven required checks. CI success is not proof of authenticated two-account or live R2 end-to-end behavior; verify CI on each final commit.
+- **Next:** Plan a separately reviewed offline experience for the user's own library, including storage limits, account isolation, authorization, synchronization, invalidation and logout. This is a proposal, not an implemented or approved architecture. See [docs/architecture.md](docs/architecture.md).
 
 ## Repository structure
 
@@ -20,7 +19,7 @@
 | --- | --- |
 | `apps/web/` | Vite/React frontend, UI components, styling and frontend tests |
 | `apps/api/` | Node.js API, authentication, uploads, media, Trash and backend tests |
-| `apps/api/src/library-read-metadata.ts` | Four owner-only library metadata GET handlers; called only through the private dispatcher |
+| `apps/api/src/library-read-metadata.ts`, `library-streaming.ts` | Private metadata and streaming GET handlers behind the authenticated facade |
 | `history/database/` | v2 SQL migrations and guarded historical application scripts |
 | `scripts/` | Dependency and repository audits |
 | `.github/workflows/` | CI, API tests, disposable PostgreSQL smoke, frontend builds |
