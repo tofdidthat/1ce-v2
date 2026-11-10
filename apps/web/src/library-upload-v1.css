@@ -303,7 +303,7 @@
 
   .library-upload-cover {
     width: 100%;
-    max-width: 260px;
+    max-width: 360px;
     margin-inline: auto;
   }
 
@@ -312,8 +312,12 @@
   }
 
   .upload-audio-drop {
-    min-height: 104px;
-    padding: 16px 14px;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 300px;
+    min-height: 96px;
+    margin-inline: auto;
+    padding: 12px;
     gap: 6px;
     justify-content: center;
   }
