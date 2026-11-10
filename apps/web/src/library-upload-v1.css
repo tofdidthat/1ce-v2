@@ -298,12 +298,24 @@
 
   .library-upload-grid {
     grid-template-columns: 1fr;
-    gap: 24px;
+    gap: 18px;
   }
 
   .library-upload-cover {
-    max-width: 320px;
+    width: 100%;
+    max-width: 260px;
     margin-inline: auto;
+  }
+
+  .upload-cover-placeholder {
+    font-size: 15px;
+  }
+
+  .upload-audio-drop {
+    min-height: 104px;
+    padding: 16px 14px;
+    gap: 6px;
+    justify-content: center;
   }
 
   .upload-actions {
