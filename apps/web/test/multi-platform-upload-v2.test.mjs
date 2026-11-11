@@ -36,9 +36,9 @@ test('multiplatform mode supports original v1 destination choices and two format
  }
  assert.match(multi,/ratio:'9:16'/);
  assert.match(multi,/ratio:'16:9'/);
- assert.match(multi,/selectedFormats/);
+ assert.match(multi,/selectedYouTubeFormats/);
  assert.match(multi,/aria-pressed=\{selectedPlatforms\.includes\(platform\)\}/);
- assert.match(multi,/aria-pressed=\{selectedFormats\.includes\(format\.id\)\}/);
+ assert.match(multi,/aria-pressed=\{selectedYouTubeFormats\.includes\(format\.id\)\}/);
  assert.match(multi,/initialAudio/);
  assert.match(multi,/initialCover/);
  assert.match(multi,/initialTitle/);
@@ -55,4 +55,15 @@ test('mobile layout and original full-width audio dropzone remain independent',(
  assert.match(css,/@media \(max-width: 760px\)/);
  assert.match(css,/\.onece-multi-grid \{ grid-template-columns: 1fr;/);
  assert.match(css,/\.onece-upload-mode-button \{ min-height: 54px; \}/);
+});
+
+test('9:16 and 16:9 are YouTube-only options, not global platform settings',()=>{
+ assert.match(multi,/const youtubeSelected=selectedPlatforms\.includes\('YouTube'\)/);
+ assert.match(multi,/\{youtubeSelected&&<div className="onece-multi-youtube-options">/);
+ assert.match(multi,/aria-label="YouTube video formats"/);
+ assert.match(multi,/format\.id==='vertical'\?'Shorts':'Standard video'/);
+ assert.match(multi,/const previewFormats=youtubeSelected[\s\S]*?selectedYouTubeFormats\.includes\(format\.id\)[\s\S]*?format\.id==='vertical'/);
+ assert.match(multi,/previewFormats\.map\(format=>/);
+ assert.doesNotMatch(multi,/<h2>Video formats<\/h2>/);
+ assert.match(css,/\.onece-multi-youtube-options \{/);
 });
