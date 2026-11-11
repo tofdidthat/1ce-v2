@@ -236,7 +236,7 @@ function HeaderV2({view,user,onNavigate,showBack,onBack}:{view:WorkspaceView;use
 .onece-workspace-header .library-profile-trigger > img { display: block; flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; object-fit: cover; }
 .onece-compact-nav { position: relative; flex: 0 0 44px; width: 44px; height: 44px; }
 .onece-compact-nav.is-open > .onece-nav-trigger { opacity: 0; pointer-events: none; }
-.onece-nav-reveal { position: absolute; z-index: 1; inset: 0 auto auto 0; width: 44px; display: grid; grid-template-rows: 0fr; opacity: 0; visibility: hidden; pointer-events: none; border-radius: 14px; background: #09080e; transition: grid-template-rows 220ms ease, opacity 160ms ease, visibility 220ms; }
+.onece-nav-reveal { position: absolute; z-index: 1; inset: 0 auto auto 0; width: 44px; display: grid; grid-template-rows: 0fr; opacity: 0; visibility: hidden; pointer-events: none; border-radius: 14px; background: transparent; transition: grid-template-rows 220ms ease, opacity 160ms ease, visibility 220ms; }
 .onece-compact-nav.is-open .onece-nav-reveal { grid-template-rows: 1fr; opacity: 1; visibility: visible; pointer-events: auto; }
 .onece-nav-list { min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 12px; }
 .onece-workspace-shell .library-page > .library-header { visibility: hidden; pointer-events: none; }
