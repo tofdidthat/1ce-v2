@@ -27,7 +27,7 @@ export default function MultiPlatformUploadV2({active,initialAudio,initialCover,
  const [description,setDescription]=useState('');
  const [hashtags,setHashtags]=useState('#shorts #music');
  const [selectedPlatforms,setSelectedPlatforms]=useState<Platform[]>([]);
- const [selectedFormats,setSelectedFormats]=useState<Format[]>(['vertical']);
+ const [selectedYouTubeFormats,setSelectedYouTubeFormats]=useState<Format[]>(['vertical']);
  const visualInput=useRef<HTMLInputElement|null>(null);
  const audioInput=useRef<HTMLInputElement|null>(null);
  useEffect(()=>{if(initialTitle)setTitle(current=>current||initialTitle)},[initialTitle]);
@@ -49,11 +49,15 @@ export default function MultiPlatformUploadV2({active,initialAudio,initialCover,
  const togglePlatform=(platform:Platform)=>{
   setSelectedPlatforms(current=>current.includes(platform)?current.filter(item=>item!==platform):[...current,platform]);
  };
- const toggleFormat=(format:Format)=>{
-  setSelectedFormats(current=>current.includes(format)
+ const toggleYouTubeFormat=(format:Format)=>{
+  setSelectedYouTubeFormats(current=>current.includes(format)
    ?(current.length===1?current:current.filter(item=>item!==format))
    :[...current,format]);
  };
+ const youtubeSelected=selectedPlatforms.includes('YouTube');
+ const previewFormats=youtubeSelected
+  ? formats.filter(format=>selectedYouTubeFormats.includes(format.id))
+  : formats.filter(format=>format.id==='vertical');
 
  return (
   <section className="onece-multi-upload" aria-label="1CE Upload" hidden={!active}>
@@ -112,19 +116,18 @@ export default function MultiPlatformUploadV2({active,initialAudio,initialCover,
          {platform}
        </button>)}
       </div>
+      {youtubeSelected&&<div className="onece-multi-youtube-options">
+       <h3>YouTube video formats</h3>
+       <p className="onece-multi-hint">Choose Shorts (9:16), standard video (16:9), or both.</p>
+       <div className="onece-multi-formats" role="group" aria-label="YouTube video formats">
+        {formats.map(format=><button type="button" key={format.id} aria-pressed={selectedYouTubeFormats.includes(format.id)}
+         onClick={()=>toggleYouTubeFormat(format.id)}>
+         <span className="onece-multi-checkbox">{selectedYouTubeFormats.includes(format.id)&&<Check size={13}/>}</span>
+         <span>{format.id==='vertical'?'Shorts':'Standard video'}<small>{format.ratio}</small></span>
+        </button>)}
+       </div>
+      </div>}
       <p className="onece-multi-hint">Account connections and publishing are not yet enabled in 1CE v2.</p>
-     </div>
-
-     <div className="onece-multi-panel">
-      <h2>Video formats</h2>
-      <p className="onece-multi-hint">Choose vertical, horizontal, or both for supported platforms.</p>
-      <div className="onece-multi-formats" role="group" aria-label="Video formats">
-       {formats.map(format=><button type="button" key={format.id} aria-pressed={selectedFormats.includes(format.id)}
-        onClick={()=>toggleFormat(format.id)}>
-        <span className="onece-multi-checkbox">{selectedFormats.includes(format.id)&&<Check size={13}/>}</span>
-        <span>{format.label}<small>{format.ratio}</small></span>
-       </button>)}
-      </div>
      </div>
 
      <div className="onece-multi-publish">
@@ -136,14 +139,14 @@ export default function MultiPlatformUploadV2({active,initialAudio,initialCover,
     <aside className="onece-multi-preview" aria-label="Media preview">
      <h2>Preview</h2>
      <div className="onece-multi-preview-items">
-      {formats.filter(format=>selectedFormats.includes(format.id)).map(format=>
+      {previewFormats.map(format=>
        <div className="onece-multi-preview-item" key={format.id}>
         <div className={'onece-multi-preview-frame '+format.id}>
          {video&&visualUrl?<video src={visualUrl} controls playsInline muted={videoAudioMode==='replace'}/>:
           image&&visualUrl?<img src={visualUrl} alt="Selected cover preview"/>:
           <span><ImagePlus size={28}/>No media selected</span>}
         </div>
-        <span>{format.ratio} preview</span>
+        <span>{youtubeSelected?'YouTube '+format.ratio+' preview':'Media preview'}</span>
        </div>)}
      </div>
      {audioFile&&<div className="onece-multi-audio-preview">

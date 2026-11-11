@@ -121,6 +121,8 @@
 .onece-multi-destinations button { padding: 10px 12px; display: flex; align-items: center; gap: 9px; font-size: 12px; }
 .onece-multi-checkbox { display: grid; place-items: center; width: 17px; height: 17px; flex-shrink: 0; border: 1px solid #8c819e; border-radius: 5px; }
 [aria-pressed="true"] > .onece-multi-checkbox { background: #a78bfa; color: #170e29; border-color: #a78bfa; }
+.onece-multi-youtube-options { margin: 4px 0 16px; padding: 15px 0 0; border-top: 1px solid #ffffff15; }
+.onece-multi-youtube-options h3 { margin: 0 0 7px; font-size: 13px; font-weight: 600; color: #f5f3ff; }
 .onece-multi-formats { display: flex; flex-wrap: wrap; gap: 10px; }
 .onece-multi-formats button { display: flex; align-items: center; gap: 12px; padding: 12px; min-width: 130px; }
 .onece-multi-formats button > span:last-child { display: flex; flex-direction: column; gap: 4px; align-items: start; font-size: 12px; }
