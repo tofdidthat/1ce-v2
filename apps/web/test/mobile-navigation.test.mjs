@@ -31,3 +31,7 @@ test('desktop hover, keyboard arrows, outside click and Escape remain supported'
  assert.match(nav,/if \(!event\.currentTarget\.contains\(event\.relatedTarget\) && !pointerInside\.current\) setOpen\(false\)/);
  for(const item of ['library','discover','upload','account'])assert.match(nav,new RegExp("id: '"+item+"'"));
 });
+
+test('expanded navigation has a transparent container behind individually styled buttons',()=>{
+ assert.match(styles,/\.onece-nav-reveal \{[^}]*background: transparent;/);
+});
