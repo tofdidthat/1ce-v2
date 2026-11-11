@@ -314,9 +314,7 @@
   .upload-audio-drop {
     box-sizing: border-box;
     width: 100%;
-    max-width: 300px;
     min-height: 96px;
-    margin-inline: auto;
     padding: 12px;
     gap: 6px;
     justify-content: center;
