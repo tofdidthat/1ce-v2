@@ -1,6 +1,8 @@
 // Visual/interaction port of v1 src/upload/LibraryUploadPage.jsx.
 // NO v1 backend, bearer session, uploads or external video publishing.
 import React,{useEffect,useMemo,useRef,useState} from 'react';
+import {Globe2} from 'lucide-react';
+import MultiPlatformUploadV2 from './multi-platform-upload-v2';
 import {useNavigate} from 'react-router-dom';
 import './library-upload-v1.css';
 import {notifyV2DataChanged} from './data-refresh-v2';
@@ -21,6 +23,7 @@ export default function LibraryUploadV2({userId}:{userId?:number}={}){
  const [stemsTarget,setStemsTarget]=useState<string|null>(null);
  const [saving,setSaving]=useState(false);
  const [stage,setStage]=useState('');
+ const [multiPlatform,setMultiPlatform]=useState(false);
  const isPack=audioFiles.length>1;
  const coverUrl=useMemo(()=>cover?URL.createObjectURL(cover):'',[cover]);
  useEffect(()=>()=>{if(coverUrl)URL.revokeObjectURL(coverUrl)},[coverUrl]);
@@ -88,7 +91,8 @@ export default function LibraryUploadV2({userId}:{userId?:number}={}){
   finally{setSaving(false);setStage('');}
  };
    return (
-    <section className="library-upload" aria-label="Upload audio">
+    <>
+    <section className="library-upload" aria-label="Upload audio" hidden={multiPlatform}>
       <div className="library-upload-card">
         <header className="library-upload-heading">
           <div>
@@ -239,6 +243,15 @@ export default function LibraryUploadV2({userId}:{userId?:number}={}){
           </div>
         </div>
       </div>
+      <div className="onece-upload-mode-entry">
+        <button type="button" className="onece-upload-mode-button" disabled={saving} onClick={()=>setMultiPlatform(true)}>
+          <Globe2 size={19}/>
+          <span>1CE Upload</span>
+          <small>Multi-platform</small>
+        </button>
+      </div>
     </section>
+    <MultiPlatformUploadV2 active={multiPlatform} initialAudio={audioFiles[0]||null} initialCover={cover} initialTitle={itemName} onBack={()=>setMultiPlatform(false)}/>
+    </>
   )
 }
