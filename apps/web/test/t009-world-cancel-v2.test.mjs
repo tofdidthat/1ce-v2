@@ -57,6 +57,24 @@ function renderWorld(Component,props){
 }
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 
+test('World retains verified Following on return and does not fetch for anonymous viewer',async()=>{
+ const Component=await bundleReady;
+ const props={userId:7,active:true,onOpenProfile:()=>{}};
+ renderWorld(Component,props);reactStub.setters[0]('following');renderWorld(Component,props);
+ followsStub.resolve(followsStub.calls[0],{followingUsers:[{id:2,username:'verified-artist'}]});
+ await tick();renderWorld(Component,props);
+ renderWorld(Component,{...props,active:false});
+ assert.equal(followsStub.calls.length,1);
+ renderWorld(Component,props);
+ assert.equal(followsStub.calls.length,2);
+ assert.match(texts(reactStub.lastTree).join(' '),/verified-artist/);
+ assert.doesNotMatch(texts(reactStub.lastTree).join(' '),/Loading following/);
+ renderWorld(Component,{...props,userId:undefined});
+ assert.equal(followsStub.calls.length,2);
+ assert.equal(followsStub.calls[1].signal.aborted,true);
+ assert.doesNotMatch(texts(reactStub.lastTree).join(' '),/verified-artist/);
+});
+
 test.beforeEach(async()=>{
  await bundle();
  reactStub.reset();

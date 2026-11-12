@@ -4,6 +4,39 @@ import {readFileSync} from 'node:fs';
 import {ProjectCoverCacheV2} from '../src/project-cover-cache-v2.ts';
 
 const image=(bytes=4,type='image/png')=>new Blob([new Uint8Array(bytes)],{type});
+test('late invalidated request and old lease cannot remove the replacement cover',async()=>{
+ const pending=[];let urls=0;
+ const cache=new ProjectCoverCacheV2((_owner,_file,signal)=>new Promise(resolve=>pending.push({resolve,signal})),{
+  makeUrl:()=>`blob:new-${++urls}`,revokeUrl:()=>{}
+ });
+ const old=cache.acquire(1,9);
+ cache.invalidateOwner(1);
+ const fresh=cache.acquire(1,9);
+ assert.equal(pending.length,2);
+ assert.equal(pending[0].signal.aborted,true);
+ pending[1].resolve(image());assert.equal(await fresh.ready,'blob:new-1');
+ pending[0].resolve(image());assert.equal(await old.ready,null);
+ old.release();assert.equal(cache.peek(1,9),'blob:new-1');
+ fresh.release();cache.clear();
+});
+
+test('cold/warm baseline: 24 covers, duplicate consumers, owner invalidation and viewer clear',async()=>{
+ let calls=0;
+ const cache=new ProjectCoverCacheV2(async()=>{calls++;return image()},{makeUrl:()=>`blob:${calls}`,revokeUrl:()=>{}});
+ const batch=()=>Array.from({length:24},(_,i)=>cache.acquire(i<12?1:2,i+1));
+ const cold=batch(),duplicates=batch();
+ await Promise.all([...cold,...duplicates].map(lease=>lease.ready));
+ assert.equal(calls,24); // 48 consumers, 24 authorized loads
+ [...cold,...duplicates].forEach(lease=>lease.release());
+ const warm=batch();await Promise.all(warm.map(lease=>lease.ready));
+ assert.equal(calls,24);warm.forEach(lease=>lease.release());
+ cache.invalidateOwner(1);
+ const changed=batch();await Promise.all(changed.map(lease=>lease.ready));
+ assert.equal(calls,36);changed.forEach(lease=>lease.release());
+ cache.clear();
+ const nextViewer=batch();await Promise.all(nextViewer.map(lease=>lease.ready));
+ assert.equal(calls,60);nextViewer.forEach(lease=>lease.release());cache.clear();
+});
 function setup(loader,options={}){
  const revoked=[];
  let sequence=0;
