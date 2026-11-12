@@ -30,6 +30,101 @@
 
 **Next work:** Investigate and propose the offline experience above; confirm scope and data/privacy choices before implementing. Authenticated two-account, R2 and offline browser flows remain unverified. Create Video/social distribution remains a separate future product phase.
 
+## 0A. Roadmap adotado — produto completo e substituição da v1 (2026-11-12)
+
+Registro de planejamento autorizado pelo usuário a partir dos 15 itens fornecidos. Rust fica fora do escopo. Esta seção substitui a orientação anterior de priorizar a investigação offline em **Next work**; a baseline histórica acima permanece datada e não comprova o estado atual dos serviços. Prioridade imediata: waveform, depois sincronização dos domínios e Upload com fila persistente.
+
+Estados permitidos: **Pendente**, **Em andamento**, **Em validação**, **Concluído**. Todos os itens começam como **Pendente**: funcionalidades existentes e PRs anteriores não demonstram a conclusão destes critérios. Em andamento exige responsável, branch e escopo; Em validação exige PR e evidências; Concluído exige revisão, checks e validação real aplicável. Registrar PRs, dependências, resultados e pendências neste guia a cada avanço. Nenhum item possui nova implementação ou validação operacional por este registro.
+
+### Fase 1 — Melhorias e funcionalidades principais
+
+#### R01 — Waveform instantânea
+- Estado: **Pendente**. Prioridade: primeira. Responsável/branch/PR: a definir.
+- Escopo: gerar e persistir as 84 barras uma única vez por versão do áudio original; reutilizar em Home, packs e perfis, com acesso autorizado e sem duplicar mídia.
+- Conclusão: após F5 e navegação, as barras vêm dos dados persistidos, sem baixar/decodificar o áudio inteiro só para desenhá-las; conferir pela rede. Cobrir acervo existente, mudança de áudio, falha de geração e tentativas idempotentes. Validar player, seek e isolamento entre contas.
+
+#### R02 — 1CE Upload real em TypeScript
+- Estado: **Pendente**. Prioridade: alta. Responsável/branch/PR: a definir. Dependências: R03 para execução durável; R06 para estabilizar origens/callbacks.
+- Escopo: usar a v1 apenas como referência funcional, seguindo a arquitetura v2; OAuth, renderização 9:16 para Shorts e 16:9, YouTube, TikTok, Instagram, Telegram e Discord. Entregas graduais, começando por YouTube com R03.
+- Conclusão: validar conexão/revogação e publicação real autorizada em cada destino, formatos renderizados e recuperação de falhas; cada plataforma tem estado e retry independentes. Reutilizar originais R2 sem cópias desnecessárias; definir retenção de artefatos renderizados e proteção de credenciais. Limitações de aprovação/permissão de cada plataforma devem permanecer explícitas, sem declarar a integração concluída antes da prova real.
+
+#### R03 — Fila e histórico de publicações
+- Estado: **Pendente**. Prioridade: alta. Responsável/branch/PR: a definir. Dependência: contrato conjunto com R02.
+- Escopo: persistir no PostgreSQL tarefa, destino e cada tentativa; exibir progresso, erros e retry apenas dos destinos que falharam.
+- Conclusão: fechar a página após aceite do servidor e comprovar continuidade; reiniciar o executor e comprovar retomada. Testar concorrência, reentrega, backoff e falha parcial sem republicar destinos concluídos. Tratar respostas ambíguas da plataforma para reduzir duplicações e proteger histórico por proprietário.
+
+#### R04 — Desempenho de Home, Library e Profile
+- Estado: **Pendente**. Prioridade: alta. Responsável/branch/PR: a definir. Dependência: alinhar cache com R01.
+- Escopo: capas, cache, paginação, requisições duplicadas, navegação e experiência após F5; preservar o player único e reprodução contínua.
+- Conclusão: registrar baseline e metas mensuráveis antes de implementar; comparar carregamentos frios/quentes e F5 com o mesmo acervo. Demonstrar redução de espera/requisições sem perdas na paginação, capas obsoletas, vazamento entre contas ou interrupção do player ao navegar.
+
+#### R05 — World e perfis públicos
+- Estado: **Pendente**. Prioridade: alta. Responsável/branch/PR: a definir.
+- Escopo: publicar/despublicar, catálogo, saves, followers, compartilhamento, permissões, menus e visitantes.
+- Conclusão: validar matriz proprietário/segunda conta/anônimo para projetos públicos, privados, compartilhados e despublicados. Um save nunca concede acesso a projeto privado; validar também endpoints diretos e revogação. Conferir menus, navegação, reprodução, follow e compartilhamento sem duplicar os objetos originais.
+
+### Fase 2 — Preparação para substituir a v1
+
+#### R06 — Sincronização automática dos domínios Vercel
+- Estado: **Pendente**. Prioridade: alta, executar após R01. Responsável/branch/PR: a definir.
+- Contexto fornecido, a revalidar: `1ce-v2.vercel.app` é domínio do projeto e `1ce-v2-tofdidthat.vercel.app` é alias manual usado no login.
+- Conclusão: configurar acompanhamento automático da produção ou eliminar a dependência do alias; comprovar atualização após deployment autorizado subsequente, sem intervenção manual. Validar login Google, sessões, PKCE, callbacks e CORS nas URLs mantidas; registrar configuração e recuperação. Não alterar produção neste registro.
+
+#### R07 — Auditoria completa antes da migração
+- Estado: **Pendente**. Prioridade: bloqueante para migração. Responsável/branch/PR: a definir. Dependências: R01–R06; validar recuperação de R09.
+- Escopo: Google, sessões, duas contas, uploads reais, packs, stems, player, saves, compartilhamento, lixeira e exclusões permanentes R2.
+- Conclusão: registrar versão, ambiente, matriz de testes e evidências; executar fluxos de sucesso e falha com dados isolados e duas contas. Revisar autorização, concorrência, restauração e exclusão de objetos ainda referenciados; nenhum bloqueador crítico de segurança ou integridade aberto. Build ou mocks não substituem validação ponta a ponta.
+
+#### R08 — Migração de `1ce.lol` da v1 para a v2
+- Estado: **Pendente**. Prioridade: após os gates de migração. Responsável/branch/PR: a definir. Dependências: R06, R07 e R09.
+- Contexto fornecido, a revalidar: DNS externo Cloudflare e consulta de associação Vercel sem permissão no escopo conectado. Resolver acesso antes de transferir.
+- Conclusão: preparar associação/DNS, inventário de callbacks Google/Meta/demais plataformas, cookies, CORS, backup e rollback testado; obter aprovação explícita antes da troca. Após a troca autorizada, validar TLS, login, uploads, player e publicações; preservar acesso à v1 e aos dados antigos. Registrar critérios e procedimento de retorno.
+
+#### R09 — Backup, recuperação e manutenção
+- Estado: **Pendente**. Prioridade: bloqueante para migração. Responsável/branch/PR: a definir.
+- Escopo: backups recorrentes, restauração, objetos órfãos, uploads pendentes, outbox de exclusão R2 e lixeira após falhas/retries.
+- Conclusão: definir frequência, retenção e metas de perda/tempo de recuperação; comprovar backup recorrente e restauração em ambiente isolado com integridade e referências de mídia. Validar retomada e observação de tarefas pendentes, proteção de objetos compartilhados e lixeira. Registrar evidências e runbook; não agendar rotinas ou excluir dados apenas por este planejamento.
+
+### Fase 3 — Evolução depois da migração
+
+#### R10 — Uso de armazenamento e limite nas configurações
+- Estado: **Pendente**. Prioridade: média. Responsável/branch/PR: a definir.
+- Conclusão: mostrar uso e limite autoritativos por conta; validar contagem de mídia deduplicada, uploads pendentes, lixeira e liberação após exclusão efetiva. O pedido usa “10 GB”; a baseline técnica registra **10 GiB**. Confirmar unidade e rotulagem antes da implementação, sem mudar a quota silenciosamente.
+
+#### R11 — Mobile e consistência visual
+- Estado: **Pendente**. Prioridade: média. Responsável/branch/PR: a definir.
+- Conclusão: definir e testar matriz de viewports, toque e teclado; corrigir overflow, CSS e layout mantendo componentes compartilhados, menus, upload, packs e player acessíveis e funcionais.
+
+#### R12 — Monitoramento de erros, desempenho e publicações
+- Estado: **Pendente**. Prioridade: alta. Responsável/branch/PR: a definir.
+- Conclusão: instrumentar erros e métricas com correlação de tarefa/destino/tentativa sem credenciais ou mídia privada; induzir falhas controladas e comprovar detecção, diagnóstico e alerta. Medir desempenho com baseline. Introduzir os sinais mínimos de R03/R09 antes da migração; ampliar a observabilidade nesta fase.
+
+#### R13 — Library parcialmente offline
+- Estado: **Pendente**. Prioridade: futura. Responsável/branch/PR: a definir.
+- Conclusão desta avaliação: documentar proposta e decisão para projetos próprios, downloads explícitos, quotas/evicção, deduplicação, suporte dos navegadores, logout, contas/dispositivos compartilhados, revogação, sincronização e exclusão. Implementação requer escopo posterior; interesse em offline não prova disponibilidade nem autoriza cache de mídia privada de terceiros.
+
+#### R14 — Limites comerciais e planos pagos
+- Estado: **Pendente**. Prioridade: futura. Responsável/branch/PR: a definir.
+- Conclusão deste planejamento: registrar custos, limites técnicos e alternativas comerciais para decisão posterior, com premissas identificadas. Não implementar cobrança, preços ou assinaturas prematuramente.
+
+#### R15 — Guia de arquitetura e acompanhamento
+- Estado: **Pendente** (manutenção contínua; roadmap registrado nesta edição). Prioridade: alta, transversal. Responsável/branch/PR: a definir.
+- Conclusão por entrega: atualizar neste guia os estados reais, responsável, branch, PR, dependências, checks, evidências funcionais e bloqueios; separar planejamento, relato do usuário e verificação direta. Não marcar as fases concluídas pela simples inclusão deste roadmap.
+
+### Ordem, divisão de PRs e gates de conclusão
+
+1. R01 — waveform.
+2. R06 — domínios temporários e login.
+3. R03 + R02 — fila persistente e YouTube, seguidos pelos demais destinos.
+4. R04 + R05 — desempenho, Home/World/Profile e funcionalidades existentes.
+5. R09 + R07 — recuperação, auditoria e segurança; antecipar backup e sinais operacionais conforme as dependências exigirem.
+6. R08 — transferir `1ce.lol` apenas com as dependências validadas e aprovação explícita.
+7. R10–R14 — evolução pós-migração; R12 e R15 acompanham as entregas quando necessários.
+
+Cada tarefa de execução deve receber ID único, um responsável, branch exclusiva, escopo de arquivos, dependências e PR. Dividir mudanças independentes e agrupar apenas mudanças relacionadas; evitar deployments desnecessários. Registrar aqui os links e resultados ao atribuir trabalho, sem inventar owners ou PRs.
+
+Antes de concluir um PR de implementação: revisão de código, testes/typecheck/build aplicáveis e os sete checks obrigatórios registrados na baseline (`dependency-audit`, `s2-local-s3-syntax-preflight`, `s2-postgres-migration-smoke`, `api-tests`, `railway-api-smoke`, `web-build (22)`, `web-build (26)`), revalidando as regras então vigentes. Quando houver autenticação, uploads, R2, banco ou player, anexar evidência de comportamento real, incluindo falhas e permissões. Merge e deployment exigem aprovação; este roadmap autoriza somente o registro do plano.
+
 ## 1. Mission, boundaries and product decisions
 
 - **v1 is strictly read-only.** Do not change the v1 repository `tofdidthat/1ce`, production site, database, bucket, tokens, OAuth clients, domains or sessions while working on v2. Migration of approved identity/user data requires a separate plan and authorization; never import v1 sessions or OAuth tokens.
