@@ -83,6 +83,7 @@ jobs:
         run: |
           node --check apps/api/scripts/s2-pg-library-integration.mjs
           node apps/api/scripts/s2-pg-library-integration.mjs
+          node apps/api/scripts/waveform-pg-smoke.mjs
 
   s2-local-s3-syntax-preflight:
     runs-on: ubuntu-latest
@@ -229,3 +230,4 @@ jobs:
         run: node --experimental-strip-types --test apps/web/test/*.test.mjs
       - name: Typecheck and build v2 frontend
         run: pnpm --filter @1ce/web build
+
