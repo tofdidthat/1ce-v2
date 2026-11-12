@@ -65,4 +65,3 @@ test('one persistent audio owner delegates only dock rendering and owner-scoped 
  assert.match(player,/useWaveform\(current\?\.audio_file_id/);
  assert.match(player,/loadWaveform\(b.audio_file_id,userId\)/);
 });
-

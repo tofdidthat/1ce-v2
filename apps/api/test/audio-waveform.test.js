@@ -124,4 +124,3 @@ test('malformed or invalid decoded audio never becomes persistent bars',async()=
  assert.equal(validWaveform(Array(84).fill(Infinity)),false);
  assert.equal(validWaveform(Array(83).fill(1)),false);
 });
-

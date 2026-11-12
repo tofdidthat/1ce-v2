@@ -230,4 +230,3 @@ jobs:
         run: node --experimental-strip-types --test apps/web/test/*.test.mjs
       - name: Typecheck and build v2 frontend
         run: pnpm --filter @1ce/web build
-

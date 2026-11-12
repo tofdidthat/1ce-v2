@@ -37,4 +37,3 @@ export class WaveformEnvelope {
 export function validWaveform(value:unknown):value is number[]{
  return Array.isArray(value)&&value.length===84&&value.every(x=>typeof x==='number'&&Number.isFinite(x)&&x>=0&&x<=1);
 }
-

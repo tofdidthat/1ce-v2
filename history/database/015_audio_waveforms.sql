@@ -7,4 +7,3 @@ CREATE TABLE IF NOT EXISTS v2_audio_waveforms (
  retry_after TIMESTAMPTZ NOT NULL DEFAULT now(),
  CHECK (bars IS NULL OR (jsonb_typeof(bars)='array' AND jsonb_array_length(bars)=84))
 );
-

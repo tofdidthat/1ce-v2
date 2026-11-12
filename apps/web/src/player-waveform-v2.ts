@@ -35,4 +35,3 @@ export function useWaveform(fileId:number|null,ownerId:number|null){
  },[fileId,ownerId]);
  return result?.fileId===fileId&&result?.ownerId===ownerId?result.bars:[];
 }
-

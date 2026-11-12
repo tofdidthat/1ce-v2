@@ -24,4 +24,3 @@ async function run():Promise<number[]>{
  }finally{body.destroy?.();s3.destroy();}
 }
 if(parentPort)run().then(bars=>parentPort!.postMessage({bars}),()=>parentPort!.postMessage({error:true}));
-

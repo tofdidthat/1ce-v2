@@ -40,4 +40,3 @@ test('pending generation retries metadata, then returns the persisted 84 bars',a
   assert.deepEqual(await loadWaveform(15,2),bars);assert.equal(calls,2);
  }finally{globalThis.fetch=previous;globalThis.setTimeout=timer;}
 });
-
