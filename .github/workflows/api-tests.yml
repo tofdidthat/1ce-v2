@@ -84,6 +84,8 @@ jobs:
           node --check apps/api/scripts/s2-pg-library-integration.mjs
           node apps/api/scripts/s2-pg-library-integration.mjs
           node apps/api/scripts/waveform-pg-smoke.mjs
+          node --check apps/api/scripts/publication-pg-smoke.mjs
+          node apps/api/scripts/publication-pg-smoke.mjs
 
   s2-local-s3-syntax-preflight:
     runs-on: ubuntu-latest
