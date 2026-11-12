@@ -87,7 +87,7 @@ test('concurrent requests cannot start a second decode, including a different fi
 });
 test('migration matches lazy additive schema and cascading file deletion',()=>{
  const sql=readFileSync(new URL('../../../history/database/015_audio_waveforms.sql',import.meta.url),'utf8');
- assert.equal(sql.slice(sql.indexOf('CREATE TABLE')).trim().replace(/;$/,''),waveformSchema);
+ assert.equal(sql.slice(sql.indexOf('CREATE TABLE')).replace(/\r\n/g,'\n').trim().replace(/;$/,''),waveformSchema);
 });
 function wav(){
  const samples=44100,bytes=Buffer.alloc(44+samples*4);

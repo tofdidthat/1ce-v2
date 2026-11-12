@@ -58,7 +58,8 @@ Estados permitidos: **Pendente**, **Em andamento**, **Em validação**, **Conclu
 - Conclusão: fechar a página após aceite do servidor e comprovar continuidade; reiniciar o executor e comprovar retomada. Testar concorrência, reentrega, backoff e falha parcial sem republicar destinos concluídos. Tratar respostas ambíguas da plataforma para reduzir duplicações e proteger histórico por proprietário.
 
 #### R04 — Desempenho de Home, Library e Profile
-- Estado: **Pendente**. Prioridade: alta. Responsável/branch/PR: a definir. Dependência: alinhar cache com R01.
+- Estado: **Em validação, parcial**. Responsável: Du, T024, origem `7a74bc4`; integração por BOSS na [PR #93](https://github.com/tofdidthat/1ce-v2/pull/93). Dependência: alinhar cache com R01.
+- Entrega estreita: Profile retido/inativo não inicia fetch; sair aborta a requisição e ignora resposta tardia; voltar revalida uma vez sem bump redundante. Baseline executável do efeito real: 1 request inativo/sem abort antes, 0 requests inativos e abort ao sair depois. Transporte/setters controlados com três identidades de fixture, não DOM React completo nem autorização real do servidor. Conjunto com waveform: web 174/174 e API 199/199 locais, build aprovado. Frio/quente/F5 com acervo real e jornadas de player/World/permissões continuam pendentes; esta correção não conclui R04/R05 amplos.
 - Escopo: capas, cache, paginação, requisições duplicadas, navegação e experiência após F5; preservar o player único e reprodução contínua.
 - Conclusão: registrar baseline e metas mensuráveis antes de implementar; comparar carregamentos frios/quentes e F5 com o mesmo acervo. Demonstrar redução de espera/requisições sem perdas na paginação, capas obsoletas, vazamento entre contas ou interrupção do player ao navegar.
 
@@ -70,7 +71,8 @@ Estados permitidos: **Pendente**, **Em andamento**, **Em validação**, **Conclu
 ### Fase 2 — Preparação para substituir a v1
 
 #### R06 — Sincronização automática dos domínios Vercel
-- Estado: **Pendente**. Prioridade: alta, executar após R01. Responsável/branch/PR: a definir.
+- Estado: **Em andamento, operação pendente**. Responsável: Du, T022, origem `f672eee`; preparação operacional integrada por BOSS na [PR #93](https://github.com/tofdidthat/1ce-v2/pull/93), sem merge individual da draft #92.
+- `scripts/domain-sync-plan.mjs` só valida snapshots e produz proposta; não executa POST nem configura sincronização. Du relatou ambos hosts no mesmo deployment e hostname de login ausente dos project domains, com 404 no team explícito; esse estado operacional ainda não foi revalidado por BOSS. A associação/aceitação Vercel, confirmação após novo deployment e login real ainda faltam. Os três testes do planner não demonstram operação aplicada. Nenhuma alteração de OAuth, CORS, domínio ou produção foi executada por esse script.
 - Contexto fornecido, a revalidar: `1ce-v2.vercel.app` é domínio do projeto e `1ce-v2-tofdidthat.vercel.app` é alias manual usado no login.
 - Conclusão: configurar acompanhamento automático da produção ou eliminar a dependência do alias; comprovar atualização após deployment autorizado subsequente, sem intervenção manual. Validar login Google, sessões, PKCE, callbacks e CORS nas URLs mantidas; registrar configuração e recuperação. Não alterar produção neste registro.
 

@@ -35,7 +35,7 @@ test('C5 profile uses prior verified data only for the same viewer and target, w
  assert.match(profile,/lastVerifiedProfileKey\.current===requestKey/);
  assert.match(profile,/profileStatus==='loading'&&!sameVerifiedProfile/);
  assert.match(profile,/profileStatus==='error'&&!sameVerifiedProfile/);
- assert.match(profile,/if\(active&&!previouslyActive\.current\)\{setRefreshRevision/);
+ assert.match(profile,/\[active,requestKey,refreshRevision\]/);
  assert.match(profile,/if\(!active\)return;[\s\S]*?subscribeV2DataChanges\(\['library','saves','publications','shares','identity'\]/);
  assert.match(profile,/fetch\(api\+'\/api\/public\/profile\/'\+targetId,\{credentials:'include',signal:controller\.signal,cache:'no-store'\}\)/);
  assert.match(profile,/controller\.signal\.aborted/);
@@ -52,3 +52,4 @@ test('C5 same-view corrections do not introduce unsafe persistent storage or new
  assert.match(library,/ProjectCardV2 key=\{'pack-'\+p\.id\}/);
  assert.match(library,/ProjectCardV2 key=\{'beat-'\+b\.id\}/);
 });
+
