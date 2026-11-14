@@ -198,7 +198,7 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
       <p>After an uncertain submit error, retry without editing to reuse the same request. An accepted job is not yet a published video.</p>
      </div>
      <section className="onece-multi-panel" aria-label="Publishing history"><h2>Publishing history</h2>
-      {currentStatus?.jobs.map(job=><article key={job.id}><h3>{job.title}</h3><p>{job.state}</p>{job.targets.map(target=><div key={target.id}><span>{target.platform} · {target.variant} · {target.state}{target.errorCode?' · '+publishingErrorMessage(target.errorCode):''}</span>{canRetryPublishingTarget(target)&&<button type="button" disabled={busy||!currentStatus.connected} onClick={()=>void act(async signal=>{await publishingRequest(api,'/targets/'+encodeURIComponent(target.id)+'/retry',signal,{});})}>Retry destination</button>}</div>)}</article>)}
+      {currentStatus?.jobs.map(job=><article key={job.id}><h3>{job.title}</h3><p>{job.state}</p>{job.targets.map(target=><div key={target.id}><span>{target.platform} · {target.variant} · {target.state}{target.errorCode?' · '+publishingErrorMessage(target.errorCode):''}</span>{target.remoteId&&target.platform==='youtube'&&<a href={'https://www.youtube.com/watch?v='+encodeURIComponent(target.remoteId)} target="_blank" rel="noopener noreferrer">Review on YouTube</a>}{canRetryPublishingTarget(target)&&<button type="button" disabled={busy||!currentStatus.connected} onClick={()=>void act(async signal=>{await publishingRequest(api,'/targets/'+encodeURIComponent(target.id)+'/retry',signal,{});})}>Retry destination</button>}</div>)}</article>)}
       {currentStatus&&!currentStatus.jobs.length&&<p>No publishing jobs yet.</p>}
      </section>
     </div>
