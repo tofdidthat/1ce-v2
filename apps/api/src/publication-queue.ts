@@ -84,12 +84,13 @@ export type ClaimedPublicationTarget={
 };
 // A worker may call this only after verifying destination grants and assets.
 // Claims require READY jobs. No server route or background loop invokes it.
-export async function claimPublicationTarget(db:QueryableV2):Promise<ClaimedPublicationTarget|null>{
+export async function claimPublicationTarget(db:QueryableV2,platform:PublicationPlatform|null=null):Promise<ClaimedPublicationTarget|null>{
  const token=randomUUID();
  const result=await db.query(`WITH candidate AS MATERIALIZED (
   SELECT t.id FROM v2_publication_targets t
   JOIN v2_publication_jobs j ON j.id=t.job_id
   WHERE j.state='ready' AND t.state IN ('queued','retryable')
+   AND ($2::text IS NULL OR t.platform=$2)
    AND t.next_attempt_at<=clock_timestamp() AND t.attempts<30
   ORDER BY t.next_attempt_at,t.id
   LIMIT 1 FOR UPDATE OF t SKIP LOCKED
@@ -104,7 +105,7 @@ export async function claimPublicationTarget(db:QueryableV2):Promise<ClaimedPubl
   INSERT INTO v2_publication_attempts(target_id,attempt,claim_token)
   SELECT id,attempts,$1::uuid FROM claimed RETURNING target_id
  )
- SELECT c.* FROM claimed c JOIN logged l ON l.target_id=c.id`,[token]);
+ SELECT c.* FROM claimed c JOIN logged l ON l.target_id=c.id`,[token,platform]);
  const row=result.rows[0];if(!row)return null;
  return {id:String(row.id),jobId:String(row.job_id),
   platform:row.platform as PublicationPlatform,variant:row.variant as PublicationVariant,
@@ -125,7 +126,7 @@ export async function settlePublicationTarget(db:QueryableV2,targetId:string,cla
   UPDATE v2_publication_targets t SET
    state=CASE WHEN $3='retryable' AND attempts>=30 THEN 'failed' ELSE $3 END,
    claim_token=NULL,claim_until=NULL,
-   remote_id=CASE WHEN $3='succeeded' THEN $4 ELSE remote_id END,
+   remote_id=CASE WHEN $4::text IS NOT NULL AND $3 IN ('succeeded','needs_review') THEN $4 ELSE remote_id END,
    last_error_code=$5,
    next_attempt_at=CASE WHEN $3='retryable' THEN
     clock_timestamp()+(LEAST(60,POWER(2,LEAST(attempts,6)))::int*interval '1 minute')

@@ -7,6 +7,8 @@ import { promisify } from 'node:util';
 import pg from 'pg';
 import { handleLibraryFiles } from './library-files.js';
 import {handleAudioWaveform} from './audio-waveform.js';
+import {handlePublishing} from './publishing-api.js';
+import {startPublicationWorker} from './publication-worker.js';
 import {rateLimitExceeded} from './api-rate-limits.js';
 import {passwordWorkLimiter,passwordWorkPolicy} from './login-admission.js';
 import {handleProjectActions} from './project-actions.js';
@@ -96,6 +98,7 @@ const server=createServer(async(req,res)=>{
  if(!allowed && req.headers.origin)return json(res,403,{error:'Origin not allowed'});
  try{
 
+  if(await handlePublishing(req,res,pathname,pool,currentUser))return;
   if(await handleProfileIdentity(req,res,pathname,pool,currentUser))return;
   if(await handleProfileFollows(req,res,pathname,pool,currentUser))return;
   if(await handleAudioWaveform(req,res,pathname,pool,currentUser))return;
@@ -201,5 +204,6 @@ const server=createServer(async(req,res)=>{
 // "node src/server.js" / Railway starts exactly as before.
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  server.listen(Number(process.env.PORT||3001),()=>console.log('1CE v2 API listening'));
+ if(process.env.DATABASE_URL){const stopPublishing=startPublicationWorker(pool);server.once('close',stopPublishing);}
 }
 export {server as apiServer,pool as apiPool};
