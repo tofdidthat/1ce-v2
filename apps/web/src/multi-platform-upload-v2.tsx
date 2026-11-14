@@ -1,7 +1,7 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {ArrowLeft,Check,Globe2,ImagePlus,Music2,UploadCloud,Video} from 'lucide-react';
 import './multi-platform-upload-v2.css';
-import {publishingRequest,canRetryPublishingTarget,type PublishingStatus,type PublishingPayload} from './publishing-api-v2';
+import {publishingRequest,canRetryPublishingTarget,publishingErrorMessage,type PublishingStatus,type PublishingPayload} from './publishing-api-v2';
 import {uploadPublishingFile} from './upload-file-v2';
 
 type Platform='YouTube'|'TikTok'|'Instagram'|'Telegram'|'Discord';
@@ -182,9 +182,9 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
         </button>)}
        </div>
       </div>}
-      <p className="onece-multi-hint">YouTube supports image + MP3/WAV, up to 20 minutes. Audio: 150 MiB; image: 15 MiB. Other platforms and original video are preview only.</p>
+      <p className="onece-multi-hint">YouTube supports image + MP3/WAV, up to 20 minutes. Audio: 150 MiB; image: 15 MiB, 32 megapixels, 8192 pixels per side. Other platforms and original video are preview only.</p>
       <p>{!userId?'Sign in to publish.':!currentStatus?'Checking publishing availability…':!currentStatus.available?'Publishing is unavailable on this server.':currentStatus.connected?'YouTube connected':'Connect YouTube to publish.'}</p>
-      <button type="button" disabled={!currentStatus?.available} onClick={()=>void act(async signal=>{
+      <button type="button" disabled={!currentStatus} onClick={()=>void act(async signal=>{
        if(currentStatus?.connected){await publishingRequest(api,'/youtube/disconnect',signal,{});signal.throwIfAborted();setStatus(null);}
        else{const result=await publishingRequest<{url:string}>(api,'/youtube/connect',signal,{});signal.throwIfAborted();const url=new URL(result.url);if(url.protocol!=='https:')throw Error('Invalid authorization URL');window.location.assign(url.href);}
       })}>{currentStatus?.connected?'Disconnect YouTube':'Connect YouTube'}</button>
@@ -198,7 +198,7 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
       <p>After an uncertain submit error, retry without editing to reuse the same request. An accepted job is not yet a published video.</p>
      </div>
      <section className="onece-multi-panel" aria-label="Publishing history"><h2>Publishing history</h2>
-      {currentStatus?.jobs.map(job=><article key={job.id}><h3>{job.title}</h3><p>{job.state}</p>{job.targets.map(target=><div key={target.id}><span>{target.platform} · {target.variant} · {target.state}{target.errorCode?' · '+target.errorCode:''}</span>{canRetryPublishingTarget(target)&&<button type="button" disabled={busy||!currentStatus.connected} onClick={()=>void act(async signal=>{await publishingRequest(api,'/targets/'+encodeURIComponent(target.id)+'/retry',signal,{});})}>Retry destination</button>}</div>)}</article>)}
+      {currentStatus?.jobs.map(job=><article key={job.id}><h3>{job.title}</h3><p>{job.state}</p>{job.targets.map(target=><div key={target.id}><span>{target.platform} · {target.variant} · {target.state}{target.errorCode?' · '+publishingErrorMessage(target.errorCode):''}</span>{canRetryPublishingTarget(target)&&<button type="button" disabled={busy||!currentStatus.connected} onClick={()=>void act(async signal=>{await publishingRequest(api,'/targets/'+encodeURIComponent(target.id)+'/retry',signal,{});})}>Retry destination</button>}</div>)}</article>)}
       {currentStatus&&!currentStatus.jobs.length&&<p>No publishing jobs yet.</p>}
      </section>
     </div>
