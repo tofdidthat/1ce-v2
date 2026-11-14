@@ -45,7 +45,7 @@ test('multiplatform mode supports original v1 destination choices and two format
 });
 
 test('publishing requires connected YouTube and supported media without calling v1',()=>{
- assert.match(multi,/disabled=\{busy\|\|!active\|\|!userId\|\|!currentStatus\?\.available\|\|!currentStatus.connected/);
+ assert.match(multi,/disabled=\{accepted\|\|busy\|\|!active\|\|!userId\|\|!currentStatus\?\.available\|\|!currentStatus.connected/);
  assert.match(multi,/Original video publishing is unavailable/);
  assert.match(multi,/pending.current=\{requestId:crypto.randomUUID\(\)/);
  assert.match(multi,/if\(!pending.current\)/);

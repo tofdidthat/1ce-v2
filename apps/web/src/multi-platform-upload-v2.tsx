@@ -42,13 +42,14 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
  const [status,setStatus]=useState<{viewer:number;value:PublishingStatus}|null>(null);
  const currentStatus=status&&status.viewer===userId?status.value:null;
  const [busy,setBusy]=useState(false);
+ const [accepted,setAccepted]=useState(false);
  const [notice,setNotice]=useState('');
  const [failure,setFailure]=useState('');
  const [revision,setRevision]=useState(0);
  const operation=useRef<AbortController|null>(null);
  const pending=useRef<PublishingPayload|null>(null);
  const viewer=useRef(userId);viewer.current=userId;
- useEffect(()=>{pending.current=null;},[title,description,hashtags,privacy,audioFile,image,video,selectedPlatforms,selectedYouTubeFormats]);
+ useEffect(()=>{pending.current=null;setAccepted(false);},[title,description,hashtags,privacy,audioFile,image,video,selectedPlatforms,selectedYouTubeFormats]);
  useEffect(()=>{
   operation.current?.abort();operation.current=null;pending.current=null;
   setStatus(null);setBusy(false);setNotice('');setFailure('');
@@ -81,7 +82,7 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
   finally{if(operation.current===controller){operation.current=null;setBusy(false);}}
  };
  const submit=()=>void act(async signal=>{
-  if(!currentStatus?.available||!currentStatus.connected||video||!audioFile||!image||!title.trim()||selectedPlatforms.length!==1||selectedPlatforms[0]!=='YouTube')return;
+  if(accepted||!currentStatus?.available||!currentStatus.connected||video||!audioFile||!image||!title.trim()||selectedPlatforms.length!==1||selectedPlatforms[0]!=='YouTube')return;
   if(!pending.current){
    setNotice('Uploading audio…');const audioFileId=await uploadPublishingFile(api,audioFile,'audio',signal);
    signal.throwIfAborted();setNotice('Uploading image…');const coverFileId=await uploadPublishingFile(api,image,'cover',signal);
@@ -90,7 +91,7 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
   }
   setNotice('Submitting to queue…');
   await publishingRequest<{id:string;state:string}>(api,'/jobs',signal,pending.current);
-  signal.throwIfAborted();pending.current=null;setNotice('Accepted by the publishing queue. Follow progress below.');
+  signal.throwIfAborted();setAccepted(true);setNotice('Accepted by the publishing queue. You can close this page; the server continues. Follow progress below.');
  });
  const visualUrl=useMemo(()=>video?URL.createObjectURL(video):image?URL.createObjectURL(image):'',[video,image]);
  useEffect(()=>()=>{if(visualUrl)URL.revokeObjectURL(visualUrl)},[visualUrl]);
@@ -198,7 +199,7 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
      </div>
      </fieldset>
      <div className="onece-multi-publish">
-      <button type="button" onClick={submit} disabled={busy||!active||!userId||!currentStatus?.available||!currentStatus.connected||!audioFile||!image||!!video||!title.trim()||selectedPlatforms.length!==1||!youtubeSelected}>Publish to YouTube</button>
+      <button type="button" onClick={submit} disabled={accepted||busy||!active||!userId||!currentStatus?.available||!currentStatus.connected||!audioFile||!image||!!video||!title.trim()||selectedPlatforms.length!==1||!youtubeSelected}>{accepted?'Submitted — see history':'Publish to YouTube'}</button>
       {notice&&<p role="status">{notice}</p>}{failure&&<p role="alert">{failure}</p>}
       {video&&<p>Original video publishing is unavailable. Choose an image and MP3/WAV audio.</p>}
       {selectedPlatforms.some(platform=>platform!=='YouTube')&&<p>Only YouTube is available. Remove preview destinations before publishing.</p>}
