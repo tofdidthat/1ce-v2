@@ -43,6 +43,7 @@ export async function renderPublication({audio,cover,output,variant,signal}:{
  if(!publicationRendererAvailable())throw new PublishingError('renderer_unavailable',503);
  const audioInfo=await run(['-hide_banner','-nostdin','-max_alloc','67108864','-protocol_whitelist','file,pipe','-i',audio],{signal});
  const duration=parseMediaDuration(audioInfo.stderr);
+ if(variant==='shorts'&&duration>180)throw new PublishingError('shorts_must_be_under_3_minutes',422);
  const imageInfo=await run(['-hide_banner','-nostdin','-max_alloc','67108864','-protocol_whitelist','file,pipe','-i',cover],{signal});
  const dimensions=/,\s*(\d{1,6})x(\d{1,6})(?:[,\s\[])/.exec(imageInfo.stderr);
  if(!dimensions||Number(dimensions[1])*Number(dimensions[2])>32000000||Number(dimensions[1])>8192||Number(dimensions[2])>8192)throw new PublishingError('cover_dimensions_too_large',422);

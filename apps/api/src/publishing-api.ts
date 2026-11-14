@@ -23,7 +23,8 @@ export async function handlePublishing(req:IncomingMessage,res:ServerResponse,pa
  if(!callback&&!start&&!pathname.startsWith('/api/publishing/'))return false;
  try{
   if(callback&&req.method==='GET'){
-   await ensurePublishingSchema(db);await finishYouTubeConnection(req,res,url,db,config!,http);return true;
+   const current=await currentUser(req);
+   await ensurePublishingSchema(db);await finishYouTubeConnection(req,res,url,db,config!,current?.id??null,http);return true;
   }
   const user=await currentUser(req);
   if(!user){send(res,401,{error:'not_authenticated'});return true;}
@@ -60,10 +61,7 @@ export async function handlePublishing(req:IncomingMessage,res:ServerResponse,pa
   if(req.method==='POST'&&pathname==='/api/publishing/jobs'){
    if(!(process.env.R2_ACCOUNT_ID&&process.env.R2_ACCESS_KEY_ID&&process.env.R2_SECRET_ACCESS_KEY&&process.env.R2_BUCKET_NAME))throw new PublishingError('publishing_storage_unavailable',503);
    if(!renderer()){send(res,503,{error:'renderer_unavailable'});return true;}
-   const value=await body(req);let parsed;
-   try{parsed=await enqueuePublication(db,user.id,value)}catch(error){
-    if(error instanceof PublishingError)throw error;throw new PublishingError('invalid_publication_request');
-   }
+   const value=await body(req),parsed=await enqueuePublication(db,user.id,value);
    send(res,202,parsed);return true;
   }
   const retry=/^\/api\/publishing\/targets\/([1-9]\d*)\/retry$/.exec(pathname);

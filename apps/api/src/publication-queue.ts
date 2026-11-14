@@ -1,5 +1,5 @@
-// R03 queue foundation. This module cannot publish externally.
-// Only a separately verified media/OAuth workflow may mark drafts READY.
+// R03 queue primitives. The publishing API validates media/OAuth ownership
+// before READY; only publication-worker.ts performs external publishing.
 import {createHash,randomUUID} from 'node:crypto';
 import type {QueryableV2} from '../../../packages/shared/contracts.js';
 
@@ -83,7 +83,7 @@ export type ClaimedPublicationTarget={
  attempt:number;claimToken:string;
 };
 // A worker may call this only after verifying destination grants and assets.
-// Claims require READY jobs. No server route or background loop invokes it.
+// Claims require READY jobs; the YouTube worker filters its own platform.
 export async function claimPublicationTarget(db:QueryableV2,platform:PublicationPlatform|null=null):Promise<ClaimedPublicationTarget|null>{
  const token=randomUUID();
  const result=await db.query(`WITH candidate AS MATERIALIZED (

@@ -1,6 +1,5 @@
-// YouTube resumable upload transport (R02). NOT wired into the HTTP API or
-// publication workers. The caller must obtain a server-side youtube.upload
-// access token and a verified MP4 artifact before invoking these helpers.
+// YouTube resumable transport (R02), invoked only by publication-worker.ts
+// after owner/grant checks, rendering and durable artifact checkpointing.
 // Upload session URLs are bearer capabilities: never log or expose to browsers.
 const START='https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status';
 const MAX_BYTES=256*1024*1024*1024;

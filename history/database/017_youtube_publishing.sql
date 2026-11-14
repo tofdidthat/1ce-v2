@@ -2,6 +2,7 @@
 ALTER TABLE v2_publication_jobs ADD COLUMN IF NOT EXISTS audio_file_id BIGINT REFERENCES library_files(id) ON DELETE SET NULL;
 ALTER TABLE v2_publication_jobs ADD COLUMN IF NOT EXISTS cover_file_id BIGINT REFERENCES library_files(id) ON DELETE SET NULL;
 ALTER TABLE v2_publication_jobs ADD COLUMN IF NOT EXISTS privacy TEXT NOT NULL DEFAULT 'private' CHECK (privacy IN ('private','unlisted','public'));
+ALTER TABLE v2_publication_jobs ADD COLUMN IF NOT EXISTS youtube_generation UUID;
 CREATE TABLE IF NOT EXISTS v2_youtube_connections (
  user_id INTEGER PRIMARY KEY REFERENCES account_users(id) ON DELETE CASCADE,
  refresh_cipher TEXT NOT NULL,

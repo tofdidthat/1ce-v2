@@ -44,9 +44,13 @@ test('multiplatform mode supports original v1 destination choices and two format
  assert.match(multi,/initialTitle/);
 });
 
-test('unconnected publishing remains explicitly disabled and cannot call v1 services',()=>{
- assert.match(multi,/<button type="button" disabled aria-label="Publishing to external platforms is coming soon">/);
- assert.match(multi,/Preview mode only/);
+test('publishing requires connected YouTube and supported media without calling v1',()=>{
+ assert.match(multi,/disabled=\{busy\|\|!active\|\|!userId\|\|!currentStatus\?\.available\|\|!currentStatus.connected/);
+ assert.match(multi,/Original video publishing is unavailable/);
+ assert.match(multi,/pending.current=\{requestId:crypto.randomUUID\(\)/);
+ assert.match(multi,/if\(!pending.current\)/);
+ assert.match(multi,/signal,pending.current/);
+ assert.match(multi,/controller.abort\(\);clearTimeout\(timer\)/);
  assert.doesNotMatch(multi,/\bfetch\s*\(/);
  assert.doesNotMatch(multi,/DESKTOP_BACKEND_URL|ACCOUNT_SESSION_KEY|publishToAll|localStorage/);
 });

@@ -41,7 +41,7 @@ test('callback rejects absent browser binding and replay before contacting Googl
  const db={async query(){return {rows:[],rowCount:0}}},http=async()=>{contacts++;throw Error('Must not contact provider')};
  for(const cookie of ['',`onece_v2_youtube_state=${'b'.repeat(43)}`]){
   const res=response();await finishYouTubeConnection({headers:{cookie}},res,
-   new URL(config.redirectUri+'?state=pub_'+'a'.repeat(43)+'&code=fixture-code'),db,config,http);
+   new URL(config.redirectUri+'?state=pub_'+'a'.repeat(43)+'&code=fixture-code'),db,config,7,http);
   assert.equal(res.status,302);assert.equal(res.headers.Location,config.webOrigin+'/app/upload?publishing=youtube-error');
  }
  assert.equal(contacts,0);
@@ -53,7 +53,7 @@ test('a successful OAuth callback stores encrypted refresh tokens, not access to
   scope:'https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly'}):
   Response.json({items:[{id:'UC'+'a'.repeat(22),snippet:{title:'Fixture channel'}}]});
  const res=response();await finishYouTubeConnection({headers:{cookie:'onece_v2_youtube_state='+'b'.repeat(43)}},res,
-  new URL(config.redirectUri+'?state=pub_'+'a'.repeat(43)+'&code=fixture-code'),db,config,http);
+  new URL(config.redirectUri+'?state=pub_'+'a'.repeat(43)+'&code=fixture-code'),db,config,7,http);
  assert.match(res.headers.Location,/youtube-connected$/);
  const saved=writes.find(c=>c.sql.startsWith('INSERT INTO v2_youtube_connections'));
  assert.ok(saved);assert.doesNotMatch(JSON.stringify(saved),/fixture-refresh|fixture-access/);
@@ -95,8 +95,8 @@ function png(){
  const pixels=Buffer.alloc(16*(16*3+1),128);for(let y=0;y<16;y++)pixels[y*49]=0;
  return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk('IHDR',header),chunk('IDAT',deflateSync(pixels)),chunk('IEND',Buffer.alloc(0))]);
 }
-function wav(){
- const frames=11025,bytes=Buffer.alloc(44+frames*2);bytes.write('RIFF');bytes.writeUInt32LE(bytes.length-8,4);bytes.write('WAVEfmt ',8);
+function wav(frames=11025){
+ const bytes=Buffer.alloc(44+frames*2);bytes.write('RIFF');bytes.writeUInt32LE(bytes.length-8,4);bytes.write('WAVEfmt ',8);
  bytes.writeUInt32LE(16,16);bytes.writeUInt16LE(1,20);bytes.writeUInt16LE(1,22);bytes.writeUInt32LE(44100,24);bytes.writeUInt32LE(88200,28);
  bytes.writeUInt16LE(2,32);bytes.writeUInt16LE(16,34);bytes.write('data',36);bytes.writeUInt32LE(frames*2,40);
  for(let i=0;i<frames;i++)bytes.writeInt16LE(Math.round(Math.sin(i*.1)*12000),44+i*2);return bytes;
@@ -111,5 +111,7 @@ test('real FFmpeg renders a synthetic PNG/WAV into both promised aspect ratios',
    const probe=spawnSync(process.env.FFMPEG_PATH||'ffmpeg',['-hide_banner','-i',output],{encoding:'utf8',windowsHide:true});
    assert.match(probe.stderr,new RegExp(dimensions));assert.match(probe.stderr,/Audio: aac/);assert.match(probe.stderr,/Video: h264/);
   }
+  const long=join(dir,'long.wav');await writeFile(long,wav(44100*181));
+  await assert.rejects(renderPublication({audio:long,cover,output:join(dir,'not-a-short.mp4'),variant:'shorts',signal:new AbortController().signal}),/shorts_must_be_under_3_minutes/);
  }finally{if(dirname(resolve(dir))===resolve(tmpdir())&&basename(dir).startsWith('onece-render-test-'))await rm(dir,{recursive:true,force:true});}
 });

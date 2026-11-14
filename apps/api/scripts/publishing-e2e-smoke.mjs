@@ -9,13 +9,14 @@ import {enqueuePublication,listPublications,retryPublication} from '../dist/publ
 import {runPublicationOnce,recoverYouTubeClaims} from '../dist/publication-worker.js';
 import {claimPublicationTarget} from '../dist/publication-queue.js';
 import {sealPublishing} from '../dist/publishing-secrets.js';
+import {beginYouTubeConnection,startYouTubeConnection,finishYouTubeConnection} from '../dist/youtube-connection.js';
 const url=process.env.S2_TEST_DATABASE_URL?new URL(process.env.S2_TEST_DATABASE_URL):null;
 if(process.env.CI!=='true'||process.env.GITHUB_ACTIONS!=='true'||!url||!['postgres:','postgresql:'].includes(url.protocol)||
  !['localhost','127.0.0.1'].includes(url.hostname)||url.port!=='5432'||url.pathname!=='/onece_s2_ci')throw Error('Disposable CI database required');
 const db=new pg.Pool({connectionString:url.href,max:8});
 const config={clientId:'fixture-client',clientSecret:'fixture-not-real-client-secret',redirectUri:'https://api.invalid/auth/google/callback',
  webOrigin:'https://web.invalid',encryptionSecret:'fixture-not-real-encryption-secret'};
-const objects=new Map(),sessions=new Map();let owner,other,mediaRequests=0,sessionRequests=0,renderCalls=0,loseNext=false,privacyOverride=null;
+const objects=new Map(),sessions=new Map();let owner,other,mediaRequests=0,sessionRequests=0,renderCalls=0,loseNext=false,privacyOverride=null,codeExchanges=0;
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const storage={bucket:'never-real-r2',s3:{async send(command){
  const input=command.input,name=command.constructor.name;
@@ -29,8 +30,15 @@ const storage={bucket:'never-real-r2',s3:{async send(command){
 }}};
 const http=async(raw,init={})=>{
  const url=new URL(raw);
- if(url.hostname==='oauth2.googleapis.com')return Response.json({access_token:'fixture-access'});
+ if(url.hostname==='oauth2.googleapis.com'){
+  if(init.body.get('grant_type')==='authorization_code'){
+   codeExchanges++;return Response.json({access_token:'fixture-access',refresh_token:'fixture-refresh',
+    scope:'https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly'});
+  }
+  return Response.json({access_token:'fixture-access'});
+ }
  assert.equal(url.hostname,'www.googleapis.com','Never call an external provider');
+ if(url.pathname==='/youtube/v3/channels')return Response.json({items:[{id:'UC'+'a'.repeat(22),snippet:{title:'Fixture channel'}}]});
  if(url.pathname==='/youtube/v3/videos'){
   const session=[...sessions.values()].find(s=>s.videoId===url.searchParams.get('id'));
   return Response.json({items:[{id:session.videoId,status:{privacyStatus:privacyOverride||session.privacy,uploadStatus:'uploaded'}}]});
@@ -63,6 +71,18 @@ try{
  const generation=randomUUID();
  for(const user of [owner,other])await db.query(`INSERT INTO v2_youtube_connections(user_id,refresh_cipher,channel_id,channel_title,generation)
   VALUES($1,$2,$3,'Fixture channel',$4::uuid)`,[user,sealPublishing('fixture-refresh','youtube-refresh:'+user,config.encryptionSecret),'UC'+'a'.repeat(22),user===owner?generation:randomUUID()]);
+ const ticket=await beginYouTubeConnection(db,owner,config),state=new URL(ticket.url).searchParams.get('state');
+ await assert.rejects(startYouTubeConnection(db,other,state,config),/youtube_state_expired/);
+ const consent=await startYouTubeConnection(db,owner,state,config);
+ await assert.rejects(startYouTubeConnection(db,owner,state,config),/youtube_state_expired/);
+ const callback=new URL(config.redirectUri+'?state='+state+'&code=fixture-code');
+ const result=()=>({headers:{},writeHead(_status,headers){this.headers=headers},end(){}});
+ const wrong=result();await finishYouTubeConnection({headers:{cookie:consent.cookie}},wrong,callback,db,config,other,http);
+ assert.match(wrong.headers.Location,/youtube-error$/);assert.equal(codeExchanges,0);
+ const connected=result();await finishYouTubeConnection({headers:{cookie:consent.cookie}},connected,callback,db,config,owner,http);
+ assert.match(connected.headers.Location,/youtube-connected$/);assert.equal(codeExchanges,1);
+ const replay=result();await finishYouTubeConnection({headers:{cookie:consent.cookie}},replay,callback,db,config,owner,http);
+ assert.match(replay.headers.Location,/youtube-error$/);assert.equal(codeExchanges,1,'OAuth state is bound to account, browser, start and single use');
  const input={requestId:randomUUID(),title:'Fixture publication',description:'Synthetic only',hashtags:'',privacy:'private',
   audioFileId:await file('audio'),coverFileId:await file('cover'),targets:[{platform:'youtube',variant:'shorts'},{platform:'youtube',variant:'standard'}]};
  const job=await enqueuePublication(db,owner,input);
@@ -96,6 +116,19 @@ try{
  await runPublicationOnce(db,options);
  const review=(await listPublications(db,owner)).find(j=>j.id===restricted.id).targets[0];
  assert.equal(review.state,'needs_review');assert.ok(review.remoteId);assert.equal(await retryPublication(db,owner,review.id),false);
+ const changed=await enqueuePublication(db,owner,{...input,requestId:randomUUID(),targets:[input.targets[0]]});
+ const beforeChange=sessionRequests;
+ await db.query('UPDATE v2_youtube_connections SET generation=$2::uuid WHERE user_id=$1',[owner,randomUUID()]);
+ await runPublicationOnce(db,options);
+ const wrongChannel=(await listPublications(db,owner)).find(j=>j.id===changed.id).targets[0];
+ assert.equal(wrongChannel.state,'needs_review');assert.equal(sessionRequests,beforeChange,'Changing channel must never redirect an accepted publication');
+ const missing=await enqueuePublication(db,owner,{...input,requestId:randomUUID(),targets:[input.targets[0]]});
+ const interrupted=await claimPublicationTarget(db,'youtube');assert.equal(interrupted.jobId,missing.id);
+ await db.query('DELETE FROM library_files WHERE id=$1',[input.audioFileId]);
+ await db.query("UPDATE v2_publication_targets SET claim_until=clock_timestamp()-interval '1 second' WHERE id=$1",[interrupted.id]);
+ await recoverYouTubeClaims(db);await runPublicationOnce(db,options);
+ assert.equal((await listPublications(db,owner)).find(j=>j.id===missing.id).targets[0].state,'failed','A removed original cannot leave an expired target running forever');
+ assert.equal(sessionRequests,beforeChange);
  console.log('Publishing E2E PASS: owner isolation, durable acceptance, idempotency, two formats, partial failure, lost final acknowledgement, same-session recovery, expired claim recovery, privacy restriction, artifact cleanup. PostgreSQL/filesystem real; R2/Google simulated; zero external publishing.');
 }finally{
  if(owner){await db.query('DELETE FROM v2_publication_artifacts WHERE user_id=$1',[owner]);await db.query('DELETE FROM account_users WHERE id=$1',[owner]);}

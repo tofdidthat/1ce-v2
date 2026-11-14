@@ -18,7 +18,7 @@ export async function recoverYouTubeClaims(db:QueryableV2):Promise<void>{
  await db.query(`WITH expired AS (
   SELECT t.id,t.attempts,t.claim_token FROM v2_publication_targets t JOIN v2_publication_jobs j ON j.id=t.job_id
   WHERE t.platform='youtube' AND t.state='running' AND t.claim_until<clock_timestamp()
-   AND j.audio_file_id IS NOT NULL ORDER BY t.claim_until LIMIT 10 FOR UPDATE OF t SKIP LOCKED
+   ORDER BY t.claim_until LIMIT 10 FOR UPDATE OF t SKIP LOCKED
  ), changed AS (
   UPDATE v2_publication_targets t SET state=CASE WHEN t.attempts>=30 THEN 'needs_review' ELSE 'retryable' END,
    claim_token=NULL,claim_until=NULL,next_attempt_at=clock_timestamp(),last_error_code='worker_restarted'
@@ -27,7 +27,9 @@ export async function recoverYouTubeClaims(db:QueryableV2):Promise<void>{
   FROM changed c WHERE a.target_id=c.id AND a.attempt=c.attempts AND a.claim_token=c.claim_token AND a.ended_at IS NULL`);
 }
 async function cleanupArtifacts(db:QueryableV2,storage:PublishingStorage):Promise<void>{
- const rows=(await db.query('SELECT object_key,user_id FROM v2_publication_artifacts WHERE expires_at<clock_timestamp() ORDER BY expires_at LIMIT 5')).rows;
+ const rows=(await db.query(`SELECT a.object_key,a.user_id FROM v2_publication_artifacts a WHERE a.expires_at<clock_timestamp()
+  AND NOT EXISTS (SELECT 1 FROM v2_youtube_checkpoints c JOIN v2_publication_targets t ON t.id=c.target_id
+   WHERE c.artifact_key=a.object_key AND t.state IN ('queued','retryable','running')) ORDER BY a.expires_at LIMIT 5`)).rows;
  for(const row of rows){
   const key=String(row.object_key);
   if(!key.startsWith('publishing/users/'+row.user_id+'/')||!/^publishing\/users\/\d+\/[0-9a-f-]+\/\d+\/[a-f0-9]{64}\.mp4$/.test(key))continue;
@@ -47,10 +49,13 @@ export async function runPublicationOnce(db:QueryableV2,{storage,config,http=fet
  },20000);
  try{
   const job=(await db.query('SELECT * FROM v2_publication_jobs WHERE id=$1::uuid',[target.jobId])).rows[0];
+  let checkpoint=(await db.query('SELECT * FROM v2_youtube_checkpoints WHERE target_id=$1::bigint',[target.id])).rows[0];
+  sessionKnown=!!checkpoint?.session_cipher;
   if(!job||!job.audio_file_id||!job.cover_file_id)throw new PublishingError('source_media_missing',404);
   const owner=Number(job.user_id);
   let auth=await youtubeAccess(db,owner,config,http);
   const generation=auth.generation;
+  if(job.youtube_generation!==generation)throw new PublishingError('publication_connection_changed',409);
   const fence=async()=>{
    controller.signal.throwIfAborted();
    const check=await db.query(`SELECT t.id FROM v2_publication_targets t JOIN v2_publication_jobs j ON j.id=t.job_id
@@ -66,7 +71,6 @@ export async function runPublicationOnce(db:QueryableV2,{storage,config,http=fet
   if(!audio||!cover)throw new PublishingError('source_media_missing',404);
   dir=await mkdtemp(join(tmpdir(),'onece-publish-'));
   const output=join(dir,'video.mp4');
-  let checkpoint=(await db.query('SELECT * FROM v2_youtube_checkpoints WHERE target_id=$1::bigint',[target.id])).rows[0];
   let bytes:number,sha:string;
   if(checkpoint){
    if(checkpoint.connection_generation!==generation)throw new PublishingError('publication_connection_changed',409);
@@ -84,7 +88,9 @@ export async function runPublicationOnce(db:QueryableV2,{storage,config,http=fet
    artifactKey=`publishing/users/${owner}/${target.jobId}/${target.id}/${sha}.mp4`;
    await db.query(`INSERT INTO v2_publication_artifacts(object_key,user_id) VALUES($1,$2)
     ON CONFLICT(object_key) DO UPDATE SET expires_at=clock_timestamp()+interval '7 days'`,[artifactKey,owner]);
-   await storage.s3.send(new PutObjectCommand({Bucket:storage.bucket,Key:artifactKey,Body:createReadStream(output),ContentLength:bytes,ContentType:'video/mp4'}),{abortSignal:controller.signal});
+   const artifactBody=createReadStream(output);
+   try{await storage.s3.send(new PutObjectCommand({Bucket:storage.bucket,Key:artifactKey,Body:artifactBody,ContentLength:bytes,ContentType:'video/mp4'}),{abortSignal:controller.signal})}
+   finally{artifactBody.destroy();}
    await fence();
    await db.query(`INSERT INTO v2_youtube_checkpoints(target_id,connection_generation,artifact_key,artifact_sha,artifact_bytes)
     SELECT id,$3::uuid,$4,$5,$6 FROM v2_publication_targets WHERE id=$1::bigint AND claim_token=$2::uuid
@@ -93,6 +99,9 @@ export async function runPublicationOnce(db:QueryableV2,{storage,config,http=fet
    if(!checkpoint||checkpoint.artifact_sha!==sha)throw new PublishingError('checkpoint_not_saved',503);
   }
   await db.query("UPDATE v2_publication_artifacts SET expires_at=clock_timestamp()+interval '7 days' WHERE object_key=$1",[artifactKey]);
+  if(Date.now()+60000>=auth.expiresAt){
+   auth=await youtubeAccess(db,owner,config,http);if(auth.generation!==generation)throw new PublishingError('publication_connection_changed',409);
+  }
   await fence();
   let uri:string;
   if(checkpoint.session_cipher){
@@ -109,12 +118,12 @@ export async function runPublicationOnce(db:QueryableV2,{storage,config,http=fet
    if(saved.rowCount!==1)throw new PublishingError('checkpoint_not_saved',503);sessionKnown=true;
   }
   let progress=await probeYouTubeUpload({sessionUri:uri,accessToken:auth.accessToken,totalBytes:bytes,http});
-  const file=await open(output,'r');let refreshedAt=Date.now(),stalled=0;
+  const file=await open(output,'r');let stalled=0;
   try{
    while(progress.state==='pending'){
     await fence();
-    if(Date.now()-refreshedAt>40*60*1000){
-     auth=await youtubeAccess(db,owner,config,http);if(auth.generation!==generation)throw new PublishingError('publication_connection_changed',409);refreshedAt=Date.now();
+    if(Date.now()+60000>=auth.expiresAt){
+     auth=await youtubeAccess(db,owner,config,http);if(auth.generation!==generation)throw new PublishingError('publication_connection_changed',409);
     }
     const start=progress.nextByte,chunk=Buffer.alloc(Math.min(4*1024*1024,bytes-start));
     const read=await file.read(chunk,0,chunk.length,start);
@@ -130,6 +139,9 @@ export async function runPublicationOnce(db:QueryableV2,{storage,config,http=fet
   }finally{await file.close();}
   if(progress.state==='needs_review'&&(progress.httpStatus>=500||[401,429].includes(progress.httpStatus)))throw new PublishingError('youtube_temporarily_unavailable',503);
   if(progress.state!=='complete')throw new PublishingError('youtube_upload_needs_review',409);
+  const recorded=await db.query(`UPDATE v2_publication_targets SET remote_id=$3 WHERE id=$1::bigint
+   AND claim_token=$2::uuid AND state='running' AND claim_until>clock_timestamp() RETURNING id`,[...args,progress.videoId]);
+  if(recorded.rowCount!==1)throw new PublishingError('publication_cancelled',409);
   const confirmation=await http('https://www.googleapis.com/youtube/v3/videos?part=status&id='+encodeURIComponent(progress.videoId),{
    redirect:'error',headers:{Authorization:'Bearer '+auth.accessToken},signal:AbortSignal.timeout(15000)});
   const confirmed:unknown=await confirmation.json().catch(()=>null);
@@ -149,8 +161,8 @@ export async function runPublicationOnce(db:QueryableV2,{storage,config,http=fet
  }catch(error){
   const code=error instanceof PublishingError?error.code:'publication_temporarily_unavailable';
   // A saved session can be probed safely on retry; never replace an ambiguous session.
-  const review=code==='youtube_upload_needs_review'||code==='publication_connection_changed';
   const permanent=error instanceof PublishingError&&[400,404,422].includes(error.status);
+  const review=code==='youtube_upload_needs_review'||code==='publication_connection_changed'||code==='checkpoint_invalid'||(permanent&&sessionKnown);
   await settlePublicationTarget(db,target.id,target.claimToken,review?'needs_review':permanent&&!sessionKnown?'failed':'retryable',{errorCode:code});
  }finally{
   clearInterval(heartbeat);controller.abort();

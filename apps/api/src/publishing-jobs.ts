@@ -2,9 +2,11 @@ import {createHash} from 'node:crypto';
 import type {QueryableV2} from '../../../packages/shared/contracts.js';
 import {parsePublicationDraft,publicationRequestHash} from './publication-queue.js';
 import {PublishingError} from './youtube-connection.js';
+import {rateLimitExceeded} from './api-rate-limits.js';
 export type PublishingPool=QueryableV2&{connect():Promise<QueryableV2&{release():void}>};
 export function parsePublicationInput(input:unknown){
- const draft=parsePublicationDraft(input);
+ let draft:ReturnType<typeof parsePublicationDraft>;
+ try{draft=parsePublicationDraft(input)}catch{throw new PublishingError('invalid_publication_request');}
  const raw=input as Record<string,unknown>;
  if(draft.targets.some(t=>t.platform!=='youtube')||draft.targets.length>2)throw new PublishingError('destination_not_available');
  if(/[<>]/.test(draft.title))throw new PublishingError('invalid_youtube_title');
@@ -23,7 +25,7 @@ export async function enqueuePublication(pool:PublishingPool,owner:number,input:
    if(existing.request_hash!==data.fingerprint)throw new PublishingError('request_id_conflict',409);
    await db.query('COMMIT');return {id:String(existing.id),state:String(existing.state)};
   }
-  const connected=await db.query('SELECT user_id FROM v2_youtube_connections WHERE user_id=$1 FOR SHARE',[owner]);
+  const connected=await db.query('SELECT user_id,generation FROM v2_youtube_connections WHERE user_id=$1 FOR SHARE',[owner]);
   if(connected.rowCount!==1)throw new PublishingError('youtube_reconnect_required',409);
   const pending=await db.query("SELECT count(*)::int AS total FROM v2_publication_jobs WHERE user_id=$1 AND state IN ('ready','running')",[owner]);
   if(Number(pending.rows[0]?.total)>=10)throw new PublishingError('publication_queue_full',429);
@@ -32,9 +34,10 @@ export async function enqueuePublication(pool:PublishingPool,owner:number,input:
   const audio=assets.rows.find(r=>String(r.id)===String(data.audioFileId)&&r.kind==='audio');
   const cover=assets.rows.find(r=>String(r.id)===String(data.coverFileId)&&r.kind==='cover');
   if(!audio||!cover||Number(audio.byte_size)>150*1024*1024||Number(cover.byte_size)>15*1024*1024)throw new PublishingError('owned_ready_media_required',404);
-  const job=(await db.query(`INSERT INTO v2_publication_jobs(user_id,request_id,request_hash,title,description,hashtags,state,audio_file_id,cover_file_id,privacy)
-   VALUES($1,$2::uuid,$3,$4,$5,$6,'ready',$7,$8,$9) RETURNING id`,
-  [owner,data.draft.requestId,data.fingerprint,data.draft.title,data.draft.description,data.draft.hashtags,data.audioFileId,data.coverFileId,data.privacy])).rows[0];
+  if(await rateLimitExceeded(db,'publication-enqueue',owner,30,60))throw new PublishingError('publication_hourly_limit',429);
+  const job=(await db.query(`INSERT INTO v2_publication_jobs(user_id,request_id,request_hash,title,description,hashtags,state,audio_file_id,cover_file_id,privacy,youtube_generation)
+   VALUES($1,$2::uuid,$3,$4,$5,$6,'ready',$7,$8,$9,$10::uuid) RETURNING id`,
+  [owner,data.draft.requestId,data.fingerprint,data.draft.title,data.draft.description,data.draft.hashtags,data.audioFileId,data.coverFileId,data.privacy,connected.rows[0].generation])).rows[0];
   for(const target of data.draft.targets)await db.query(`INSERT INTO v2_publication_targets(job_id,platform,variant,state)
    VALUES($1::uuid,'youtube',$2,'queued')`,[job.id,target.variant]);
   await db.query('COMMIT');return {id:String(job.id),state:'queued'};
@@ -62,8 +65,8 @@ export async function retryPublication(db:QueryableV2,owner:number,targetId:stri
  // Ambiguous/completed targets can never be blindly published again.
  const result=await db.query(`WITH changed AS (UPDATE v2_publication_targets t SET state='retryable',next_attempt_at=clock_timestamp(),last_error_code=NULL
   FROM v2_publication_jobs j WHERE j.id=t.job_id AND j.user_id=$1 AND t.id=$2::bigint
-   AND t.state IN ('failed','retryable') AND t.attempts<30
-   AND EXISTS (SELECT 1 FROM v2_youtube_connections c WHERE c.user_id=j.user_id)
+   AND t.state IN ('failed','retryable') AND t.attempts<30 AND t.remote_id IS NULL
+   AND EXISTS (SELECT 1 FROM v2_youtube_connections c WHERE c.user_id=j.user_id AND c.generation=j.youtube_generation)
    AND j.audio_file_id IS NOT NULL AND j.cover_file_id IS NOT NULL RETURNING t.id,t.job_id)
   UPDATE v2_publication_jobs j SET state='ready',updated_at=clock_timestamp() FROM changed c
    WHERE j.id=c.job_id RETURNING c.id`,[owner,targetId]);

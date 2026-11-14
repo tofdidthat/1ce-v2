@@ -36,16 +36,17 @@ export async function startYouTubeConnection(db:QueryableV2,owner:number,state:s
   code_challenge:createHash('sha256').update(verifier).digest('base64url'),code_challenge_method:'S256'}))url.searchParams.set(k,v);
  return {url:url.href,cookie:`${cookieName}=${browser}; HttpOnly; Secure; SameSite=Lax; Path=${new URL(config.redirectUri).pathname}; Max-Age=600`};
 }
-export async function finishYouTubeConnection(req:IncomingMessage,res:ServerResponse,url:URL,db:QueryableV2,config:PublishingConfig,http:typeof fetch=fetch):Promise<void>{
+export async function finishYouTubeConnection(req:IncomingMessage,res:ServerResponse,url:URL,db:QueryableV2,config:PublishingConfig,expectedOwner:number|null,http:typeof fetch=fetch):Promise<void>{
  const clear=`${cookieName}=; HttpOnly; Secure; SameSite=Lax; Path=${new URL(config.redirectUri).pathname}; Max-Age=0`;
  let outcome='error';
  try{
   const state=url.searchParams.get('state')||'',code=url.searchParams.get('code')||'';
   const browser=(req.headers.cookie||'').split(';').map(x=>x.trim()).find(x=>x.startsWith(cookieName+'='))?.slice(cookieName.length+1)||'';
-  if(!/^pub_[A-Za-z0-9_-]{43}$/.test(state)||!/^[A-Za-z0-9_-]{43}$/.test(browser)||!code||code.length>4096||url.searchParams.has('error'))throw new PublishingError('youtube_consent_denied');
+  if(!expectedOwner||!/^pub_[A-Za-z0-9_-]{43}$/.test(state)||!/^[A-Za-z0-9_-]{43}$/.test(browser)||!code||code.length>4096||url.searchParams.has('error'))throw new PublishingError('youtube_consent_denied');
   const used=await db.query(`DELETE FROM v2_youtube_oauth WHERE state_hash=$1 AND browser_hash=$2
-   AND expires_at>clock_timestamp() RETURNING user_id,verifier_cipher`,[hash(state),hash(browser)]);
+   AND user_id=$3 AND expires_at>clock_timestamp() RETURNING user_id,verifier_cipher`,[hash(state),hash(browser),expectedOwner]);
   const row=used.rows[0];if(!row)throw new PublishingError('youtube_state_expired');
+  if(Number(row.user_id)!==expectedOwner)throw new PublishingError('youtube_state_expired');
   const owner=Number(row.user_id);
   const verifier=openPublishing(String(row.verifier_cipher),'youtube-state:'+owner,config.encryptionSecret);
   const response=await http('https://oauth2.googleapis.com/token',{method:'POST',redirect:'error',
@@ -70,7 +71,7 @@ export async function finishYouTubeConnection(req:IncomingMessage,res:ServerResp
  res.writeHead(302,{'Location':config.webOrigin+'/app/upload?publishing=youtube-'+outcome,
   'Cache-Control':'no-store','Referrer-Policy':'no-referrer','Set-Cookie':clear});res.end();
 }
-export async function youtubeAccess(db:QueryableV2,owner:number,config:PublishingConfig,http:typeof fetch=fetch):Promise<{accessToken:string;generation:string}>{
+export async function youtubeAccess(db:QueryableV2,owner:number,config:PublishingConfig,http:typeof fetch=fetch):Promise<{accessToken:string;generation:string;expiresAt:number}>{
  const row=(await db.query('SELECT refresh_cipher,generation FROM v2_youtube_connections WHERE user_id=$1',[owner])).rows[0];
  if(!row)throw new PublishingError('youtube_reconnect_required',409);
  let refresh:string;
@@ -90,9 +91,11 @@ export async function youtubeAccess(db:QueryableV2,owner:number,config:Publishin
  if(typeof token.refresh_token==='string')await db.query(`UPDATE v2_youtube_connections SET refresh_cipher=$3,updated_at=clock_timestamp()
   WHERE user_id=$1 AND generation=$2::uuid AND refresh_cipher=$4`,[owner,row.generation,
   sealPublishing(credential(token.refresh_token),'youtube-refresh:'+owner,config.encryptionSecret),row.refresh_cipher]);
- return {accessToken:credential(token.access_token),generation:String(row.generation)};
+ const seconds=typeof token.expires_in==='number'&&token.expires_in>=60&&token.expires_in<=86400?token.expires_in:300;
+ return {accessToken:credential(token.access_token),generation:String(row.generation),expiresAt:Date.now()+seconds*1000};
 }
 export async function disconnectYouTube(db:QueryableV2,owner:number,config:PublishingConfig,http:typeof fetch=fetch):Promise<void>{
+ await db.query('DELETE FROM v2_youtube_oauth WHERE user_id=$1',[owner]);
  const row=(await db.query('SELECT refresh_cipher FROM v2_youtube_connections WHERE user_id=$1',[owner])).rows[0];
  if(!row)return;
  const token=openPublishing(String(row.refresh_cipher),'youtube-refresh:'+owner,config.encryptionSecret);
