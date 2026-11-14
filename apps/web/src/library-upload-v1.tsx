@@ -23,7 +23,7 @@ export default function LibraryUploadV2({userId}:{userId?:number}={}){
  const [stemsTarget,setStemsTarget]=useState<string|null>(null);
  const [saving,setSaving]=useState(false);
  const [stage,setStage]=useState('');
- const [multiPlatform,setMultiPlatform]=useState(false);
+ const [multiPlatform,setMultiPlatform]=useState(()=>new URLSearchParams(window.location.search).has('publishing'));
  const isPack=audioFiles.length>1;
  const coverUrl=useMemo(()=>cover?URL.createObjectURL(cover):'',[cover]);
  useEffect(()=>()=>{if(coverUrl)URL.revokeObjectURL(coverUrl)},[coverUrl]);
@@ -251,7 +251,7 @@ export default function LibraryUploadV2({userId}:{userId?:number}={}){
         </button>
       </div>
     </section>
-    <MultiPlatformUploadV2 active={multiPlatform} initialAudio={audioFiles[0]||null} initialCover={cover} initialTitle={itemName} onBack={()=>setMultiPlatform(false)}/>
+    <MultiPlatformUploadV2 active={multiPlatform} userId={userId} initialAudio={audioFiles[0]||null} initialCover={cover} initialTitle={itemName} onBack={()=>setMultiPlatform(false)}/>
     </>
   )
 }
