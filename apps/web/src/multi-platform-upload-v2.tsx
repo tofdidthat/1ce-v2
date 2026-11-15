@@ -60,6 +60,8 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
   const result=new URLSearchParams(window.location.search).get('publishing');
   if(result==='youtube-connected')setNotice('YouTube connected. Choose media and confirm a submission.');
   if(result==='youtube-error')setFailure('YouTube connection was not completed. Grant both requested permissions and confirm that the YouTube API is enabled for the app.');
+  if(result==='instagram-connected')setNotice('Instagram connected. Reels publishing requires separate Meta approval and safety checks.');
+  if(result==='instagram-error')setFailure('Instagram authorization was not completed. Check your professional account and Meta app permissions.');
  },[userId]);
  useEffect(()=>{
   if(!active||!userId)return;
@@ -127,7 +129,7 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
     </button>
     <div className="onece-multi-title"><Globe2 size={22}/><h1>1CE Upload</h1></div>
     <p>Prepare one upload for multiple platforms. Inspired by the original 1CE workflow.</p>
-    {!currentStatus?.connected&&<p>Connect YouTube before choosing files. Authorization returns to this page so you can prepare the upload.</p>}
+    {!currentStatus?.connected&&<p>Connect YouTube to publish now. Instagram professional account connection is also available when configured.</p>}
    </header>
 
    <div className="onece-multi-grid">
@@ -190,19 +192,36 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
         </button>)}
        </div>
       </div>}
-      <p className="onece-multi-hint">YouTube supports image + MP3/WAV, Shorts up to 3 minutes or standard video up to 20 minutes. Audio: 150 MiB; image: 15 MiB, 32 megapixels, 8192 pixels per side. Other platforms and original video are preview only.</p>
+      <p className="onece-multi-hint">YouTube supports image + MP3/WAV, Shorts up to 3 minutes or standard video up to 20 minutes. Audio: 150 MiB; image: 15 MiB, 32 megapixels, 8192 pixels per side. Instagram account connection is supported when configured; Reel publishing and other destinations are preview only.</p>
       <p>{!userId?'Sign in to publish.':!currentStatus?'Checking publishing availability…':!currentStatus.available?'Publishing is unavailable on this server.':currentStatus.connected?'YouTube connected':'Connect YouTube to publish.'}</p>
       <button type="button" disabled={!currentStatus} onClick={()=>void act(async signal=>{
        if(currentStatus?.connected){await publishingRequest(api,'/youtube/disconnect',signal,{});signal.throwIfAborted();setStatus(null);}
        else{const result=await publishingRequest<{url:string}>(api,'/youtube/connect',signal,{});signal.throwIfAborted();window.location.assign(publishingAuthorizationUrl(api,result.url));}
       })}>{currentStatus?.connected?'Disconnect YouTube':'Connect YouTube'}</button>
+      <div className="onece-multi-instagram-connection">
+       <p>{currentStatus?.instagram?.connected
+        ?'Instagram connected: @'+currentStatus.instagram.username
+        :currentStatus?.instagram?.available
+         ?'Connect an Instagram Creator or Business account. This will not post any Reels.'
+         :'Instagram connection requires Meta app configuration by the 1CE administrator.'}</p>
+       <button type="button" disabled={!currentStatus?.instagram?.available} onClick={()=>void act(async signal=>{
+        if(currentStatus?.instagram?.connected){
+         await publishingRequest(api,'/instagram/disconnect',signal,{});signal.throwIfAborted();setStatus(null);
+        }else{
+         const result=await publishingRequest<{url:string}>(api,'/instagram/connect',signal,{});
+         signal.throwIfAborted();window.location.assign(publishingAuthorizationUrl(api,result.url));
+        }
+       })}>{currentStatus?.instagram?.connected?'Disconnect Instagram':'Connect Instagram'}</button>
+       <p className="onece-multi-hint">Reels are public posts. Connecting an account never publishes media; public publishing will require separate confirmation.</p>
+      </div>
      </div>
      </fieldset>
      <div className="onece-multi-publish">
       <button type="button" onClick={submit} disabled={accepted||busy||!active||!userId||!currentStatus?.available||!currentStatus.connected||!audioFile||!image||!!video||!title.trim()||selectedPlatforms.length!==1||!youtubeSelected}>{accepted?'Submitted — see history':'Publish to YouTube'}</button>
       {notice&&<p role="status">{notice}</p>}{failure&&<p role="alert">{failure}</p>}
       {video&&<p>Original video publishing is unavailable. Choose an image and MP3/WAV audio.</p>}
-      {selectedPlatforms.some(platform=>platform!=='YouTube')&&<p>Only YouTube is available. Remove preview destinations before publishing.</p>}
+      {selectedPlatforms.includes('Instagram')&&<p>Instagram is connected for authorization only. Reel publishing is not enabled yet; remove Instagram for a YouTube-only job.</p>}
+      {selectedPlatforms.some(platform=>platform!=='YouTube'&&platform!=='Instagram')&&<p>Other destinations are previews only. Remove them before publishing.</p>}
       <p>After an uncertain submit error, retry without editing to reuse the same request. An accepted job is not yet a published video.</p>
      </div>
      <section className="onece-multi-panel" aria-label="Publishing history"><h2>Publishing history</h2>
