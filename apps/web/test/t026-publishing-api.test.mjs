@@ -47,6 +47,10 @@ test('ambiguous or succeeded targets never expose retry',()=>{
 test('authorization navigation accepts only the configured API top-level start',()=>{
  const state='pub_'+'a'.repeat(43),url=api+'/auth/youtube/start?state='+state;
  assert.equal(publishingAuthorizationUrl(api,url),url);
+ const igUrl=api+'/auth/instagram/start?state=igpub_'+'b'.repeat(43);
+ assert.equal(publishingAuthorizationUrl(api,igUrl),igUrl);
+ assert.throws(()=>publishingAuthorizationUrl(api,'https://evil.invalid/auth/instagram/start?state=igpub_'+'b'.repeat(43)));
+ assert.throws(()=>publishingAuthorizationUrl(api,igUrl+'&next=https://evil.invalid'));
  for(const bad of ['https://evil.invalid/auth/youtube/start?state='+state,api+'/other?state='+state,api+'/auth/youtube/start?state=bad','javascript:alert(1)'])assert.throws(()=>publishingAuthorizationUrl(api,bad));
 });
 test('actual backend errors have actionable descriptions and malformed status fails closed',async()=>{
