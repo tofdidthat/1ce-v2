@@ -79,3 +79,22 @@ Fonte operacional Vercel: https://vercel.com/docs/domains/working-with-domains/t
 | YouTube privacidade, pós-cutover e idempotência | — | — | — | Pendente |
 | Autorização do proprietário + janela + rollback | — | — | — | Pendente |
 | Saúde pós-cutover, logs e aceitação | — | — | — | Pendente |
+
+
+## 6. Backup/Restauração: tentativa e plano operacional (2026-11-15)
+
+**Status: BLOQUEADO POR ACESSO, NÃO EXECUTADO.** O usuário autorizou a etapa de backup/restore, não o domínio. Auditoria read-only verificou via Railway conector:
+- Projeto `courteous-spontaneity`, environment `production`, `Postgres` com deployment SUCCESS, volume `postgres-volume` (5.000 MB) montado e API v2 SUCCESS; zero alterações staged.
+- Railway OAuth expõe nomes de variáveis, **não valores/credenciais PostgreSQL**. O serviço Postgres não possui TCP proxy público; este ambiente de execução não tem `railway`, `psql` ou `pg_dump` configurados e não tem rota autorizada ao banco.
+- Tentativa de navegação Railway para Backups/Point-in-time recovery exigiu login e parou antes de acessar a seção. **Nenhum backup novo foi iniciado e nenhuma restauração foi efetuada**.
+- O Railway conector disponível não disponibiliza ação de criação/listagem de volume backup/PITR ou de execução SQL; não criar proxy público, não instalar um serviço com DATABASE_URL de produção e não mudar credenciais como contorno.
+
+### Operação segura a seguir no painel Railway autenticado
+
+1. Abrir projeto `courteous-spontaneity` → ambiente `production` → serviço `Postgres` → aba `Backups`. Verificar se há backups de volume, o último ponto, frequência e retenção. Se houver opção **Create Backup**, criar um backup nomeado `pre-1ce-lol-cutover-2026-11-15` e registrar ID, timestamp, estado e tamanho **fora do Git**.
+2. Verificar se o PITR está habilitado; **não habilitar/alterar retenção automaticamente** sem confirmar impacto, custos e procedimento de restauração. Se não houver funcionalidade de backup, usar um procedimento operador autenticado de `pg_dump -Fc` com túnel privado autorizado. Nunca copiar `DATABASE_URL`, segredo ou arquivo dump para o repositório.
+3. Fazer **restauração para banco/volume/projeto descartável separado**, não no `Postgres` da produção. `Restore` no serviço atual pode sobrescrever dados ativos! Evitar qualquer botão de restore in-place.
+4. No clone, validar existência e contagens das tabelas de usuários, sessões, media, packs, waveform, fila, publicações; integridade de FKs, consistência da versão de migrations e referências R2 **apenas por leitura**. Não executar workers de upload/delete no clone ou publicar mídia.
+5. Registrar `backup_time`, `restore_time`, checksum (quando houver dump), banco de origem e clone descartável, resultado e duração, sem dados pessoais/segredos. Somente então marcar G3 aprovado. Não remover backup mais antigo antes de verificar o novo.
+
+Fontes do Railway: `https://docs.railway.com/cli#postgresql`, `https://docs.railway.com/volumes/point-in-time-recovery`, `https://docs.railway.com/databases/troubleshooting/postgres-corrupted-wal`.
