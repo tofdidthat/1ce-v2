@@ -98,3 +98,12 @@ Fonte operacional Vercel: https://vercel.com/docs/domains/working-with-domains/t
 5. Registrar `backup_time`, `restore_time`, checksum (quando houver dump), banco de origem e clone descartável, resultado e duração, sem dados pessoais/segredos. Somente então marcar G3 aprovado. Não remover backup mais antigo antes de verificar o novo.
 
 Fontes do Railway: `https://docs.railway.com/cli#postgresql`, `https://docs.railway.com/volumes/point-in-time-recovery`, `https://docs.railway.com/databases/troubleshooting/postgres-corrupted-wal`.
+
+
+### Evidência direta do painel Railway (captura do usuário, 2026-11-15)
+
+- A aba `courteous-spontaneity / production / Postgres / Backups` mostra **"No Backups — This service's volume does not have any backups"**.
+- A mensagem do painel diz **"Upgrade to Pro to create new backups, set up automated schedules, or enable point-in-time recovery"**. Isso confirma a ausência de **backups gerenciados de volume nesse serviço**, não a ausência de TODO e qualquer dump lógico externo. O dump histórico de 03/11 não é ponto de restauração atual.
+- Escolha operacional segura: ou plano Railway Pro para backup gerenciado, ou backup lógico privado por `pg_dump -Fc` e teste de `pg_restore` em banco **distinto**, sem upgrade. A migração permanece **NO-GO** até comprovar um backup novo recuperável e restauração isolada.
+- A opção "Create Backup" **não está disponível no plano exibido**; a instrução condicional acima não deve ser interpretada como ação executável sem upgrade.
+- Com Railway CLI autenticado no computador do operador, avaliar `railway connect postgres --tunnel-only` (documentação Railway, confirmar porta local exibida). Usar pg_dump 18 compatível com o servidor, credenciais obtidas em ambiente privado, e `pg_dump -Fc` sem colocar secrets no histórico. Registrar SHA-256 (por exemplo `Get-FileHash -Algorithm SHA256` no PowerShell), `pg_restore -l` e restauração **apenas em banco local descartável novo**. Comparar tabelas, contagens e integridade. Nenhum dos passos foi executado pela IA; depende de acesso autenticado do operador.
