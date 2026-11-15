@@ -1,8 +1,14 @@
 export type PublishingTarget={id:string;platform:string;variant:string;state:string;remoteId?:string|null;errorCode?:string|null};
-export type PublishingStatus={available:boolean;connected:boolean;channelTitle?:string;jobs:{id:string;title:string;state:string;targets:PublishingTarget[]}[]};
+export type InstagramPublishingStatus={available:boolean;connected:boolean;username:string|null;publishingEnabled:false};
+export type PublishingStatus={available:boolean;connected:boolean;channelTitle?:string;instagram?:InstagramPublishingStatus;jobs:{id:string;title:string;state:string;targets:PublishingTarget[]}[]};
 export function publishingErrorMessage(code:unknown):string{
  const messages:Record<string,string>={
   youtube_reconnect_required:'Reconnect YouTube and grant both channel and upload permissions.',
+  instagram_not_configured:'Instagram Business Login is not configured on this server.',
+  instagram_state_expired:'Your Instagram authorization expired. Start again from Upload.',
+  instagram_consent_denied:'Instagram authorization was cancelled or rejected.',
+  instagram_authorization_failed:'Instagram authorization failed. Try connecting again.',
+  instagram_professional_account_required:'A professional Instagram account (Creator or Business) is required.',
   youtube_not_configured:'YouTube publishing is not configured on this server.',
   youtube_temporarily_unavailable:'YouTube is temporarily unavailable. The same upload session will be checked again.',
   youtube_confirmation_pending:'Upload confirmation is pending. Check the job before submitting again.',
@@ -44,8 +50,10 @@ export const canRetryPublishingTarget=(target:PublishingTarget)=>['failed','retr
 export function publishingAuthorizationUrl(api:string,value:unknown):string{
  if(typeof value!=='string')throw Error('Invalid authorization URL');
  const url=new URL(value),backend=new URL(api);
- if(url.protocol!=='https:'||url.origin!==backend.origin||url.pathname!=='/auth/youtube/start'||url.username||url.password||url.hash||
-  !/^pub_[A-Za-z0-9_-]{43}$/.test(url.searchParams.get('state')||''))throw Error('Invalid authorization URL');
+ const validYouTube=url.pathname==='/auth/youtube/start'&&/^pub_[A-Za-z0-9_-]{43}$/.test(url.searchParams.get('state')||'');
+ const validInstagram=url.pathname==='/auth/instagram/start'&&/^igpub_[A-Za-z0-9_-]{43}$/.test(url.searchParams.get('state')||'');
+ if(url.protocol!=='https:'||url.origin!==backend.origin||url.username||url.password||url.hash||
+  [...url.searchParams.keys()].some(key=>key!=='state')||(!validYouTube&&!validInstagram))throw Error('Invalid authorization URL');
  return url.href;
 }
 export async function publishingRequest<T>(api:string,path:string,signal:AbortSignal,body?:unknown):Promise<T>{
@@ -57,6 +65,14 @@ export async function publishingRequest<T>(api:string,path:string,signal:AbortSi
  const result=parsed as Record<string,unknown>;
  if(!response.ok)throw Error(publishingErrorMessage(result?.error));
  if(path==='/status'&&(typeof result.available!=='boolean'||typeof result.connected!=='boolean'||!Array.isArray(result.jobs)||!result.jobs.every((job:Record<string,unknown>)=>job&&typeof job.id==='string'&&typeof job.title==='string'&&typeof job.state==='string'&&Array.isArray(job.targets)&&job.targets.every((target:Record<string,unknown>)=>target&&typeof target.id==='string'&&typeof target.state==='string'&&typeof target.platform==='string'&&typeof target.variant==='string'))))throw Error('Invalid publishing status');
+ if(path==='/status'&&result.instagram!==undefined){
+  const ig=result.instagram;
+  if(!ig||typeof ig!=='object'||Array.isArray(ig))throw Error('Invalid Instagram publishing status');
+  const data=ig as Record<string,unknown>;
+  if(typeof data.available!=='boolean'||typeof data.connected!=='boolean'||
+   !(typeof data.username==='string'||data.username===null)||data.publishingEnabled!==false)
+   throw Error('Invalid Instagram publishing status');
+ }
  if(path==='/jobs'&&(typeof result.id!=='string'||typeof result.state!=='string'))throw Error('Invalid queue response; retry without editing');
  return result as T;
 }
