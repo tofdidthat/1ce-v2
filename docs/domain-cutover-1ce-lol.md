@@ -1,6 +1,20 @@
 # 1CE — runbook de migração do domínio 1ce.lol (v1 → v2)
 
-**Checkpoint somente leitura: 2026-11-15. Estado: PREPARAÇÃO; NO-GO.**  
+## Atualização operacional — 2026-11-15, pós-corte (estado atual)
+
+**CORTE DO DOMÍNIO EXECUTADO; AVALIAÇÃO FUNCIONAL AINDA PENDENTE.** O bloco de preparação e gates G1–G8 abaixo constitui o checkpoint histórico anterior ao corte; não é o estado operacional atual.
+
+- Após autorização explícita do proprietário, o alias `1ce.lol` foi direcionado ao deployment READY `dpl_2EfVXZSHWLQMvozewAxWgXZBgqV1`, commit main `1703803161284b6dccf321d0d63d53efe53c9334` no projeto Vercel `1ce-v2`.
+- Proprietário removeu `1ce.lol` da associação do projeto v1 e o conector adicionou-o como **project domain verificado** ao projeto v2 `prj_3GYsUgeNUReJ498zzxjLdUULWObF`. Consulta posterior confirmou `verified=true`, alias no mesmo deployment da v2, configuração DNS `misconfigured=false` e `ipStatus=no-change`. Nenhum nameserver/DNS foi editado.
+- Railway API serviço `1ce-v2`: variável `WEB_ORIGIN=https://1ce.lol` aplicada por patch staged + accept_deploy. Deployment novo `37b17f1c-3f53-4771-bc20-72527f2c4b61` = SUCCESS, 1/1 réplica online, sem alertas; PostgreSQL online. Verificações externas retornaram HTTP 200 em `https://1ce.lol/login`, `https://1ce.lol/terms`, `/health` e `/health/db` na API. `/health/db` retornou `{"ok":true,"database":"connected"}`.
+- Projeto v1 **não foi excluído**; fallback `https://autoshorts-nine.vercel.app` permaneceu cadastrado. A troca de domínio não migrou contas ou arquivos da v1.
+- Operador criou **backup lógico local novo** no dia 2026-11-15, formato custom PostgreSQL, arquivo de 86.647 bytes, 159 entradas de catálogo, `pg_restore --list` OK, SHA-256 `279740391D0024B4BF3DCEFAA986F44360AFD19B4E914B727214C62223308774`. **Restauração isolada ainda não testada**; não afirmar recuperação garantida. Nenhum dump/credencial foi enviado ao repositório.
+- **PENDENTE/PRIORIDADE:** proprietário testar login Google iniciado em `https://1ce.lol/login`, retorno ao mesmo hostname, F5, sessão, player, permissões owner/anônimo, YouTube; confirmar Google Cloud authorized JavaScript origin `https://1ce.lol` e callback da API, sem divulgar ou rotacionar segredo OAuth. Revisar `www` e SSL no Cloudflare se necessário. Senha PostgreSQL de produção foi mostrada em conversa e deve ser rotacionada com procedimento coordenado, sem quebrar `DATABASE_URL` da API; não publicar segredo.
+- **Rollback:** reatribuir project domain à v1 preservada e restaurar valor anterior de `WEB_ORIGIN` do ambiente Railway (não presumir qual era o valor, verificar em registro privado). Sem alteração de schema, R2 ou migração destrutiva nesta janela.
+
+---
+
+**Checkpoint histórico antes do corte: 2026-11-15. Estado na ocasião: PREPARAÇÃO; NO-GO.**  
 Este documento é uma proposta executável somente após aprovação explícita de uma janela de mudança. Nenhum domínio, DNS, sessão, OAuth, banco, R2 ou variável de produção foi modificado por esta auditoria. O guia principal é `docs/architecture.md`. Não confundir CI verde e deploy READY com validação autenticada completa.
 
 ## 1. Inventário verificado
