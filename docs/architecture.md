@@ -28,7 +28,7 @@
 
 **CI and branch safety:** Active GitHub ruleset `1ce-main-protection` requires a PR, squash merge, prohibits deletion/force-push, and requires seven passing GitHub Actions checks: `dependency-audit`, `s2-local-s3-syntax-preflight`, `s2-postgres-migration-smoke`, `api-tests`, `railway-api-smoke`, `web-build (22)`, `web-build (26)`. CircleCI checks are no longer required; its three automated triggers were disabled **per user report**, not directly verified through CircleCI. `.circleci/` remains for rollback. A public repository is **not** permission to commit secrets or run destructive tests on real R2/DB.
 
-**Next work:** Investigate and propose the offline experience above; confirm scope and data/privacy choices before implementing. Authenticated two-account, R2 and offline browser flows remain unverified. Create Video/social distribution remains a separate future product phase.
+**Next work (historical 2026-11-08 statement, superseded by 2026-11-15 checkpoint):** Priorizar os gates de migração de `1ce.lol`, observando `docs/domain-cutover-1ce-lol.md`. Experiência offline permanece futura; não confundir fase histórica com estado atual.
 
 ## 0A. Roadmap adotado — produto completo e substituição da v1 (2026-11-12)
 
@@ -88,17 +88,19 @@ Estados permitidos: **Pendente**, **Em andamento**, **Em validação**, **Conclu
 - Recuperação: o alias anterior foi registrado acima. Reverter associação/roteamento somente se houver falha comprovada e plano correspondente; preservar o mesmo hostname de login evita trocar a origem do verifier PKCE durante o fluxo.
 
 #### R07 — Auditoria completa antes da migração
-- Estado: **Pendente**. Prioridade: bloqueante para migração. Responsável/branch/PR: a definir. Dependências: R01–R06; validar recuperação de R09.
+- Estado: **Pendente — gates autenticados faltantes, mesmo com PRs #93/#94 merged e CI green**. Prioridade: bloqueante para migração. Responsável/branch/PR: a definir. Dependências: R01–R06; validar recuperação de R09.
 - Escopo: Google, sessões, duas contas, uploads reais, packs, stems, player, saves, compartilhamento, lixeira e exclusões permanentes R2.
 - Conclusão: registrar versão, ambiente, matriz de testes e evidências; executar fluxos de sucesso e falha com dados isolados e duas contas. Revisar autorização, concorrência, restauração e exclusão de objetos ainda referenciados; nenhum bloqueador crítico de segurança ou integridade aberto. Build ou mocks não substituem validação ponta a ponta.
 
 #### R08 — Migração de `1ce.lol` da v1 para a v2
-- Estado: **Pendente**. Prioridade: após os gates de migração. Responsável/branch/PR: a definir. Dependências: R06, R07 e R09.
-- Contexto fornecido, a revalidar: DNS externo Cloudflare e consulta de associação Vercel sem permissão no escopo conectado. Resolver acesso antes de transferir.
+- Estado: **Em preparação — NO-GO (auditoria somente leitura em 2026-11-15)**. Prioridade: após os gates de migração. Dependências: R06, R07 e R09. Runbook e evidências: [`docs/domain-cutover-1ce-lol.md`](domain-cutover-1ce-lol.md).
+- Verificado diretamente: `1ce.lol` pertence ao project domain `1ce` v1 (mesma equipe Vercel do `1ce-v2`), `autoshorts-nine.vercel.app` é alias READY de fallback da v1, Cloudflare opera nameservers externos, o domínio raiz foi considerado `ipStatus=no-change` pela Vercel. `www.1ce.lol` não foi encontrado como project domain e seu diagnóstico Vercel retornou `misconfigured=true`; exigir decisão antes de alterar. A antiga falta de permissão para associação Vercel descrita abaixo foi resolvida nesta auditoria, mas **nenhuma transferência foi executada**.
+- Crítico: `apps/api/src/server.ts` usa `WEB_ORIGIN` como única origem CORS e retorno Google, e `login.tsx` retém verifier PKCE no sessionStorage da origem. `YOUTUBE_REDIRECT_URI` e `PUBLISH_TOKEN_KEY` não constam como variáveis Railway; código usa fallback em Google OAuth/segredo. NÃO rotacionar segredos para a migração, pois podem proteger tokens de publicação. O URI de callback Google é backend (não presumir alteração de callback porque o frontend muda); checar valor real e console Google antes do corte. Com origem única, prever janela e validação pós-corte, nunca redirecionar um fluxo PKCE entre origens.
 - Conclusão: preparar associação/DNS, inventário de callbacks Google/Meta/demais plataformas, cookies, CORS, backup e rollback testado; obter aprovação explícita antes da troca. Após a troca autorizada, validar TLS, login, uploads, player e publicações; preservar acesso à v1 e aos dados antigos. Registrar critérios e procedimento de retorno.
 
 #### R09 — Backup, recuperação e manutenção
-- Estado: **Pendente**. Prioridade: bloqueante para migração. Responsável/branch/PR: a definir.
+- Estado: **Pendente — gate NO-GO para migração (2026-11-15)**. Prioridade: bloqueante para migração. Responsável/branch/PR: a definir.
+- Verificado no Railway: Postgres v2 SUCCESS, volume persistente de 5.000 MB; isso não prova backup. Este guia registra dump verificável em 2026-11-03 e restore isolado em 2026-11-04, **mas nenhum backup novo, restauração recente ou rotina agendada foi comprovada nesta auditoria**. O runbook de cutover exige backup atualizado, checksum e restauração isolada sem dados reais públicos ou exclusão R2.
 - Escopo: backups recorrentes, restauração, objetos órfãos, uploads pendentes, outbox de exclusão R2 e lixeira após falhas/retries.
 - Conclusão: definir frequência, retenção e metas de perda/tempo de recuperação; comprovar backup recorrente e restauração em ambiente isolado com integridade e referências de mídia. Validar retomada e observação de tarefas pendentes, proteção de objetos compartilhados e lixeira. Registrar evidências e runbook; não agendar rotinas ou excluir dados apenas por este planejamento.
 
@@ -141,6 +143,14 @@ Estados permitidos: **Pendente**, **Em andamento**, **Em validação**, **Conclu
 Cada tarefa de execução deve receber ID único, um responsável, branch exclusiva, escopo de arquivos, dependências e PR. Dividir mudanças independentes e agrupar apenas mudanças relacionadas; evitar deployments desnecessários. Registrar aqui os links e resultados ao atribuir trabalho, sem inventar owners ou PRs.
 
 Antes de concluir um PR de implementação: revisão de código, testes/typecheck/build aplicáveis e os sete checks obrigatórios registrados na baseline (`dependency-audit`, `s2-local-s3-syntax-preflight`, `s2-postgres-migration-smoke`, `api-tests`, `railway-api-smoke`, `web-build (22)`, `web-build (26)`), revalidando as regras então vigentes. Quando houver autenticação, uploads, R2, banco ou player, anexar evidência de comportamento real, incluindo falhas e permissões. Merge e deployment exigem aprovação; este roadmap autoriza somente o registro do plano.
+
+## 0B. Checkpoint de migração 2026-11-15 (read-only, sem alterar produção)
+
+- A `main` está em `1703803` (PR #94, menu de beats públicos e Buy visual desabilitado); PR #93 de waveform persistente + publicação YouTube inicial merged na main `2aa6c89`. Workflow main `43729772922` = 7/7; Vercel `1ce-v2.vercel.app` e `1ce-v2-tofdidthat.vercel.app` associados ao mesmo deployment READY; Railway API v2 release `94eee2e6…` = SUCCESS. Os dados são evidência de CI/deploy, não autenticação real.
+- Usuário confirmou **upload real bem-sucedido no YouTube** e **waveform bem mais rápida** na v2. Ainda faltam matriz owner/segunda conta/anônimo, recuperação de falhas, backup recente e validação do novo hostname.
+- A v1 continua atendendo `1ce.lol`; o destino v2 está em projeto separado da mesma equipe. O registro público de domínio não foi transferido, nenhum DNS/OAuth/WEB_ORIGIN foi alterado; **GO/NO-GO: NO-GO** até os gates G1–G8 do [runbook dedicado](domain-cutover-1ce-lol.md).
+- Nota de segurança: v2 expõe apenas uma `WEB_ORIGIN`. Não fazer transferência de domínio e trocar Origem em momentos aleatórios; coordenar a janela e exigir rollback. Não confundir o fallback do `GOOGLE_REDIRECT_URI` no fluxo YouTube com frontend URL.
+- O backup/restore de 03–04/11 registrado abaixo é um marco **histórico**; o volume atual do PostgreSQL não comprova backup válido atual. Consultas atuais não permitiram confirmar configurações do Google Cloud nem valores secretos do Railway (conexão exibe somente nomes).
 
 ## 1. Mission, boundaries and product decisions
 
