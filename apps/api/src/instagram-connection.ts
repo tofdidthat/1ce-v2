@@ -64,47 +64,63 @@ export async function startInstagramConnection(db:QueryableV2,owner:number,state
 export async function finishInstagramConnection(req:IncomingMessage,res:ServerResponse,url:URL,db:QueryableV2,config:InstagramConfig,owner:number|null,http:typeof fetch=fetch):Promise<void>{
  const clear=`${cookieName}=; HttpOnly; Secure; SameSite=Lax; Path=/auth/instagram/callback; Max-Age=0`;
  let outcome='error';
+ let stage='session';
+ let reason='instagram_authorization_failed';
  try{
   const state=url.searchParams.get('state')||'';
   const code=(url.searchParams.get('code')||'').replace(/#_$/,'');
   const browser=(req.headers.cookie||'').split(';').map(s=>s.trim()).find(s=>s.startsWith(cookieName+'='))?.slice(cookieName.length+1)||'';
-  if(!owner||!statePattern.test(state)||!browserPattern.test(browser)||!code||code.length>4096||
+  if(!owner)throw new PublishingError('instagram_session_missing',401);
+  if(!statePattern.test(state)||!browserPattern.test(browser)||!code||code.length>4096||
    /[\s\r\n]/.test(code)||url.searchParams.has('error'))throw new PublishingError('instagram_consent_denied');
+  stage='state';
   const used=await db.query(`DELETE FROM v2_instagram_oauth WHERE state_hash=$1 AND browser_hash=$2
    AND user_id=$3 AND expires_at>clock_timestamp() RETURNING user_id`,[sha(state),sha(browser),owner]);
   if(used.rowCount!==1||Number(used.rows[0]?.user_id)!==owner)throw new PublishingError('instagram_state_expired',409);
+  stage='short_token';
   const short=await http('https://api.instagram.com/oauth/access_token',{method:'POST',redirect:'error',
    headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({
     client_id:config.appId,client_secret:config.appSecret,grant_type:'authorization_code',
     redirect_uri:config.redirectUri,code}),signal:AbortSignal.timeout(15000)});
   const shortText=await short.text();
   const shortData:unknown=(()=>{try{return JSON.parse(shortText)}catch{return null}})();
-  if(!short.ok||!record(shortData)||typeof shortData.access_token!=='string'||shortData.access_token.length>8192)
-   throw new PublishingError('instagram_authorization_failed');
+  // The Instagram API can return the token object directly or in a single-item data list.
+  const shortToken=record(shortData)&&Array.isArray(shortData.data)&&shortData.data.length===1
+   &&record(shortData.data[0])?shortData.data[0]:shortData;
+  if(!short.ok||!record(shortToken)||typeof shortToken.access_token!=='string'||
+   !shortToken.access_token||shortToken.access_token.length>8192)
+   throw new PublishingError('instagram_code_exchange_failed');
   const instagramId=instagramIds(shortText)[0]||'';
-  if(!/^[0-9]{1,32}$/.test(instagramId))throw new PublishingError('instagram_authorization_failed');
+  if(!/^[0-9]{1,32}$/.test(instagramId))throw new PublishingError('instagram_code_exchange_failed');
+  stage='long_token';
   const longUrl=new URL('https://graph.instagram.com/access_token');
   longUrl.search=new URLSearchParams({grant_type:'ig_exchange_token',client_secret:config.appSecret,
-   access_token:shortData.access_token}).toString();
+   access_token:shortToken.access_token}).toString();
   const long=await http(longUrl.href,{redirect:'error',signal:AbortSignal.timeout(15000)});
   const longData:unknown=await long.json().catch(()=>null);
+  const expires=record(longData)&&(typeof longData.expires_in==='number'||
+   typeof longData.expires_in==='string'&&/^\d+$/.test(longData.expires_in))
+   ?Number(longData.expires_in):NaN;
   if(!long.ok||!record(longData)||typeof longData.access_token!=='string'||
    !longData.access_token||longData.access_token.length>8192||
-   typeof longData.expires_in!=='number'||longData.expires_in<3600||longData.expires_in>7776000)
-   throw new PublishingError('instagram_authorization_failed');
+   !Number.isSafeInteger(expires)||expires<3600||expires>7776000)
+   throw new PublishingError('instagram_long_token_failed');
+  stage='profile';
   // These are the profile fields already used by the working v1 integration.
   const me=await http('https://graph.instagram.com/me?fields=id,user_id,username',{
    headers:{Authorization:'Bearer '+longData.access_token},redirect:'error',signal:AbortSignal.timeout(15000)});
   const profileText=await me.text();
   const profile:unknown=(()=>{try{return JSON.parse(profileText)}catch{return null}})();
   const meIds=instagramIds(profileText);
-  if(!me.ok||!record(profile)||!meIds.includes(instagramId)||typeof profile.username!=='string'||
+  if(!me.ok||!record(profile)||typeof profile.username!=='string'||
    !/^[A-Za-z0-9._]{1,180}$/.test(profile.username)||
    // Professional account access is enforced by Instagram Business Login.
    // Reject explicit PERSONAL if Meta includes account_type in a response,
    // but do not demand an undocumented field in the /me request.
    profile.account_type==='PERSONAL')
    throw new PublishingError('instagram_professional_account_required',409);
+  if(!meIds.includes(instagramId))throw new PublishingError('instagram_identity_mismatch',409);
+  stage='storage';
   await db.query(`INSERT INTO v2_instagram_connections
     (user_id,instagram_user_id,username,access_cipher,expires_at,generation)
     VALUES($1,$2,$3,$4,clock_timestamp()+($5::int*interval '1 second'),$6::uuid)
@@ -112,10 +128,24 @@ export async function finishInstagramConnection(req:IncomingMessage,res:ServerRe
     username=EXCLUDED.username,access_cipher=EXCLUDED.access_cipher,expires_at=EXCLUDED.expires_at,
     generation=EXCLUDED.generation,updated_at=clock_timestamp()`,
    [owner,instagramId,profile.username,sealPublishing(longData.access_token,'instagram-access:'+owner,config.encryptionSecret),
-    Math.floor(longData.expires_in),randomUUID()]);
+    expires,randomUUID()]);
   outcome='connected';
- }catch{/* Never disclose provider error payload, authorization codes, cookies or access tokens. */}
- res.writeHead(302,{'Location':config.webOrigin+'/app/upload?publishing=instagram-'+outcome,
+ }catch(error){
+  // Emit *only* a fixed internal stage/reason; never print provider response,
+  // URLs, OAuth codes, cookies or access tokens into production logs.
+  const stageReason:Record<string,string>={
+   session:'instagram_session_missing',state:'instagram_state_expired',
+   short_token:'instagram_code_exchange_failed',long_token:'instagram_long_token_failed',
+   profile:'instagram_profile_unavailable',storage:'instagram_connection_save_failed'
+  };
+  const allowed=new Set(['instagram_session_missing','instagram_consent_denied','instagram_state_expired',
+   'instagram_code_exchange_failed','instagram_long_token_failed','instagram_profile_unavailable',
+   'instagram_professional_account_required','instagram_identity_mismatch','instagram_connection_save_failed']);
+  reason=error instanceof PublishingError&&allowed.has(error.code)?error.code:(stageReason[stage]||'instagram_authorization_failed');
+  console.warn('Instagram connection not completed',{stage,reason});
+ }
+ const result='instagram-'+outcome+(outcome==='error'?'&reason='+encodeURIComponent(reason):'');
+ res.writeHead(302,{'Location':config.webOrigin+'/app/upload?publishing='+result,
   'Cache-Control':'no-store','Referrer-Policy':'no-referrer','Set-Cookie':clear});res.end();
 }
 export async function instagramConnectionStatus(db:QueryableV2,owner:number,config:InstagramConfig|null):
