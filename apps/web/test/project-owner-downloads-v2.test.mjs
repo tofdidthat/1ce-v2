@@ -16,7 +16,7 @@ test('pack context menu offers Download, beat offers MP3 and owner-only Upload/D
  assert.match(menu,/\{owner&&/);
  assert.match(menu,/!owner&&/);
  assert.match(home,/onDownload=\{downloadBusy\?undefined:\(\)=>void downloadOwnerProject\(\{kind:'pack'/);
- assert.match(home,/onDownload=\{downloadBusy\?undefined:\(\)=>void downloadOwnerProject\(\{kind:'beat'/);
+ assert.match(home,/onDownload=\{downloadBusy\?undefined:\(\)=>void downloadContextBeat\(contextBeat.beat\)/);
 });
 test('owner profiles can download originals while nonowner MP3 picker stays as before',()=>{
  assert.match(profile,/if\(ownerOf\(project\)\)\{/);
