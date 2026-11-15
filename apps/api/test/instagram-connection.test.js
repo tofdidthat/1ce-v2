@@ -47,9 +47,9 @@ test('Instagram exchange verifies account, encrypts long-lived token and returns
   {rowCount:1,rows:[{user_id:42}]}:{rowCount:1,rows:[]}}};
  const http=async(url)=>{
   const host=new URL(String(url)).hostname;
-  if(host==='api.instagram.com')return Response.json({access_token:'short-token-fixture',user_id:123456789});
+  if(host==='api.instagram.com')return new Response('{"access_token":"short-token-fixture","user_id":17841405309211844}',{headers:{'Content-Type':'application/json'}});
   if(host==='graph.instagram.com'&&String(url).includes('/access_token'))return Response.json({access_token:'long-token-fixture',expires_in:5184000});
-  if(host==='graph.instagram.com'&&String(url).includes('/me?'))return Response.json({user_id:'123456789',username:'artist.fixture',account_type:'BUSINESS'});
+  if(host==='graph.instagram.com'&&String(url).includes('/me?'))return new Response('{"user_id":17841405309211844,"username":"artist.fixture","account_type":"BUSINESS"}',{headers:{'Content-Type':'application/json'}});
   throw Error('Unexpected URL');
  };
  const {req,url}=callback(),res=response();
@@ -57,7 +57,7 @@ test('Instagram exchange verifies account, encrypts long-lived token and returns
  assert.equal(res.headers.Location,'https://1ce.lol/app/upload?publishing=instagram-connected');
  const save=queries.find(q=>q.sql.includes('INSERT INTO v2_instagram_connections'));
  assert.ok(save);
- assert.equal(save.args[0],42);assert.equal(save.args[1],'123456789');
+ assert.equal(save.args[0],42);assert.equal(save.args[1],'17841405309211844');
  assert.equal(save.args[2],'artist.fixture');
  assert.equal(openPublishing(save.args[3],'instagram-access:42',config.encryptionSecret),'long-token-fixture');
  assert.doesNotMatch(JSON.stringify(save),/long-token-fixture|short-token-fixture/);
