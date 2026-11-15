@@ -38,7 +38,7 @@ test('Instagram callback rejects missing browser cookie and state replay without
  for(const cookie of ['', 'onece_v2_instagram_state='+'b'.repeat(43)]){
   const {req,url}=callback(undefined,cookie),res=response();
   await finishInstagramConnection(req,res,url,db,config,42,async()=>{calls++;throw Error('provider should not be contacted')});
-  assert.equal(res.status,302);assert.equal(res.headers.Location,'https://1ce.lol/app/upload?publishing=instagram-error');
+  assert.equal(res.status,302);assert.match(res.headers.Location,/^https:\/\/1ce\.lol\/app\/upload\?publishing=instagram-error&reason=instagram_(consent_denied|state_expired)$/);
   assert.match(res.headers['Set-Cookie'],/Max-Age=0/);
  }
  assert.equal(calls,0);
@@ -75,7 +75,7 @@ test('personal accounts cannot be connected or stored',async()=>{
  };
  const {req,url}=callback(),res=response();
  await finishInstagramConnection(req,res,url,db,config,42,http);
- assert.match(res.headers.Location,/instagram-error$/);
+ assert.match(res.headers.Location,/instagram-error&reason=instagram_(professional_account_required|identity_mismatch)$/);
  assert.equal(queries.some(q=>q.sql.includes('INSERT INTO v2_instagram_connections')),false);
 });
 test('status uses local ciphertext, never leaks access token, disconnect is account scoped',async()=>{
@@ -128,6 +128,43 @@ test('Instagram callback refuses identity not matching any OAuth account ID',asy
  };
  const {req,url}=callback(),res=response();
  await finishInstagramConnection(req,res,url,db,config,42,http);
- assert.match(res.headers.Location,/instagram-error$/);
+ assert.match(res.headers.Location,/instagram-error&reason=instagram_(professional_account_required|identity_mismatch)$/);
  assert.equal(created,false);
+});
+
+test('callback identifies short-token rejection without leaking provider payload',async()=>{
+ const db={async query(){return {rowCount:1,rows:[{user_id:42}]}}};
+ let logs=[];const previous=console.warn;console.warn=(...args)=>logs.push(args);
+ try{
+  const {req,url}=callback(),res=response();
+  await finishInstagramConnection(req,res,url,db,config,42,async()=>new Response(
+   JSON.stringify({error:{message:'fixture-provider-private-info',code:400}}),{status:400}));
+  assert.equal(new URL(res.headers.Location).searchParams.get('reason'),'instagram_code_exchange_failed');
+  assert.equal(res.status,302);
+  assert.doesNotMatch(JSON.stringify(logs)+JSON.stringify(res),/fixture-provider-private-info|fixture-code/);
+ }finally{console.warn=previous}
+});
+test('callback identifies lost 1CE account session before token exchange',async()=>{
+ const {req,url}=callback(),res=response();let calls=0;
+ const previous=console.warn;console.warn=()=>{};
+ try{
+  await finishInstagramConnection(req,res,url,{query:async()=>{throw Error('Must not query')}} ,config,null,
+   async()=>{calls++;throw Error('Must not fetch')});
+  assert.equal(new URL(res.headers.Location).searchParams.get('reason'),'instagram_session_missing');
+  assert.equal(calls,0);
+ }finally{console.warn=previous}
+});
+test('Meta variant with wrapped short token and string expiry is accepted',async()=>{
+ const queries=[],db={async query(sql,args){queries.push({sql,args});return {rowCount:1,rows:[{user_id:42}]}}};
+ const http=async url=>{
+  if(String(url).startsWith('https://api.instagram.com/'))
+   return new Response('{"data":[{"user_id":"17841405309211844","access_token":"short-fixture"}]}');
+  if(String(url).startsWith('https://graph.instagram.com/access_token'))
+   return Response.json({access_token:'long-fixture',expires_in:'5184000'});
+  return new Response('{"id":"17841405309211844","username":"studio_fixture"}');
+ };
+ const {req,url}=callback(),res=response();
+ await finishInstagramConnection(req,res,url,db,config,42,http);
+ assert.match(res.headers.Location,/instagram-connected$/);
+ assert.ok(queries.some(q=>q.sql.includes('INSERT INTO v2_instagram_connections')));
 });
