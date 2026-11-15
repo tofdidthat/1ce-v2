@@ -10,6 +10,12 @@ const statePattern=/^igpub_[A-Za-z0-9_-]{43}$/;
 const browserPattern=/^[A-Za-z0-9_-]{43}$/;
 const sha=(s:string)=>createHash('sha256').update(s).digest('hex');
 const record=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
+// Provider IDs can exceed Number.MAX_SAFE_INTEGER. Read their decimal text exactly.
+function exactInstagramId(raw:string,parsed:unknown):string{
+ const match=/"user_id"\s*:\s*(?:"([0-9]{1,32})"|([0-9]{1,32}))(?=\s*[,}])/.exec(raw);
+ if(match)return match[1]||match[2];
+ return record(parsed)&&typeof parsed.id==='string'&&/^[0-9]{1,32}$/.test(parsed.id)?parsed.id:'';
+}
 
 export function instagramConfig():InstagramConfig|null{
  const {INSTAGRAM_APP_ID:appId,INSTAGRAM_APP_SECRET:appSecret,INSTAGRAM_REDIRECT_URI:redirectUri,WEB_ORIGIN:webOrigin}=process.env;
@@ -61,10 +67,11 @@ export async function finishInstagramConnection(req:IncomingMessage,res:ServerRe
    headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({
     client_id:config.appId,client_secret:config.appSecret,grant_type:'authorization_code',
     redirect_uri:config.redirectUri,code}),signal:AbortSignal.timeout(15000)});
-  const shortData:unknown=await short.json().catch(()=>null);
-  if(!short.ok||!record(shortData)||typeof shortData.access_token!=='string'||shortData.access_token.length>8192||
-   typeof shortData.user_id!=='number'&&typeof shortData.user_id!=='string')throw new PublishingError('instagram_authorization_failed');
-  const instagramId=String(shortData.user_id);
+  const shortText=await short.text();
+  const shortData:unknown=(()=>{try{return JSON.parse(shortText)}catch{return null}})();
+  if(!short.ok||!record(shortData)||typeof shortData.access_token!=='string'||shortData.access_token.length>8192)
+   throw new PublishingError('instagram_authorization_failed');
+  const instagramId=exactInstagramId(shortText,shortData);
   if(!/^[0-9]{1,32}$/.test(instagramId))throw new PublishingError('instagram_authorization_failed');
   const longUrl=new URL('https://graph.instagram.com/access_token');
   longUrl.search=new URLSearchParams({grant_type:'ig_exchange_token',client_secret:config.appSecret,
@@ -77,10 +84,11 @@ export async function finishInstagramConnection(req:IncomingMessage,res:ServerRe
    throw new PublishingError('instagram_authorization_failed');
   const me=await http('https://graph.instagram.com/me?fields=user_id,username,account_type',{
    headers:{Authorization:'Bearer '+longData.access_token},redirect:'error',signal:AbortSignal.timeout(15000)});
-  const profile:unknown=await me.json().catch(()=>null);
-  const meId=record(profile)?String(profile.user_id??profile.id??''):'';
+  const profileText=await me.text();
+  const profile:unknown=(()=>{try{return JSON.parse(profileText)}catch{return null}})();
+  const meId=exactInstagramId(profileText,profile);
   if(!me.ok||!record(profile)||meId!==instagramId||typeof profile.username!=='string'||
-   !/^[A-Za-z0-9._]{1,180}$/.test(profile.username)||profile.account_type==='PERSONAL')
+   !/^[A-Za-z0-9._]{1,180}$/.test(profile.username)||!['BUSINESS','MEDIA_CREATOR','CREATOR'].includes(String(profile.account_type)))
    throw new PublishingError('instagram_professional_account_required',409);
   await db.query(`INSERT INTO v2_instagram_connections
     (user_id,instagram_user_id,username,access_cipher,expires_at,generation)
@@ -100,7 +108,7 @@ export async function instagramConnectionStatus(db:QueryableV2,owner:number,conf
  const empty={available:!!config,connected:false,username:null,publishingEnabled:false as const};
  if(!config)return empty;
  const row=(await db.query('SELECT username,access_cipher,expires_at FROM v2_instagram_connections WHERE user_id=$1',[owner])).rows[0];
- if(!row||new Date(row.expires_at).getTime()<=Date.now())return empty;
+ if(!row||new Date(String(row.expires_at)).getTime()<=Date.now())return empty;
  try{openPublishing(String(row.access_cipher),'instagram-access:'+owner,config.encryptionSecret);}
  catch{return empty;}
  return {available:true,connected:true,username:String(row.username),publishingEnabled:false};
