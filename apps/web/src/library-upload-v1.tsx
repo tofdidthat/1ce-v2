@@ -251,7 +251,7 @@ export default function LibraryUploadV2({userId}:{userId?:number}={}){
         </button>
       </div>
     </section>
-    <MultiPlatformUploadV2 active={multiPlatform} userId={userId} initialAudio={audioFiles[0]||null} initialCover={cover} initialTitle={itemName} onBack={()=>setMultiPlatform(false)}/>
+    <MultiPlatformUploadV2 active={multiPlatform} userId={userId} key={userId||'anonymous'} initialAudio={audioFiles[0]||null} initialCover={cover} initialTitle={itemName} onBack={()=>setMultiPlatform(false)}/>
     </>
   )
 }
