@@ -61,7 +61,10 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
   if(result==='youtube-connected')setNotice('YouTube connected. Choose media and confirm a submission.');
   if(result==='youtube-error')setFailure('YouTube connection was not completed. Grant both requested permissions and confirm that the YouTube API is enabled for the app.');
   if(result==='instagram-connected')setNotice('Instagram connected. Reels publishing requires separate Meta approval and safety checks.');
-  if(result==='instagram-error')setFailure('Instagram authorization was not completed. Check your professional account and Meta app permissions.');
+  if(result==='instagram-error'){
+   const reason=new URLSearchParams(window.location.search).get('reason');
+   setFailure(publishingErrorMessage(reason||'instagram_authorization_failed'));
+  }
  },[userId]);
  useEffect(()=>{
   if(!active||!userId)return;
