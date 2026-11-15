@@ -12,18 +12,29 @@ This branch adds **Instagram Business Login** account linking to the existing Up
 - Token lifecycle: long-lived credentials expire (~60 days). A dedicated refresh and reconnect policy is required before production Reel publishing. Disconnect deletes local credentials; user may also revoke access via Instagram settings.
 - Config and media publishing are disabled when required settings are missing.
 
+### Reuse the existing v1 Meta developer app — verified in the v1 repository
+
+**Do not create a second Meta app.** Repository `tofdidthat/1ce` has a functional Instagram Business Login implementation under `api/instagram/auth.js`, `api/instagram/callback.js`, `api/instagram/publish.js` and `lib/instagram-token.js`. Its production Vercel project already holds `INSTAGRAM_CLIENT_ID`, `INSTAGRAM_CLIENT_SECRET`, and `INSTAGRAM_REDIRECT_URI` as **sensitive** environment variables (existence verified; values not read or transferred).
+
+- v1 uses the `instagram.com/oauth/authorize` endpoint and permissions `instagram_business_basic,instagram_business_content_publish`, with `enable_fb_login=0` and `force_authentication=1`. v2 matches those login parameters.
+- v1 receives OAuth `user_id` and Graph `/me` `id`/`user_id`; **these IDs can differ for the same account**. v2 accepts a successful match against *either* returned Graph ID, while rejecting an unknown identity and preserving long decimal IDs beyond JS's integer-safe range.
+- v1 backend and identity data, token sessions, and refresh leases are **not** copied to v2; each person must reconnect using their v2 account. Reuse the Meta application registration and approved permissions, not old user tokens or old internal API secret.
+- During migration, **add** the new Railway callback to the existing Meta app's allowed Instagram Login redirect URIs. **Preserve** the old registered URI for rollback until tested; do not overwrite the only valid URI without checking the Meta dashboard.
+- v1 also has separate **Meta deauthorization and data-deletion signed_request endpoints** at `api/instagram/auth.js`, which relay to the legacy backend using `ONECE_INTERNAL_SECRET`. Since `1ce.lol` is now hosted by v2, any Meta settings still pointing at `https://1ce.lol/api/instagram/auth` may no longer reach v1's handler. **Before exposing v2 Instagram connection beyond a test account**, inspect the exact configured Deauthorize Callback URL and Data Deletion Request URL in Meta. Preserve handling of existing v1 user data through a verified legacy-compatible endpoint (e.g. the running v1 fallback hostname with its original handler, after testing), or implement a reviewed migration-aware endpoint. **Do not route data-deletion requests to a v2-only handler and claim v1 data were deleted.** Do not disable the callbacks, invent new URLs or change them without verification.
+
 ### Meta dashboard — operator setup (never put values in GitHub)
-1. In the existing Meta for Developers app, add the **Instagram API** product with **Instagram Login / Business Login**, not an unrelated legacy Basic Display client.
+1. Open the **same existing Meta app used by the 1CE v1** in Meta for Developers. Its code already uses Instagram Business Login; verify the product and permissions are present. Do not create another app or change to Facebook Login.
 2. Configure the exact Instagram Login redirect URI:
    `https://1ce-v2-production.up.railway.app/auth/instagram/callback`
-   Use the real live Railway API callback URL; do not move it to the frontend's `1ce.lol` origin. Set the Meta app's required app domain, website/privacy/deletion URLs and consent fields as required.
+   **Add** this exact URL to the existing Meta app's Instagram Login redirect allowlist, retaining the existing v1 callback for rollback. Use the live Railway API callback, not the frontend `1ce.lol` origin. Audit the app domain, privacy URL, deauthorize callback and data-deletion URL separately before broader rollout.
 3. Request `instagram_business_basic` and `instagram_business_content_publish` and use a professional Instagram test account with app role in development. Users outside tester/developer roles may need Meta Advanced Access, App Review, and Business Verification before the flow works.
 4. Set in **Railway > 1ce-v2 > Variables** (do not share secrets in chat):
-   - `INSTAGRAM_APP_ID` = Instagram Login client ID associated with the Instagram product
-   - `INSTAGRAM_APP_SECRET` = matching Instagram Login client secret
+   - `INSTAGRAM_CLIENT_ID` = the **same Instagram Login client ID as v1** (`INSTAGRAM_APP_ID` still accepted as optional legacy v2 alias)
+   - `INSTAGRAM_CLIENT_SECRET` = the **same Instagram Login client secret as v1** (`INSTAGRAM_APP_SECRET` still accepted as optional legacy v2 alias)
+   - Never copy secret values into PRs, chats, shell history, screenshots or the browser frontend. Transfer via authenticated provider settings.
    - `INSTAGRAM_REDIRECT_URI=https://1ce-v2-production.up.railway.app/auth/instagram/callback`
    - `WEB_ORIGIN=https://1ce.lol` **already configured; preserve it**
-   - `PUBLISH_TOKEN_KEY` optional for *new installations only*. **Do not add or rotate it on this production instance without a migration plan:** existing YouTube token encryption derives from `GOOGLE_CLIENT_SECRET` when unset. This Instagram feature reuses that stable existing publishing encryption secret to avoid breaking YouTube.
+   - `PUBLISH_TOKEN_KEY` optional for *new installations only*. **Do not add or rotate it on this production instance without a migration plan:** existing YouTube token encryption derives from its configured OAuth secret when unset. This Instagram feature reuses the same stable publishing encryption key hierarchy, without rotating the Google, YouTube or Instagram secrets.
 5. After reviewed release and deployment, open `https://1ce.lol/app/upload`, select the publishing upload mode, click **Connect Instagram**, consent through Meta, and check the @username. Confirm disconnect, expired/denied callback, cross-account and state replay tests. Do not assume consent success merely because the Meta login page opened.
 
 ### Data and API
