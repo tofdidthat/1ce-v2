@@ -1,5 +1,7 @@
 # 1CE v2 — Architecture, operations and release guide
 
+> **Instagram connection R1 (PR candidate, 2026-11-15):** `docs/instagram-integration.md` defines new optional Meta Instagram Business Login credentials, encrypted per-account connections, backend OAuth state binding, and Upload connect/disconnect UI. **This does not enable Reel publishing**, public visibility, Meta media upload, or new queue workers. The active YouTube private-by-default workflow is unchanged. Never expose private R2 objects to Meta without a reviewed transfer strategy and per-target explicit public confirmation. Merge/deployment/Meta app configuration are separate steps; see the integration guide and verify CI before release.
+
 > **Canonical technical reference.** Current-state checkpoint verified on **2026-11-08 UTC** against `main` commit `8b195df98ef062b01a9b6ea10abc9ecf9c8fa20c` (PR #83), before this documentation-only update. Historical plans below retain their original dates. GitHub, Railway and Vercel state may change; recheck them before any new release. Private environment settings, credentials, Cloudflare state and complete browser E2E coverage are not proven by this document. Keep historical notes recoverable through Git/PR history, without creating duplicate Markdown files.
 
 ## 0. Verified current baseline and next work (2026-11-08 UTC)

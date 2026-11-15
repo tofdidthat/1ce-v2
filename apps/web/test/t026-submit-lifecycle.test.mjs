@@ -19,7 +19,7 @@ test('actual submit body keeps UUID/payload after lost response and reuses uploa
  assert.equal(f.ctx.accepted,true);await f.start();assert.equal(f.requests.length,2,'Repeated click after acceptance cannot create a new request');
 });
 test('unsupported destinations, video and disconnected status do not upload or submit',async()=>{
- for(const modify of [f=>f.ctx.video={},f=>f.ctx.selectedPlatforms=['YouTube','Discord'],f=>f.ctx.currentStatus.connected=false,f=>f.ctx.currentStatus.available=false]){
+ for(const modify of [f=>f.ctx.video={},f=>f.ctx.selectedPlatforms=['YouTube','Discord'],f=>f.ctx.selectedPlatforms=['Instagram'],f=>f.ctx.selectedPlatforms=['YouTube','Instagram'],f=>f.ctx.currentStatus.connected=false,f=>f.ctx.currentStatus.available=false]){
   const f=fixture();modify(f);await f.start();assert.equal(f.uploads.length,0);assert.equal(f.requests.length,0);
  }
 });
