@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {beginInstagramConnection,startInstagramConnection,finishInstagramConnection,
- instagramConnectionStatus,disconnectInstagram} from '../dist/instagram-connection.js';
+ instagramConnectionStatus,disconnectInstagram,instagramConfig} from '../dist/instagram-connection.js';
 import {openPublishing} from '../dist/publishing-secrets.js';
 
 const config={appId:'123456',appSecret:'fixture-meta-secret-not-real',redirectUri:'https://api.invalid/auth/instagram/callback',
@@ -28,6 +28,8 @@ test('Instagram connect is account-bound, one-time and uses an HTTPS backend sta
  assert.match(url.searchParams.get('scope'),/instagram_business_basic/);
  assert.match(url.searchParams.get('scope'),/instagram_business_content_publish/);
  assert.match(result.cookie,/HttpOnly; Secure; SameSite=Lax/);
+ assert.equal(url.searchParams.get('enable_fb_login'),'0');
+ assert.equal(url.searchParams.get('force_authentication'),'1');
  assert.doesNotMatch(JSON.stringify(queries),new RegExp(state));
  assert.equal(queries.find(v=>v.sql.startsWith('UPDATE')).args[1],42);
 });
@@ -49,7 +51,7 @@ test('Instagram exchange verifies account, encrypts long-lived token and returns
   const host=new URL(String(url)).hostname;
   if(host==='api.instagram.com')return new Response('{"access_token":"short-token-fixture","user_id":17841405309211844}',{headers:{'Content-Type':'application/json'}});
   if(host==='graph.instagram.com'&&String(url).includes('/access_token'))return Response.json({access_token:'long-token-fixture',expires_in:5184000});
-  if(host==='graph.instagram.com'&&String(url).includes('/me?'))return new Response('{"user_id":17841405309211844,"username":"artist.fixture","account_type":"BUSINESS"}',{headers:{'Content-Type':'application/json'}});
+  if(host==='graph.instagram.com'&&String(url).includes('/me?'))return new Response('{"id":17841405309211844,"user_id":28621378697485455,"username":"artist.fixture"}',{headers:{'Content-Type':'application/json'}});
   throw Error('Unexpected URL');
  };
  const {req,url}=callback(),res=response();
@@ -87,4 +89,45 @@ test('status uses local ciphertext, never leaks access token, disconnect is acco
  await disconnectInstagram(db,42);
  assert.equal(queries.filter(q=>q.sql.startsWith('DELETE')).length,2);
  assert.ok(queries.every(q=>q.args[0]===42));
+});
+
+test('Meta app from v1 uses CLIENT_ID/CLIENT_SECRET without creating new app credentials',()=>{
+ const keys=['INSTAGRAM_CLIENT_ID','INSTAGRAM_CLIENT_SECRET','INSTAGRAM_APP_ID','INSTAGRAM_APP_SECRET',
+  'INSTAGRAM_REDIRECT_URI','WEB_ORIGIN','GOOGLE_CLIENT_SECRET','YOUTUBE_CLIENT_SECRET','PUBLISH_TOKEN_KEY'];
+ const previous=Object.fromEntries(keys.map(key=>[key,process.env[key]]));
+ try{
+  for(const key of keys)delete process.env[key];
+  process.env.INSTAGRAM_CLIENT_ID='v1-existing-ig-client-id';
+  process.env.INSTAGRAM_CLIENT_SECRET='v1-existing-ig-client-secret';
+  process.env.INSTAGRAM_REDIRECT_URI='https://api.invalid/auth/instagram/callback';
+  process.env.WEB_ORIGIN='https://1ce.lol';
+  process.env.GOOGLE_CLIENT_SECRET='existing-stable-encryption-key';
+  const value=instagramConfig();
+  assert.equal(value.appId,'v1-existing-ig-client-id');
+  assert.equal(value.appSecret,'v1-existing-ig-client-secret');
+  assert.equal(value.encryptionSecret,'existing-stable-encryption-key');
+  process.env.INSTAGRAM_APP_ID='different-meta-app';
+  assert.equal(instagramConfig(),null,'conflicting app IDs must fail closed');
+  delete process.env.INSTAGRAM_APP_ID;
+  process.env.INSTAGRAM_APP_SECRET='different-meta-secret';
+  assert.equal(instagramConfig(),null,'conflicting app secrets must fail closed');
+ }finally{
+  for(const key of keys){if(previous[key]===undefined)delete process.env[key];else process.env[key]=previous[key];}
+ }
+});
+test('Instagram callback refuses identity not matching any OAuth account ID',async()=>{
+ let created=false;
+ const db={async query(sql){if(sql.includes('INSERT INTO v2_instagram_connections'))created=true;
+  return{rowCount:1,rows:[{user_id:42}]}}};
+ const http=async(url)=>{
+  const host=new URL(String(url)).hostname;
+  if(host==='api.instagram.com')return new Response('{"user_id":17841405309211844,"access_token":"short"}');
+  if(host==='graph.instagram.com'&&String(url).includes('/access_token'))
+   return Response.json({access_token:'long',expires_in:5184000});
+  return new Response('{"id":28621378697485455,"user_id":28621378697485456,"username":"wrong.account"}');
+ };
+ const {req,url}=callback(),res=response();
+ await finishInstagramConnection(req,res,url,db,config,42,http);
+ assert.match(res.headers.Location,/instagram-error$/);
+ assert.equal(created,false);
 });
