@@ -5,6 +5,13 @@ export function publishingErrorMessage(code:unknown):string{
  const messages:Record<string,string>={
   youtube_reconnect_required:'Reconnect YouTube and grant both channel and upload permissions.',
   instagram_not_configured:'Instagram Business Login is not configured on this server.',
+  instagram_session_missing:'Your 1CE login session was not available when Instagram returned. Sign in to 1CE and try connecting again.',
+  instagram_consent_denied:'Instagram did not return a valid authorization. Start from Connect Instagram again.',
+  instagram_code_exchange_failed:'Instagram consent was received, but Meta rejected the authorization exchange. Verify the Instagram App ID, App Secret and registered callback in the existing Meta app.',
+  instagram_long_token_failed:'Instagram authorized the account, but Meta could not issue a long-lived token. Verify Instagram API permissions and the Meta app settings.',
+  instagram_profile_unavailable:'Instagram authorized the account, but its professional profile could not be read. Check Instagram API permissions.',
+  instagram_identity_mismatch:'Meta returned a different Instagram account than the one authorized. Confirm the correct account and reconnect.',
+  instagram_connection_save_failed:'Instagram authorized the account, but 1CE could not save its connection. Please retry after the service is checked.',
   instagram_state_expired:'Your Instagram authorization expired. Start again from Upload.',
   instagram_consent_denied:'Instagram authorization was cancelled or rejected.',
   instagram_authorization_failed:'Instagram authorization failed. Try connecting again.',
