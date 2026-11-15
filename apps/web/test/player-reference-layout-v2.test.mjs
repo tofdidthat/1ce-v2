@@ -60,9 +60,8 @@ test('one persistent audio owner delegates only dock rendering and owner-scoped 
  assert.match(player,/<PlayerDockV2 current=\{current\} coverUrl=\{coverUrl\} waveBars=\{waveBars\}/);
  assert.equal((player.match(/createPortal\(<audio ref=\{audioRef\}/g)||[]).length,1);
  assert.doesNotMatch(dock,/<audio\b|new Audio\(|useState\(|useEffect\(|createPortal\(/);
- assert.match(waveform,/String\(ownerId\)\+':'\+String\(fileId\)/);
- assert.match(waveform,/if\(waveCache.size>=16\)/);
- assert.match(waveform,/if\(context&&context.state!=='closed'\)await context.close\(\)/);
+ assert.match(waveform,/\/api\/public\/waveform\//);
+ assert.doesNotMatch(waveform,/AudioContext|decodeAudioData|arrayBuffer\(/);
  assert.match(player,/useWaveform\(current\?\.audio_file_id/);
  assert.match(player,/loadWaveform\(b.audio_file_id,userId\)/);
 });

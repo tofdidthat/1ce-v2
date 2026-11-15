@@ -42,11 +42,6 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
  const [loadState,setLoadState]=useState<{key:string;status:'loading'|'ready'|'error'}>({key:'',status:'loading'});
  const [error,setError]=useState('');
  const [refreshRevision,setRefreshRevision]=useState(0);
- const previouslyActive=React.useRef(active);
- React.useEffect(()=>{
-  if(active&&!previouslyActive.current){setRefreshRevision(value=>value+1);}
-  previouslyActive.current=active;
- },[active]);
  const [copyStatus,setCopyStatus]=useState('');
  const targetId=profileId||String(user?.id||'');
  const requestKey=String(user?.id||'anonymous')+':'+targetId;
@@ -92,6 +87,7 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
  },[active,profileStatus,visibleProjects.catalog]);
  React.useEffect(()=>{setCopyStatus('');},[followKey]);
  React.useEffect(()=>{
+  if(!active)return;
   if(!api||!targetId){
    setLoadState({key:requestKey,status:'error'});setError('Profile API is not configured');return;
   }
@@ -128,7 +124,7 @@ export default function PublicProfileV2({user,onIdentityUpdated,onBack,onLogin,o
      setLoadState({key:requestKey,status:'ready'});
     }).catch(e=>{if(!controller.signal.aborted){setError(e instanceof Error?e.message:'Unable to load profile');setLoadState({key:requestKey,status:'error'});}});
    return()=>controller.abort();
- },[requestKey,refreshRevision]);
+ },[active,requestKey,refreshRevision]);
  const toggleSave=async(project:PublicProject)=>{
   const key=savedProjectKeyV2(project.owner_id,project.kind,project.id);
   const already=saved.has(key);

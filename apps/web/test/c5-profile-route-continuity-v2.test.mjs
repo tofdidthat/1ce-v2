@@ -34,7 +34,7 @@ test('recent profile views are bounded, target isolated, and revalidate when rev
  assert.match(workspace,/setRecentProfiles\(activeProfileKey\?\[activeProfileKey\]:\[\]\)/);
  assert.match(workspace,/key=\{String\(account\?\.id\|\|'anonymous'\)\+':'\+profileKey\}/);
  assert.match(workspace,/active=\{activeProfileKey===profileKey&&!profilePackVisible\}/);
- assert.match(profile,/if\(active&&!previouslyActive\.current\)\{setRefreshRevision/);
+ assert.match(profile,/\[active,requestKey,refreshRevision\]/);
  assert.match(profile,/lastVerifiedProfileKey\.current===requestKey/);
  assert.match(profile,/if\(!active\)return null;/);
  assert.match(profile,/controller\.abort\(\)/);
@@ -54,3 +54,4 @@ test('cover bytes stay in viewer scoped Workspace cache, offscreen cards release
  assert.match(cache,/invalidateOwner\(ownerId:number\)/);
  assert.doesNotMatch(main+workspace+profile,/localStorage\.setItem\(.*(?:cover|profile|project)/);
 });
+

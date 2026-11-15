@@ -15,6 +15,8 @@
 
 ## Repository structure
 
+**Upload implementation checkpoint (2026-11-14, PR #93):** YouTube image + MP3/WAV publishing is implemented with server-rendered 9:16 Shorts (up to 3 minutes) and 16:9 video (up to 20 minutes), private-by-default visibility, a durable queue and owner-scoped history/retries. The user connects their channel through Google consent; TikTok/Instagram/Telegram/Discord and original-video inputs remain previews in this first delivery. See R02/R03 in the architecture guide for runtime configuration, evidence and remaining real-provider acceptance. The historical baseline above is not a claim that this candidate is deployed.
+
 | Directory | Responsibility |
 | --- | --- |
 | `apps/web/` | Vite/React frontend, UI components, styling and frontend tests |

@@ -370,7 +370,7 @@ export default function WorkspaceV2({user,profileId}:{user:AccountUserV2|null;pr
   onOpenProfile={identifier=>navigate('/u/'+encodeURIComponent(identifier),{state:{oneceFromPath:location.pathname}})}/>)}
  <WorldV2 active={view==='discover'} userId={account?.id} onOpenProfile={identifier=>navigate('/u/'+encodeURIComponent(identifier),{state:{oneceFromPath:location.pathname}})}/>
  {view==='library'||view==='profile'||view==='discover'?null:
- view==='upload'?<LibraryUploadV2 userId={account?.id}/>:
+ view==='upload'?<LibraryUploadV2 userId={account?.id} key={account?.id||'anonymous'}/>:
  view==='account'&&account?<AccountSettingsV2 user={account} onUserChange={setAccount} onViewProfile={()=>onNavigate('profile')} onLogout={logout}/>:
 view==='edit-profile'?<section className="onece-workspace-placeholder"><h1>Edit Profile</h1><p>Profile editing is not yet available in v2.</p></section>:
  <section className="onece-workspace-placeholder"><h1>Settings</h1><p>Sign in to manage account settings.</p></section>}
