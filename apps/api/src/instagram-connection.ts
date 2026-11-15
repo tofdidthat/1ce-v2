@@ -10,17 +10,26 @@ const statePattern=/^igpub_[A-Za-z0-9_-]{43}$/;
 const browserPattern=/^[A-Za-z0-9_-]{43}$/;
 const sha=(s:string)=>createHash('sha256').update(s).digest('hex');
 const record=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
-// Provider IDs can exceed Number.MAX_SAFE_INTEGER. Read their decimal text exactly.
-function exactInstagramId(raw:string,parsed:unknown):string{
- const match=/"user_id"\s*:\s*(?:"([0-9]{1,32})"|([0-9]{1,32}))(?=\s*[,}])/.exec(raw);
- if(match)return match[1]||match[2];
- return record(parsed)&&typeof parsed.id==='string'&&/^[0-9]{1,32}$/.test(parsed.id)?parsed.id:'';
+// Preserve IDs above MAX_SAFE_INTEGER: OAuth "user_id" and /me "id" can
+// differ for the SAME authorized account. Compare all returned identifiers.
+function instagramIds(raw:string):string[]{
+ return [...new Set([...raw.matchAll(/"(?:id|user_id)"\s*:\s*(?:"([0-9]{1,32})"|([0-9]{1,32}))(?=\s*[,}])/g)]
+  .map(match=>match[1]||match[2]))];
 }
 
 export function instagramConfig():InstagramConfig|null{
- const {INSTAGRAM_APP_ID:appId,INSTAGRAM_APP_SECRET:appSecret,INSTAGRAM_REDIRECT_URI:redirectUri,WEB_ORIGIN:webOrigin}=process.env;
- // Use the existing stable 1CE publishing encryption key, never the Instagram token as a key.
- const encryptionSecret=process.env.PUBLISH_TOKEN_KEY||process.env.GOOGLE_CLIENT_SECRET;
+ const {INSTAGRAM_REDIRECT_URI:redirectUri,WEB_ORIGIN:webOrigin}=process.env;
+ // V1's existing Meta app uses CLIENT_ID / CLIENT_SECRET. Keep those names
+ // canonical; APP_ID / APP_SECRET are accepted only for backwards compatibility
+ // with the initial v2 PR proposal. Conflicting values fail closed.
+ if(process.env.INSTAGRAM_CLIENT_ID&&process.env.INSTAGRAM_APP_ID&&
+    process.env.INSTAGRAM_CLIENT_ID!==process.env.INSTAGRAM_APP_ID)return null;
+ if(process.env.INSTAGRAM_CLIENT_SECRET&&process.env.INSTAGRAM_APP_SECRET&&
+    process.env.INSTAGRAM_CLIENT_SECRET!==process.env.INSTAGRAM_APP_SECRET)return null;
+ const appId=process.env.INSTAGRAM_CLIENT_ID||process.env.INSTAGRAM_APP_ID;
+ const appSecret=process.env.INSTAGRAM_CLIENT_SECRET||process.env.INSTAGRAM_APP_SECRET;
+ // Keep exactly the established YouTube/publishing encryption key; no rotation.
+ const encryptionSecret=process.env.PUBLISH_TOKEN_KEY||process.env.YOUTUBE_CLIENT_SECRET||process.env.GOOGLE_CLIENT_SECRET;
  if(!appId||!appSecret||!redirectUri||!webOrigin||!encryptionSecret||encryptionSecret.length<16)return null;
  try{
   const callback=new URL(redirectUri),web=new URL(webOrigin);
@@ -48,7 +57,8 @@ export async function startInstagramConnection(db:QueryableV2,owner:number,state
  if(result.rowCount!==1)throw new PublishingError('instagram_state_expired',409);
  const url=new URL('https://www.instagram.com/oauth/authorize');
  for(const [k,v] of Object.entries({client_id:config.appId,redirect_uri:config.redirectUri,response_type:'code',
-  scope:'instagram_business_basic,instagram_business_content_publish',state}))url.searchParams.set(k,v);
+  scope:'instagram_business_basic,instagram_business_content_publish',state,
+  enable_fb_login:'0',force_authentication:'1'}))url.searchParams.set(k,v);
  return {url:url.href,cookie:`${cookieName}=${browser}; HttpOnly; Secure; SameSite=Lax; Path=/auth/instagram/callback; Max-Age=600`};
 }
 export async function finishInstagramConnection(req:IncomingMessage,res:ServerResponse,url:URL,db:QueryableV2,config:InstagramConfig,owner:number|null,http:typeof fetch=fetch):Promise<void>{
@@ -71,7 +81,7 @@ export async function finishInstagramConnection(req:IncomingMessage,res:ServerRe
   const shortData:unknown=(()=>{try{return JSON.parse(shortText)}catch{return null}})();
   if(!short.ok||!record(shortData)||typeof shortData.access_token!=='string'||shortData.access_token.length>8192)
    throw new PublishingError('instagram_authorization_failed');
-  const instagramId=exactInstagramId(shortText,shortData);
+  const instagramId=instagramIds(shortText)[0]||'';
   if(!/^[0-9]{1,32}$/.test(instagramId))throw new PublishingError('instagram_authorization_failed');
   const longUrl=new URL('https://graph.instagram.com/access_token');
   longUrl.search=new URLSearchParams({grant_type:'ig_exchange_token',client_secret:config.appSecret,
@@ -82,13 +92,18 @@ export async function finishInstagramConnection(req:IncomingMessage,res:ServerRe
    !longData.access_token||longData.access_token.length>8192||
    typeof longData.expires_in!=='number'||longData.expires_in<3600||longData.expires_in>7776000)
    throw new PublishingError('instagram_authorization_failed');
-  const me=await http('https://graph.instagram.com/me?fields=user_id,username,account_type',{
+  // These are the profile fields already used by the working v1 integration.
+  const me=await http('https://graph.instagram.com/me?fields=id,user_id,username',{
    headers:{Authorization:'Bearer '+longData.access_token},redirect:'error',signal:AbortSignal.timeout(15000)});
   const profileText=await me.text();
   const profile:unknown=(()=>{try{return JSON.parse(profileText)}catch{return null}})();
-  const meId=exactInstagramId(profileText,profile);
-  if(!me.ok||!record(profile)||meId!==instagramId||typeof profile.username!=='string'||
-   !/^[A-Za-z0-9._]{1,180}$/.test(profile.username)||!['BUSINESS','MEDIA_CREATOR','CREATOR'].includes(String(profile.account_type)))
+  const meIds=instagramIds(profileText);
+  if(!me.ok||!record(profile)||!meIds.includes(instagramId)||typeof profile.username!=='string'||
+   !/^[A-Za-z0-9._]{1,180}$/.test(profile.username)||
+   // Professional account access is enforced by Instagram Business Login.
+   // Reject explicit PERSONAL if Meta includes account_type in a response,
+   // but do not demand an undocumented field in the /me request.
+   profile.account_type==='PERSONAL')
    throw new PublishingError('instagram_professional_account_required',409);
   await db.query(`INSERT INTO v2_instagram_connections
     (user_id,instagram_user_id,username,access_cipher,expires_at,generation)
