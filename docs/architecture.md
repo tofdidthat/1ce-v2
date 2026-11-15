@@ -30,14 +30,6 @@
 
 **Next work (historical 2026-11-08 statement, superseded by 2026-11-15 checkpoint):** Priorizar os gates de migração de `1ce.lol`, observando `docs/domain-cutover-1ce-lol.md`. Experiência offline permanece futura; não confundir fase histórica com estado atual.
 
-## 0B. Checkpoint de migração 2026-11-15 (read-only, sem alterar produção)
-
-- A `main` está em `1703803` (PR #94, menu de beats públicos e Buy visual desabilitado); PR #93 de waveform persistente + publicação YouTube inicial merged na main `2aa6c89`. Workflow main `43729772922` = 7/7; Vercel ``1ce-v2.vercel.app` e `1ce-v2-tofdidthat.vercel.app` associados ao mesmo deployment READY; Railway API v2 release `94eee2e6…` = SUCCESS. Os dados são evidência de CI/deploy, não autenticação real.
-- Usuário confirmou **upload real bem-sucedido no YouTube** e **waveform bem mais rápida** na v2. Ainda faltam matriz owner/segunda conta/anônimo, recuperação de falhas, backup recente e validação do novo hostname.
-- A v1 continua atendendo `1ce.lol`; o destino v2 está em projeto separado da mesma equipe. O registro público de domínio não foi transferido, nenhum DNS/OAuth/WEB_ORIGIN foi alterado; **GO/NO-GO: NO-GO** até os gates G1–G8 do [runbook dedicado](domain-cutover-1ce-lol.md).
-- Nota de segurança: v2 expõe apenas uma `WEB_ORIGIN`. Não fazer transferência de domínio e trocar Origem em momentos aleatórios; coordenar a janela e exigir rollback. Não confundir o fallback do `GOOGLE_REDIRECT_URI` no fluxo YouTube com frontend URL.
-- O backup/restore de 03–04/11 registrado abaixo é um marco **histórico**; o volume atual do PostgreSQL não comprova backup válido atual. Consultas atuais não permitiram confirmar configurações do Google Cloud nem valores secretos do Railway (conexão exibe somente nomes).
-
 ## 0A. Roadmap adotado — produto completo e substituição da v1 (2026-11-12)
 
 Registro de planejamento autorizado pelo usuário a partir dos 15 itens fornecidos. Rust fica fora do escopo. Esta seção substitui a orientação anterior de priorizar a investigação offline em **Next work**; a baseline histórica acima permanece datada e não comprova o estado atual dos serviços. Prioridade imediata: waveform, depois sincronização dos domínios e Upload com fila persistente.
@@ -151,6 +143,14 @@ Estados permitidos: **Pendente**, **Em andamento**, **Em validação**, **Conclu
 Cada tarefa de execução deve receber ID único, um responsável, branch exclusiva, escopo de arquivos, dependências e PR. Dividir mudanças independentes e agrupar apenas mudanças relacionadas; evitar deployments desnecessários. Registrar aqui os links e resultados ao atribuir trabalho, sem inventar owners ou PRs.
 
 Antes de concluir um PR de implementação: revisão de código, testes/typecheck/build aplicáveis e os sete checks obrigatórios registrados na baseline (`dependency-audit`, `s2-local-s3-syntax-preflight`, `s2-postgres-migration-smoke`, `api-tests`, `railway-api-smoke`, `web-build (22)`, `web-build (26)`), revalidando as regras então vigentes. Quando houver autenticação, uploads, R2, banco ou player, anexar evidência de comportamento real, incluindo falhas e permissões. Merge e deployment exigem aprovação; este roadmap autoriza somente o registro do plano.
+
+## 0B. Checkpoint de migração 2026-11-15 (read-only, sem alterar produção)
+
+- A `main` está em `1703803` (PR #94, menu de beats públicos e Buy visual desabilitado); PR #93 de waveform persistente + publicação YouTube inicial merged na main `2aa6c89`. Workflow main `43729772922` = 7/7; Vercel `1ce-v2.vercel.app` e `1ce-v2-tofdidthat.vercel.app` associados ao mesmo deployment READY; Railway API v2 release `94eee2e6…` = SUCCESS. Os dados são evidência de CI/deploy, não autenticação real.
+- Usuário confirmou **upload real bem-sucedido no YouTube** e **waveform bem mais rápida** na v2. Ainda faltam matriz owner/segunda conta/anônimo, recuperação de falhas, backup recente e validação do novo hostname.
+- A v1 continua atendendo `1ce.lol`; o destino v2 está em projeto separado da mesma equipe. O registro público de domínio não foi transferido, nenhum DNS/OAuth/WEB_ORIGIN foi alterado; **GO/NO-GO: NO-GO** até os gates G1–G8 do [runbook dedicado](domain-cutover-1ce-lol.md).
+- Nota de segurança: v2 expõe apenas uma `WEB_ORIGIN`. Não fazer transferência de domínio e trocar Origem em momentos aleatórios; coordenar a janela e exigir rollback. Não confundir o fallback do `GOOGLE_REDIRECT_URI` no fluxo YouTube com frontend URL.
+- O backup/restore de 03–04/11 registrado abaixo é um marco **histórico**; o volume atual do PostgreSQL não comprova backup válido atual. Consultas atuais não permitiram confirmar configurações do Google Cloud nem valores secretos do Railway (conexão exibe somente nomes).
 
 ## 1. Mission, boundaries and product decisions
 
