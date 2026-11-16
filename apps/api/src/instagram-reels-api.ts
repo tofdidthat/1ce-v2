@@ -82,7 +82,9 @@ export async function resolveInstagramPublishingAccount({token,oauthUserId,http=
  const a=id?.[1]||id?.[2]||'',b=userId?.[1]||userId?.[2]||'';
  if(oauthUserId!==a&&oauthUserId!==b)
   throw new InstagramReelError('instagram_identity_mismatch');
- const chosen=b||a;
+ // The v1 live publisher uses Graph /me.id for the Instagram /media edge.
+ // user_id may be a distinct identity alias; never substitute it if id is valid.
+ const chosen=a||b;
  if(!digits.test(chosen))throw new InstagramReelError('instagram_profile_unavailable');
  return chosen;
 }
