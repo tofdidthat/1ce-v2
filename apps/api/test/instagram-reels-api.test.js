@@ -14,7 +14,7 @@ test('Meta Graph creates REELS container with bearer header and exact unrounded 
  const calls=[];
  const http=async(url,options)=>{calls.push({url,options});
   return new Response('{"id":17841405309211844,"ignored":"ok"}',{status:200})};
- const id=await createInstagramReel({accountId:'28621378697485455',token:'fixture-token',videoUrl:mediaUrl,caption:'My beat #producer',http});
+ const id=await createInstagramReel({accountId:'28621378697485455',token:'fixture-token',videoUrl:mediaUrl,apiOrigin:origin,caption:'My beat #producer',http});
  assert.equal(id,'17841405309211844');
  assert.equal(calls[0].url,'https://graph.instagram.com/v27.0/28621378697485455/media');
  assert.equal(calls[0].options.headers.Authorization,'Bearer fixture-token');
@@ -33,7 +33,7 @@ test('publish posts only the confirmed container and preserves long media IDs',a
  assert.deepEqual(JSON.parse(calls[0].options.body),{creation_id:'17841405309211844'});
 });
 test('provider errors do not leak credentials or body into errors',async()=>{
- await assert.rejects(createInstagramReel({accountId:'28621378697485455',token:'secret-token-fixture',videoUrl:mediaUrl,caption:'safe',
+ await assert.rejects(createInstagramReel({accountId:'28621378697485455',token:'secret-token-fixture',videoUrl:mediaUrl,apiOrigin:origin,caption:'safe',
   http:async()=>new Response('{"error":{"message":"private-provider-diagnostic"}}',{status:403})}),
   error=>{assert.equal(error.code,'instagram_provider_rejected');assert.doesNotMatch(String(error),/secret-token|private-provider-diagnostic/);return true;});
 });
