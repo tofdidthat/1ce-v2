@@ -210,19 +210,20 @@
 .onece-multi-destination-summary small { color: #968da7; font-size: 11px; font-weight: 400; white-space: nowrap; }
 .onece-multi-destination-popover {
  z-index: 1200; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
- box-sizing: border-box; padding: 7px;
+ box-sizing: border-box; padding: 11px;
  border: 1px solid #49395d; border-radius: 16px;
  background: #100f17; color: #f5f3ff;
  box-shadow: 0 18px 55px #000a;
 }
+.onece-multi-destination-popover-heading { display: flex; align-items: center; justify-content: space-between; padding: 4px 7px 11px; gap: 10px; }
 .onece-multi-destination-popover-heading strong { font-size: 13px; font-weight: 600; }
 .onece-multi-destination-popover-heading span { color: #9d93ac; font-size: 11px; }
-.onece-multi-destination-list { display: flex; flex-direction: column; gap: 1px; }
-.onece-multi-destination-row { display: flex; align-items: center; gap: 5px; border-radius: 9px; }
+.onece-multi-destination-list { display: flex; flex-direction: column; gap: 3px; }
+.onece-multi-destination-row { display: flex; align-items: center; gap: 7px; border-radius: 11px; }
 .onece-multi-destination-row:hover { background: #ffffff08; }
 .onece-multi-destination-option {
  display: flex; flex: 1; align-items: center; gap: 10px; min-width: 0;
- padding: 8px 6px; border: 1px solid transparent; border-radius: 9px;
+ padding: 9px 8px; border: 1px solid transparent; border-radius: 10px;
  color: #d9d1e4; background: transparent; font: inherit; cursor: pointer; text-align: left;
 }
 .onece-multi-destination-option:disabled { cursor: not-allowed; opacity: .5; }
@@ -231,14 +232,15 @@
 .onece-multi-destination-option > svg { flex-shrink: 0; width: 17px; color: #baace4; }
 .onece-multi-destination-label { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .onece-multi-destination-label strong { font-size: 12px; font-weight: 600; }
+.onece-multi-destination-label small { font-size: 10px; font-weight: 400; color: #a99eb9; }
 .onece-multi-destination-account {
- flex-shrink: 0; padding: 7px 8px; border: 1px solid #ffffff1b; border-radius: 8px;
+ flex-shrink: 0; padding: 8px 10px; border: 1px solid #ffffff1b; border-radius: 9px;
  background: #191720; color: #d7c9f0; font: inherit; font-size: 11px; cursor: pointer;
 }
 .onece-multi-destination-account:hover:not(:disabled) { border-color: #a78bfa8c; }
 .onece-multi-destination-account:disabled { opacity: .4; cursor: not-allowed; }
 .onece-multi-destination-more {
- display: grid; place-items: center; flex: 0 0 30px; width: 30px; height: 30px;
+ display: grid; place-items: center; flex: 0 0 32px; width: 32px; height: 32px;
  padding: 0; border: 1px solid #ffffff16; border-radius: 8px;
  background: #191720; color: #c8b8e3; cursor: pointer;
 }
@@ -248,12 +250,12 @@
 }
 .onece-multi-destination-more:disabled { opacity: .45; cursor: not-allowed; }
 .onece-multi-youtube-formats {
- display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 6px;
- padding: 3px 4px 8px 29px;
+ display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px;
+ padding: 6px 6px 10px 29px;
 }
 .onece-multi-youtube-formats button {
  display: flex; align-items: center; justify-content: center; gap: 6px;
- min-width: 0; padding: 8px 5px;
+ min-width: 0; padding: 10px 7px;
  border: 1px solid #ffffff1b; border-radius: 8px;
  background: #17151e; color: #c9c0d8;
  font: inherit; font-size: 11px; cursor: pointer;
