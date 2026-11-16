@@ -9,6 +9,7 @@ import {runInstagramReelOnce,quarantineExpiredInstagramClaims} from '../dist/ins
 import {handleInstagramMetaCompliance} from '../dist/instagram-meta-compliance.js';
 import {processInstagramDataDeletionOnce,serveInstagramDataDeletionStatus} from '../dist/instagram-data-deletion.js';
 import {beginInstagramConnection} from '../dist/instagram-connection.js';
+import {ensurePublishingSchema} from '../dist/publishing-schema.js';
 import {sealPublishing} from '../dist/publishing-secrets.js';
 
 const hash=value=>createHash('sha256').update(value).digest('hex');
@@ -148,6 +149,19 @@ export async function instagramReliabilitySmoke(db){
   const foreignJob=(await db.query(`INSERT INTO v2_publication_jobs(user_id,request_id,request_hash,title)
    VALUES($1,$2,$3,'Foreign fixture') RETURNING id`,[other,randomUUID(),hash('foreign')])).rows[0].id;
   await db.query(`INSERT INTO v2_publication_targets(job_id,platform,state) VALUES($1,'instagram','succeeded')`,[foreignJob]);
+  // Pause another process's startup after its identity scan. Cleanup must not
+  // be undone when that process resumes with the now-stale connection rows.
+  let scanned,releaseScan;
+  const scanReady=new Promise(resolve=>{scanned=resolve});
+  const scanRelease=new Promise(resolve=>{releaseScan=resolve});
+  const staleBackfill=ensurePublishingSchema({async query(sql,args){
+   const result=await db.query(sql,args);
+   if(sql==='SELECT user_id,instagram_user_id FROM v2_instagram_connections'){
+    scanned();await scanRelease;
+   }
+   return result;
+  }});
+  await Promise.race([scanReady,staleBackfill.then(()=>{throw Error('Expected identity scan')})]);
   const deletions=await Promise.all([callback('data-deletion'),callback('data-deletion')]);
   assert.ok(deletions.every(item=>item.status===200));assert.equal(deletions[0].body,deletions[1].body);
   assert.equal(forwards,2,'Duplicate deletion must not repeat v1 handling');
@@ -175,6 +189,7 @@ export async function instagramReliabilitySmoke(db){
   await db.query(`UPDATE v2_instagram_data_deletions SET not_before=clock_timestamp()-interval '1 second'`);
   for(let pass=0;pass<10&&await deletionStatus()==='pending';pass++)await processInstagramDataDeletionOnce(db,storage);
   assert.equal(await deletionStatus(),'completed');
+  releaseScan();await staleBackfill;
   const deleted=(await db.query(`SELECT owners,completed_at FROM v2_instagram_data_deletions`)).rows[0];
   assert.deepEqual(deleted.owners,[]);assert.ok(deleted.completed_at,'Completion drops owner links');
   assert.equal((await db.query('SELECT 1 FROM v2_instagram_connections WHERE user_id=$1',[owner])).rowCount,0);

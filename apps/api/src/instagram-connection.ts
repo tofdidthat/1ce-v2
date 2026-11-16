@@ -188,7 +188,8 @@ export async function instagramConnectionStatus(db:QueryableV2,owner:number,conf
  catch{return empty;}
  return {available:true,connected:true,username:String(row.username),publishingEnabled:false};
 }
-export async function disconnectInstagram(db:QueryableV2,owner:number):Promise<void>{
+export async function disconnectInstagram(pool:PublishingPool,owner:number):Promise<void>{
+ await instagramMutation(pool,owner,async db=>{
  await db.query('DELETE FROM v2_instagram_oauth WHERE user_id=$1',[owner]);
  const connection=(await db.query('SELECT instagram_user_id FROM v2_instagram_connections WHERE user_id=$1',[owner])).rows[0];
  if(connection&&/^[0-9]{1,32}$/.test(String(connection.instagram_user_id)))
@@ -197,4 +198,5 @@ export async function disconnectInstagram(db:QueryableV2,owner:number):Promise<v
   [owner,sha('instagram-meta-subject:'+String(connection.instagram_user_id))]);
  // This disconnects 1CE; users may additionally revoke the app from Instagram settings.
  await db.query('DELETE FROM v2_instagram_connections WHERE user_id=$1',[owner]);
+ });
 }

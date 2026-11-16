@@ -21,7 +21,11 @@ function callbackUrl():string{
 }
 function decodeBase64Url(value:string):Buffer{
  if(!/^[A-Za-z0-9_-]+$/.test(value))throw Error('Malformed Meta signature');
- return Buffer.from(value,'base64url');
+ const decoded=Buffer.from(value,'base64url');
+ // Node accepts nonzero unused trailing bits. Reject alternate spellings of
+ // the same signature, which would otherwise create a fresh replay receipt.
+ if(decoded.toString('base64url')!==value)throw Error('Malformed Meta signature');
+ return decoded;
 }
 export function parseMetaSignedRequest(value:string,appSecret:string):{userId:string}{
  if(value.length>12000||!appSecret||appSecret.length<16)throw Error('Invalid Meta signed request');

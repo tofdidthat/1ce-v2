@@ -125,10 +125,12 @@ test('status uses local ciphertext, never leaks access token, disconnect is acco
   {available:false,connected:false,username:null,publishingEnabled:false});
  assert.deepEqual(await instagramConnectionStatus(db,42,config),
   {available:true,connected:true,username:'fixture',publishingEnabled:false});
- await disconnectInstagram(db,42);
+ await disconnectInstagram(pool(db),42);
  assert.equal(queries.filter(q=>q.sql.startsWith('DELETE')).length,2);
  assert.ok(queries.some(q=>q.sql.includes('INSERT INTO v2_instagram_compliance_subjects')));
- assert.ok(queries.every(q=>q.args[0]===42));
+ assert.ok(queries.filter(q=>q.args).every(q=>q.args[0]===42));
+ assert.ok(queries.findIndex(q=>q.sql.includes('pg_advisory_xact_lock'))<queries.findIndex(q=>q.sql.startsWith('SELECT instagram_user_id')));
+ assert.equal(queries.at(-1).sql,'COMMIT');
 });
 
 test('Meta app from v1 uses CLIENT_ID/CLIENT_SECRET without creating new app credentials',()=>{

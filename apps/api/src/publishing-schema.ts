@@ -17,8 +17,12 @@ export function ensurePublishingSchema(db:QueryableV2):Promise<void>{
     const instagramUserId=String(row.instagram_user_id),userId=Number(row.user_id);
     if(!Number.isSafeInteger(userId)||userId<1||!/^[0-9]{1,32}$/.test(instagramUserId))continue;
     const identityHash=createHash('sha256').update('instagram-meta-subject:'+instagramUserId).digest('hex');
-    await db.query('INSERT INTO v2_instagram_compliance_subjects(user_id,instagram_user_id_hash)'+
-     ' VALUES($1,$2) ON CONFLICT(user_id,instagram_user_id_hash) DO NOTHING',[userId,identityHash]);
+    // The scan can outlive a completed deletion. Revalidate and lock the live
+    // connection in the insert itself, so a stale scan cannot restore its link.
+    await db.query(`INSERT INTO v2_instagram_compliance_subjects(user_id,instagram_user_id_hash)
+     SELECT user_id,$2 FROM (SELECT user_id FROM v2_instagram_connections
+      WHERE user_id=$1 AND instagram_user_id=$3 FOR SHARE) live
+     ON CONFLICT(user_id,instagram_user_id_hash) DO NOTHING`,[userId,identityHash,instagramUserId]);
    }
   })().catch(error=>{ready.delete(db);throw error});ready.set(db,pending);
  }

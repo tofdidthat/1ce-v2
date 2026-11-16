@@ -46,6 +46,17 @@ test('signed_request verifies HMAC and preserves large Meta user ids exactly',()
  assert.throws(()=>parseMetaSignedRequest(signedRequest(),'different-synthetic-secret'),/signature/);
 });
 
+test('alternate base64 spelling cannot bypass an existing callback replay receipt',async()=>{
+ const [signature,payload]=signedRequest().split('.');
+ const alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+ const alternate=signature.slice(0,-1)+alphabet[alphabet.indexOf(signature.at(-1))+1];
+ assert.deepEqual(Buffer.from(alternate,'base64url'),Buffer.from(signature,'base64url'));
+ const input=req('data-deletion',alternate+'.'+payload),db=pool({matched:true}),output=res();
+ let forwarded=false;
+ await handleInstagramMetaCompliance(input.request,output,input.url,db,config,{http:async()=>{forwarded=true;throw Error('Must not forward')}});
+ assert.equal(output.status,400);assert.equal(db.calls.length,0);assert.equal(forwarded,false);
+});
+
 test('valid HMAC does not admit an unsupported algorithm or malformed user id',()=>{
  for(const data of [{algorithm:'SHA1',user_id:'123'},{algorithm:'HMAC-SHA256',user_id:'not-a-meta-id'}]){
   const payload=Buffer.from(JSON.stringify(data)).toString('base64url');
