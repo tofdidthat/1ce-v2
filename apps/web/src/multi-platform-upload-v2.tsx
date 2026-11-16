@@ -281,7 +281,7 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
  const instagramReady=!instagramSelected||!!(currentStatus?.instagram?.connected&&currentStatus.instagram.publishingEnabled);
  const destinationsValid=selectedPlatforms.length>0&&selectedPlatforms.every(p=>p==='YouTube'||p==='Instagram');
  const previewFormats=youtubeSelected
-  ? formats.filter(format=>selectedYouTubeFormats.includes(format.id))
+  ? formats.filter(format=>selectedYouTubeFormats.includes(format.id)).reverse()
   : formats.filter(format=>format.id==='vertical');
 
  return (
