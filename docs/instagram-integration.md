@@ -80,3 +80,103 @@ Official docs: https://developers.facebook.com/docs/instagram-platform/instagram
 7. Enable gradually, monitor Meta errors/rate limits, then consider app-wide rollout. No automatic background publication from simply connecting an account.
 
 Reference: [Meta Content Publishing](https://developers.facebook.com/documentation/instagram-platform/content-publishing). Meta documents a 100 API-published-posts per 24-hour moving limit; provider limits and policies may change.
+
+## T030 — security and recovery candidate (not a production attestation)
+
+The candidate adds signed, migration-aware Meta callbacks at
+`POST /api/instagram/meta-compliance?action=deauthorize|data-deletion`.
+The frontend rewrite preserves `/api/instagram/auth` and its `action` query;
+the API forwards validated signed requests to the fixed v1 fallback host.
+The existing Meta dashboard is not modified by this change.
+
+- HMAC-SHA256, exact decimal user IDs, bounded bodies and no-store responses
+  protect the callback. Migration 020 stores pseudonymous V2 identity links and
+  hashed callback receipts. A PostgreSQL advisory lock serializes duplicate
+  deliveries, and the receipt prevents a replay from revoking a later connection.
+  Receipts contain only a digest, action, time and validated v1 acknowledgement.
+- V1-only deletion responses pass through. For a known V2 identity, the callback
+  revokes credentials, fences queued/running Instagram targets and schedules
+  durable cleanup (migration 021). It returns an opaque confirmation code and
+  `/api/instagram/data-deletion-status?code=...`, which reports `pending` until
+  both local cleanup and verified legacy handling complete. A lost database
+  commit after a successful v1 call may cause another v1 delivery; the legacy
+  deletion operation must remain idempotent.
+- **Approved scope (user decision, 2026-11-16):** erase Instagram connections,
+  OAuth claims, identifiers/identity links, targets, attempt history, checkpoints,
+  grants, and Instagram-only job metadata/temporary rendered MP4s for associated
+  1CE accounts, including older connections. Preserve the 1CE account, original
+  library media and all other destinations. Mixed jobs retain metadata needed by
+  their remaining destinations; only their Instagram fields/targets are erased.
+  This does not delete posts already hosted by Instagram or backups/provider logs.
+  Completed cleanup keeps only an opaque receipt/status, with owner links removed.
+- New OAuth/storage and enqueue mutations share the owner's transaction lock;
+  pending deletion blocks reconnect/enqueue. An OAuth claim remains durably fenced
+  until token storage, so an old paused callback cannot restore a deleted link.
+  The cleaner waits two minutes for in-flight bounded PUTs to abort, deletes only
+  validated rendered keys in batches, and retries R2/DB failures without claiming
+  completion. It runs without FFmpeg and with Reels publishing disabled. Unsafe
+  keys or unavailable R2 keep status pending; original/YouTube keys are refused.
+- Older disconnected identities absent from the pre-migration database cannot
+  be reconstructed from a hash. Current connections are backfilled, and new
+  connects/disconnects preserve identity links until deletion. An unknown subject
+  with unmapped V2 history receives retryable `instagram_deletion_identity_unresolved`
+  after v1 handling, requiring verified operator identity resolution. Inventory
+  historical identity mappings before release; do not infer ownership or claim
+  those records were deleted.
+- Graph resource requests use Bearer headers; code exchange and YouTube refresh
+  use POST bodies. Meta's current [Business Login documentation](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/business-login)
+  still specifies GET parameters for Instagram long-token exchange and refresh.
+  No unsupported POST/header replacement is introduced for those endpoints.
+  Meta also fetches a public HTTPS `video_url`; its scoped, expiring capability
+  cannot be replaced with a custom request header controlled by 1CE.
+- Application diagnostics strip complete URL queries, including encoded
+  redirects, and credential/header fields. Synthetic tests cover OAuth,
+  media capabilities, R2 signatures and YouTube upload session IDs. **This does
+  not configure provider/proxy logging.** Before release, verify query omission
+  in Railway/Vercel access logs and any HTTP tracing; never copy raw callback,
+  refresh, media delivery or resumable URLs into logs.
+- The browser retains an account-scoped request UUID and hashed intent across
+  reloads, including terminal history results. It blocks a submission if it
+  cannot persist the recovery record. Same media/details recover the old job;
+  an explicit “Start another publication” after acknowledgement permits a new
+  identical publication. Editing details is a different intent. Clearing site
+  data or changing browser/device loses this local recovery record; the server
+  still enforces idempotency for any request UUID it receives.
+- A provider-confirmed Reel whose settle loses its lease is reconciled to
+  `needs_review` with its media ID, using the original attempt and persisted
+  checkpoint. No provider request occurs in reconciliation. Process/database
+  interruption after `publish_started_at` is quarantined on lease expiry.
+- The existing disposable PostgreSQL CI runner includes Instagram lease expiry,
+  late confirmation, checkpoint failure, crash recovery, reconnect and concurrent
+  callback delivery scenarios. Meta/R2 are simulated. Local unit tests do not
+  establish that live Meta callback URLs, legacy hosting, edge query logging or
+  production deletion behavior are configured correctly.
+
+### T030 follow-up verification (2026-11-16)
+
+- Reproduced the cancelled Node 26 CI job: a synchronous storage exception in
+  its native Web Locks callback left the promise pending. The callback now
+  rejects asynchronously. A bounded regression covers rejection/recovery and
+  concurrent reservations. All 205 web tests pass locally on Node 22 and 26;
+  API tests pass (276 passed, one renderer test skipped locally). A real local
+  HTTP test injects synthetic upstream secrets into database-health and account
+  errors and verifies that neither console output nor response bodies expose them.
+- An isolated Chromium check exercised the actual recovery module with real
+  localStorage/Web Locks: reload, a second tab, twelve concurrent reservations,
+  account isolation, storage rejection, acknowledgement and explicit restart.
+  No publishing API was called; this does not attest the full signed-in UI.
+- A bounded Railway production sample for 2026-11-16 00:00–16:15 UTC contained
+  101 status requests and two media-delivery requests, with no query strings in
+  the returned paths. The 36 runtime records sampled contained no credential
+  markers. These samples do not establish upstream tracing or retention policy.
+  No raw log records or credentials are included in this evidence.
+- The fixed v1 callback returned HTTP 400 `Invalid signed request` for an
+  intentionally invalid synthetic signature. No valid deletion/revocation was
+  sent. Successful signed forwarding and v1 backend deletion remain unverified.
+- The Meta dashboard had no authenticated session. Vercel project access
+  returned HTTP 403 for the configured team, despite MCP connection readiness;
+  its access logs could not be inspected. No configuration was changed.
+- The generic policy and v1 forwarding contract initially lacked a V2 deletion
+  scope. The user subsequently approved the integration-only scope above. Its
+  implementation is tested against disposable PostgreSQL and simulated R2;
+  no production migration, callback setting or real data deletion was performed.

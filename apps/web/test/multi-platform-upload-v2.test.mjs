@@ -59,7 +59,7 @@ test('publishing requires connected selected destinations and supported media wi
  assert.match(css,/\.onece-multi-destination-popover/);
  assert.match(multi,/Publish public Instagram Reel/);
  assert.match(multi,/Original video publishing is unavailable/);
- assert.match(multi,/pending.current=\{requestId:crypto.randomUUID\(\)/);
+ assert.match(multi,/requestIdForPublishingIntent\(userId,intent\)/);
  assert.match(multi,/if\(!pending.current\)/);
  assert.match(multi,/signal,pending.current/);
  assert.match(multi,/controller.abort\(\);clearTimeout\(timer\)/);

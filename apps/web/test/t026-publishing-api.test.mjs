@@ -63,6 +63,16 @@ test('actual backend errors have actionable descriptions and malformed status fa
  const original=globalThis.fetch;globalThis.fetch=async()=>Response.json(null);
  try{await assert.rejects(publishingRequest(api,'/status',new AbortController().signal),/Invalid publishing response/)}finally{globalThis.fetch=original;}
 });
+test('status exposes the owner-scoped idempotency key needed to reconcile a reload',async()=>{
+ const original=globalThis.fetch;
+ globalThis.fetch=async()=>Response.json({available:true,connected:true,jobs:[{id:'job',requestId:'eae8d6c1-88b3-4c84-a605-b56e2982bd0a',title:'Track',state:'queued',targets:[]}]});
+ try{
+  const status=await publishingRequest(api,'/status',new AbortController().signal);
+  assert.equal(status.jobs[0].requestId,'eae8d6c1-88b3-4c84-a605-b56e2982bd0a');
+  globalThis.fetch=async()=>Response.json({available:true,connected:true,jobs:[{id:'job',title:'Track',state:'queued',targets:[]}]});
+  await assert.rejects(publishingRequest(api,'/status',new AbortController().signal),/Invalid publishing status/);
+ }finally{globalThis.fetch=original;}
+});
 test('signed upload destinations must be private R2 HTTPS URLs',async()=>{
  const original=globalThis.fetch;let calls=0;
  globalThis.fetch=async()=>{calls++;return Response.json({id:12,uploadUrl:'https://evil.invalid/file'})};

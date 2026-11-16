@@ -1,11 +1,40 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {beginInstagramConnection,startInstagramConnection,finishInstagramConnection,
+import {beginInstagramConnection as beginConnection,startInstagramConnection as startConnection,finishInstagramConnection as finishConnection,
  instagramConnectionStatus,disconnectInstagram,instagramConfig} from '../dist/instagram-connection.js';
 import {openPublishing} from '../dist/publishing-secrets.js';
-
 const config={appId:'123456',appSecret:'fixture-meta-secret-not-real',redirectUri:'https://api.invalid/auth/instagram/callback',
  webOrigin:'https://1ce.lol',encryptionSecret:'fixture-existing-publishing-master-key'};
+
+function pool(db){
+ const query=(sql,args)=>sql.startsWith('SELECT 1 FROM v2_instagram_data_deletions')
+  ?Promise.resolve({rowCount:0,rows:[]}):db.query(sql,args);
+ return{query,async connect(){return{query,release(){}}}};
+}
+const beginInstagramConnection=(db,...args)=>beginConnection(pool(db),...args);
+const startInstagramConnection=(db,...args)=>startConnection(pool(db),...args);
+const finishInstagramConnection=(req,res,url,db,...args)=>finishConnection(req,res,url,pool(db),...args);
+
+test('pending deletion blocks a new OAuth transaction under the owner lock',async()=>{
+ const calls=[],client={async query(sql,args){calls.push({sql,args});return{rowCount:sql.includes('FROM v2_instagram_data_deletions')?1:0,rows:[]}},release(){}};
+ await assert.rejects(beginConnection({connect:async()=>client,query:client.query},42,config),{code:'instagram_data_deletion_pending'});
+ assert.ok(calls.some(call=>call.sql==='ROLLBACK'));assert.equal(calls.some(call=>call.sql.startsWith('INSERT')),false);
+});
+
+test('an OAuth claim erased by deletion cannot reconnect even after cleanup has finished',async()=>{
+ const calls=[],db={async query(sql,args){calls.push({sql,args});
+  return sql.startsWith('DELETE FROM v2_instagram_oauth WHERE state_hash=')?{rowCount:0,rows:[]}:{rowCount:1,rows:[{user_id:42}]};
+ }};
+ const http=async url=>String(url).startsWith('https://api.instagram.com/')
+  ?Response.json({user_id:'123456789',access_token:'synthetic-short'})
+  :String(url).startsWith('https://graph.instagram.com/access_token')
+   ?Response.json({access_token:'synthetic-long',expires_in:5184000}):Response.json({id:'123456789',username:'fixture'});
+ const input=callback(),output=response();
+ await finishInstagramConnection(input.req,output,input.url,db,config,42,http);
+ assert.match(output.headers.Location,/instagram-error&reason=instagram_state_expired/);
+ assert.equal(calls.some(call=>call.sql.includes('INSERT INTO v2_instagram_connections')),false);
+});
+
 function response(){return{status:0,headers:{},body:'',writeHead(status,headers){this.status=status;this.headers=headers},end(body){this.body=body||''}}}
 function callback(state='igpub_'+'a'.repeat(43),cookie='onece_v2_instagram_state='+'b'.repeat(43)){
  const req={headers:{cookie}},url=new URL(config.redirectUri+'?state='+state+'&code=fixture-code');
@@ -45,13 +74,21 @@ test('Instagram callback rejects missing browser cookie and state replay without
 });
 test('Instagram exchange verifies account, encrypts long-lived token and returns no credentials to browser',async()=>{
  const queries=[];
- const db={async query(sql,args){queries.push({sql,args});return sql.startsWith('DELETE')?
+ const db={async query(sql,args){queries.push({sql,args});return sql.startsWith('DELETE')||sql.startsWith('UPDATE v2_instagram_oauth SET claim_token')?
   {rowCount:1,rows:[{user_id:42}]}:{rowCount:1,rows:[]}}};
- const http=async(url)=>{
+ const http=async(url,init)=>{
   const host=new URL(String(url)).hostname;
-  if(host==='api.instagram.com')return new Response('{"access_token":"short-token-fixture","user_id":17841405309211844}',{headers:{'Content-Type':'application/json'}});
+  if(host==='api.instagram.com'){
+   assert.equal(new URL(String(url)).search,'');assert.equal(init.method,'POST');
+   assert.equal(init.body.get('client_secret'),config.appSecret);assert.equal(init.body.get('code'),'fixture-code');
+   return new Response('{"access_token":"short-token-fixture","user_id":17841405309211844}',{headers:{'Content-Type':'application/json'}});
+  }
   if(host==='graph.instagram.com'&&String(url).includes('/access_token'))return Response.json({access_token:'long-token-fixture',expires_in:5184000});
-  if(host==='graph.instagram.com'&&String(url).includes('/me?'))return new Response('{"id":17841405309211844,"user_id":28621378697485455,"username":"artist.fixture"}',{headers:{'Content-Type':'application/json'}});
+  if(host==='graph.instagram.com'&&String(url).includes('/me?')){
+   assert.equal(new URL(String(url)).searchParams.has('access_token'),false);
+   assert.equal(init.headers.Authorization,'Bearer long-token-fixture');
+   return new Response('{"id":17841405309211844,"user_id":28621378697485455,"username":"artist.fixture"}',{headers:{'Content-Type':'application/json'}});
+  }
   throw Error('Unexpected URL');
  };
  const {req,url}=callback(),res=response();
@@ -62,6 +99,7 @@ test('Instagram exchange verifies account, encrypts long-lived token and returns
  assert.equal(save.args[0],42);assert.equal(save.args[1],'17841405309211844');
  assert.equal(save.args[2],'artist.fixture');
  assert.equal(openPublishing(save.args[3],'instagram-access:42',config.encryptionSecret),'long-token-fixture');
+ assert.match(save.args[6],/^[a-f0-9]{64}$/,'Meta identity tombstone stores a one-way hash');
  assert.doesNotMatch(JSON.stringify(save),/long-token-fixture|short-token-fixture/);
  assert.doesNotMatch(JSON.stringify(res),/token-fixture|fixture-code/);
 });
@@ -80,15 +118,19 @@ test('personal accounts cannot be connected or stored',async()=>{
 });
 test('status uses local ciphertext, never leaks access token, disconnect is account scoped',async()=>{
  const row={username:'fixture',expires_at:new Date(Date.now()+86400000).toISOString(),
+  instagram_user_id:'17841405309211844',
   access_cipher:(await import('../dist/publishing-secrets.js')).sealPublishing('long-token-fixture','instagram-access:42',config.encryptionSecret)};
  const queries=[],db={async query(sql,args){queries.push({sql,args});return{rows:[row],rowCount:1}}};
  assert.deepEqual(await instagramConnectionStatus(db,42,null),
   {available:false,connected:false,username:null,publishingEnabled:false});
  assert.deepEqual(await instagramConnectionStatus(db,42,config),
   {available:true,connected:true,username:'fixture',publishingEnabled:false});
- await disconnectInstagram(db,42);
+ await disconnectInstagram(pool(db),42);
  assert.equal(queries.filter(q=>q.sql.startsWith('DELETE')).length,2);
- assert.ok(queries.every(q=>q.args[0]===42));
+ assert.ok(queries.some(q=>q.sql.includes('INSERT INTO v2_instagram_compliance_subjects')));
+ assert.ok(queries.filter(q=>q.args).every(q=>q.args[0]===42));
+ assert.ok(queries.findIndex(q=>q.sql.includes('pg_advisory_xact_lock'))<queries.findIndex(q=>q.sql.startsWith('SELECT instagram_user_id')));
+ assert.equal(queries.at(-1).sql,'COMMIT');
 });
 
 test('Meta app from v1 uses CLIENT_ID/CLIENT_SECRET without creating new app credentials',()=>{

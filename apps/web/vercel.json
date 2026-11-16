@@ -1,6 +1,14 @@
 {
   "rewrites": [
     {
+      "source": "/api/instagram/data-deletion-status",
+      "destination": "https://1ce-v2-production.up.railway.app/api/instagram/data-deletion-status"
+    },
+    {
+      "source": "/api/instagram/auth",
+      "destination": "https://1ce-v2-production.up.railway.app/api/instagram/meta-compliance"
+    },
+    {
       "source": "/((?!assets/).*)",
       "destination": "/index.html"
     }

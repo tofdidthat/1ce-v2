@@ -8,6 +8,7 @@ import pg from 'pg';
 import { handleLibraryFiles } from './library-files.js';
 import {handleAudioWaveform} from './audio-waveform.js';
 import {handlePublishing} from './publishing-api.js';
+import {redactSensitiveLogText} from './safe-logs.js';
 import {startPublicationWorker} from './publication-worker.js';
 import {rateLimitExceeded} from './api-rate-limits.js';
 import {passwordWorkLimiter,passwordWorkPolicy} from './login-admission.js';
@@ -93,7 +94,7 @@ const server=createServer(async(req,res)=>{
  if(pathname==='/health'&&req.method==='GET')return json(res,200,{ok:true,service:'1ce-v2-api'});
  if(pathname==='/health/db'&&req.method==='GET'){
   try{await pool.query('SELECT 1');return json(res,200,{ok:true,database:'connected'});}
-  catch(err){console.error('v2 database health check failed',(err as Error)?.message);return json(res,503,{ok:false,database:'unavailable'});}
+   catch(err){console.error('v2 database health check failed',redactSensitiveLogText(String((err as Error)?.message||'')));return json(res,503,{ok:false,database:'unavailable'});}
  }
  if(!allowed && req.headers.origin)return json(res,403,{error:'Origin not allowed'});
  try{
@@ -137,7 +138,7 @@ const server=createServer(async(req,res)=>{
     await client.query('COMMIT');
    }catch(err){
     try{await client.query('ROLLBACK');}catch{}
-    console.error('Google callback failed:',(err as Error)?.message);
+    console.error('Google callback failed:',redactSensitiveLogText(String((err as Error)?.message||'')));
     return googleError(res);
    }finally{client.release();}
    return redirect(res,origin+'/app?login_code='+encodeURIComponent(loginCode),{'Set-Cookie':googleStateCookie+'=; HttpOnly; Secure; SameSite=Lax; Path=/auth/google; Max-Age=0'});
@@ -198,7 +199,7 @@ const server=createServer(async(req,res)=>{
    return json(res,200,{user:{id:user.id,email:user.email,name:user.name,picture:user.picture}},{'Set-Cookie':cookie(token,604800)});
   }
   return json(res,404,{error:'Not found'});
- }catch(err){console.error('v2 api error',(err as Error)?.message);return json(res,500,{error:'Service unavailable'});}
+ }catch(err){console.error('v2 api error',redactSensitiveLogText(String((err as Error)?.message||'')));return json(res,500,{error:'Service unavailable'});}
 });
 // Importing the router in isolated tests must not bind a live port. Direct
 // "node src/server.js" / Railway starts exactly as before.

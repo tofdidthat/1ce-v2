@@ -31,13 +31,42 @@ export async function quarantineExpiredInstagramClaims(db:QueryableV2):Promise<v
   ORDER BY t.claim_until LIMIT 10 FOR UPDATE SKIP LOCKED
  ), changed AS (
   UPDATE v2_publication_targets t SET state='needs_review',claim_token=NULL,
-   claim_until=NULL,last_error_code='instagram_claim_expired',updated_at=clock_timestamp()
+   claim_until=NULL,remote_id=COALESCE((SELECT c.published_media_id FROM v2_instagram_checkpoints c
+    WHERE c.target_id=t.id),t.remote_id),last_error_code='instagram_claim_expired',updated_at=clock_timestamp()
   FROM stale s WHERE t.id=s.id AND t.claim_token=s.claim_token
   RETURNING t.id,s.attempts,s.claim_token
  ) UPDATE v2_publication_attempts a SET ended_at=clock_timestamp(),
   outcome='needs_review',error_code='instagram_claim_expired'
   FROM changed c WHERE a.target_id=c.id AND a.attempt=c.attempts
    AND a.claim_token=c.claim_token AND a.ended_at IS NULL`);
+}
+export async function settleConfirmedInstagramReel(db:QueryableV2,targetId:string,claimToken:string,mediaId:string):Promise<void>{
+ const settled=await settlePublicationTarget(db,targetId,claimToken,'succeeded',{remoteId:mediaId});
+ if(!settled){
+  await reconcileConfirmedInstagramReel(db,targetId,claimToken,mediaId);
+  throw new PublishingError('instagram_publish_needs_review',409);
+ }
+}
+async function reconcileConfirmedInstagramReel(db:QueryableV2,targetId:string,claimToken:string,mediaId:string):Promise<void>{
+ // A lease can expire or deauth can quarantine a target while Meta responds.
+ // Preserve the confirmation against the original attempt, without reclaiming
+ // work, changing succeeded targets, or making another provider request.
+ await db.query(`WITH confirmation AS (
+  UPDATE v2_instagram_checkpoints c SET published_media_id=$3,updated_at=clock_timestamp()
+  WHERE c.target_id=$1::bigint AND c.publish_started_at IS NOT NULL
+   AND (c.published_media_id IS NULL OR c.published_media_id=$3)
+   AND EXISTS (SELECT 1 FROM v2_publication_attempts a WHERE a.target_id=c.target_id AND a.claim_token=$2::uuid)
+  RETURNING c.target_id
+ ), reconciled AS (
+  UPDATE v2_publication_targets t SET state='needs_review',remote_id=$3,claim_token=NULL,claim_until=NULL,
+   last_error_code='instagram_publish_needs_review',updated_at=clock_timestamp()
+  FROM confirmation c WHERE t.id=c.target_id AND t.platform='instagram'
+   AND (t.remote_id IS NULL OR t.remote_id=$3)
+   AND ((t.state='running' AND t.claim_token=$2::uuid) OR t.state='needs_review')
+  RETURNING t.id
+ ) UPDATE v2_publication_attempts a SET ended_at=COALESCE(ended_at,clock_timestamp()),
+  outcome='needs_review',remote_id=$3,error_code='instagram_publish_needs_review'
+  FROM reconciled r WHERE a.target_id=r.id AND a.claim_token=$2::uuid`,[targetId,claimToken,mediaId]);
 }
 async function loadInstagramAccess(db:QueryableV2,owner:number,generation:string,config:InstagramConfig,
  http:typeof fetch):Promise<{accessToken:string;accountId:string}>{
@@ -52,6 +81,8 @@ async function loadInstagramAccess(db:QueryableV2,owner:number,generation:string
   // remain bound to the same authorized Instagram account.
   try{
    const url=new URL('https://graph.instagram.com/refresh_access_token');
+   // This token endpoint documents GET query credentials, unlike Graph resource
+   // calls (Bearer header). External tracing must omit this URL's query.
    url.search=new URLSearchParams({grant_type:'ig_refresh_token',access_token:token}).toString();
    const response=await http(url.href,{redirect:'error',signal:AbortSignal.timeout(20000)});
    const data:unknown=await response.json().catch(()=>null);
@@ -84,7 +115,7 @@ export async function runInstagramReelOnce(db:QueryableV2,{config,storage,http=f
  if(!eligible())return false;
  const target=await claimPublicationTarget(db,'instagram');if(!target)return false;
  const args=[target.id,target.claimToken],controller=new AbortController();
- let heartBusy=false,dir='',artifactKey:string|null=null,publishStarted=false;
+ let heartBusy=false,dir='',artifactKey:string|null=null,publishStarted=false,confirmedMediaId:string|null=null;
  const heartbeat=setInterval(()=>{
   if(heartBusy)return;heartBusy=true;
   void db.query(`UPDATE v2_publication_targets SET claim_until=clock_timestamp()+interval '2 minutes'
@@ -144,11 +175,17 @@ export async function runInstagramReelOnce(db:QueryableV2,{config,storage,http=f
     audioBitrate:'128k',audioSampleRate:48000});
    await fence();bytes=(await stat(output)).size;sha=await hashPublishingFile(output);
    artifactKey=`publishing/users/${owner}/${target.jobId}/${target.id}/${sha}.mp4`;
-   await db.query(`INSERT INTO v2_publication_artifacts(object_key,user_id) VALUES($1,$2)
-    ON CONFLICT(object_key) DO UPDATE SET expires_at=clock_timestamp()+interval '7 days'`,[artifactKey,owner]);
+   const registered=await db.query(`INSERT INTO v2_publication_artifacts(object_key,user_id)
+    SELECT $1,$2 FROM v2_publication_targets t JOIN v2_publication_jobs j ON j.id=t.job_id
+    JOIN v2_instagram_connections i ON i.user_id=j.user_id AND i.generation=j.instagram_generation
+    WHERE t.id=$3::bigint AND t.claim_token=$4::uuid AND t.state='running' AND t.claim_until>clock_timestamp()
+    ON CONFLICT(object_key) DO UPDATE SET expires_at=clock_timestamp()+interval '7 days' RETURNING object_key`,
+   [artifactKey,owner,...args]);
+   if(registered.rowCount!==1)throw new PublishingError('publication_connection_changed',409);
+   await fence();
    const stream=createReadStream(output);
    try{await storage.s3.send(new PutObjectCommand({Bucket:storage.bucket,Key:artifactKey,Body:stream,
-    ContentLength:bytes,ContentType:'video/mp4'}),{abortSignal:controller.signal})}finally{stream.destroy();}
+    ContentLength:bytes,ContentType:'video/mp4'}),{abortSignal:AbortSignal.any([controller.signal,AbortSignal.timeout(60000)])})}finally{stream.destroy();}
    await fence();
    await db.query(`INSERT INTO v2_instagram_checkpoints
     (target_id,connection_generation,artifact_key,artifact_sha,artifact_bytes)
@@ -202,9 +239,10 @@ export async function runInstagramReelOnce(db:QueryableV2,{config,storage,http=f
   if(marked.rowCount!==1)throw new PublishingError('instagram_publish_needs_review',409);
   publishStarted=true;
   const mediaId=await publishInstagramReel({accountId:publishingAccountId,containerId,token:auth.accessToken,http});
+  confirmedMediaId=mediaId;
   await db.query('UPDATE v2_instagram_checkpoints SET published_media_id=$2,updated_at=clock_timestamp() WHERE target_id=$1::bigint',
    [target.id,mediaId]);
-  await settlePublicationTarget(db,target.id,target.claimToken,'succeeded',{remoteId:mediaId});
+  await settleConfirmedInstagramReel(db,target.id,target.claimToken,mediaId);
   await db.query('DELETE FROM v2_instagram_media_grants WHERE target_id=$1::bigint',[target.id]);
   if(artifactKey){
    try{await storage.s3.send(new DeleteObjectCommand({Bucket:storage.bucket,Key:artifactKey}));
@@ -214,10 +252,12 @@ export async function runInstagramReelOnce(db:QueryableV2,{config,storage,http=f
  }catch(error){
   const code=error instanceof PublishingError?error.code:
    error instanceof InstagramReelError?error.code:'instagram_temporarily_unavailable';
-  const permanent=error instanceof PublishingError&&[400,404,422].includes(error.status)||
-   error instanceof InstagramReelError&&!error.retryable;
+  const permanent=(error instanceof PublishingError&&[400,404,422].includes(error.status))||
+   (error instanceof InstagramReelError&&!error.retryable)||code==='instagram_reconnect_required';
   const review=publishStarted||code==='instagram_publish_needs_review'||code==='publication_connection_changed'||code==='checkpoint_invalid';
-  await settlePublicationTarget(db,target.id,target.claimToken,review?'needs_review':permanent?'failed':'retryable',{errorCode:code});
+  const settled=await settlePublicationTarget(db,target.id,target.claimToken,review?'needs_review':permanent?'failed':'retryable',
+   {errorCode:code,remoteId:confirmedMediaId});
+  if(!settled&&confirmedMediaId)await reconcileConfirmedInstagramReel(db,target.id,target.claimToken,confirmedMediaId);
  }finally{
   clearInterval(heartbeat);controller.abort();
   if(dir&&dirname(resolve(dir))===resolve(tmpdir())&&basename(dir).startsWith('onece-publish-'))
