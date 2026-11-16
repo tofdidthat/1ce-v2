@@ -57,3 +57,26 @@ This branch adds **Instagram Business Login** account linking to the existing Up
 7. Run isolated contract tests, disposable DB tests, a Meta-test-account published Reel with explicit user consent, and multi-account permission checks before enabling `publishingEnabled:true`.
 
 Official docs: https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/business-login and https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/content-publishing .
+
+## R02 — gated Instagram Reels publisher (PR candidate, not enabled)
+
+**R02 is OFF by default.** Code, tests and schema can be reviewed/merged without sending any video to Meta. Publishing requires an explicit operator change to `INSTAGRAM_REELS_ENABLED=true` **after** validation and a controlled test Reel authorized by the account owner. Never set this flag just to check connection status.
+
+- Instagram-only or simultaneous YouTube + Instagram jobs use the same verified audio/cover upload. YouTube keeps its independent `private|unlisted|public` choice. Each Instagram job must carry `instagramPublicConsent: true` from a visibly checked per-job checkbox. The server revalidates the consent, owner, selected destinations, connection generation, media ownership and feature flag before queueing.
+- The worker renders an H.264/AAC 9:16 MP4 (initially up to 3 minutes), verifies source ownership and keeps original library files private in R2. It writes a separate checkpoint and temporary rendered artifact.
+- For Instagram Login, Meta cURLs `video_url` from a publicly reachable HTTPS endpoint. 1CE's `/api/publishing/meta-media?token=...` is **not a public bucket**: it validates a cryptographically random, SHA-256-hashed, expiring media grant for one in-flight, owner-approved job and streams only the rendered MP4. No original audio/cover, full R2 listing or permanent anonymous access is exposed. The link can be fetched by anyone holding it until its expiration; do not log or share capability URLs.
+- The Meta Graph contract uses the account verified live via `/me`, creates `media_type=REELS`, checks container `status_code`, and only then invokes `media_publish`. The attempt ledger sets `publish_started_at` **before** the irreversible network request; timeouts, expired worker claims or unknown acknowledgments must enter `needs_review`, never blindly publish a duplicate.
+- R02 adds **019_instagram_reels.sql** (additive tables and columns, without destructive operations). YouTube publishing paths remain available and do not gain Instagram public visibility.
+- `instagram.publishingEnabled` in `/api/publishing/status` stays false until Meta config, R2/FFmpeg, connected account and the server flag all validate.
+
+### Release gates before setting the flag
+
+1. Confirm the existing v1 Meta app has the necessary permission for the professional Instagram test account; for external accounts, check Meta Advanced Access and app review requirements.
+2. Audit live Meta deauthorization and data deletion URLs. These may still point at the old v1 backend; preserve legal handling of v1 data separately, as documented above.
+3. Verify 7/7 CI checks, isolated PostgreSQL migration 019, queue ownership/consent tests, credential refresh/expiry test, and temporary media grant GET/HEAD/Range, expiration and owner isolation. Check Cloudflare R2 remains private.
+4. Review media delivery URL query token exposure in Railway access logs, CDN, observability and Meta's request logs. Scrub query strings. Test Meta's actual fetch behavior, headers and long-processing retry conditions.
+5. Run exactly one approved public test Reel on a dedicated professional test account. Verify the real Instagram media ID, presence/visibility, per-platform result in 1CE and strict no-duplicate behavior under uncertain acknowledgments.
+6. Confirm disconnect/reconnect while queued or running fences old generation. Verify YouTube private video remains private in a combined job.
+7. Enable gradually, monitor Meta errors/rate limits, then consider app-wide rollout. No automatic background publication from simply connecting an account.
+
+Reference: [Meta Content Publishing](https://developers.facebook.com/documentation/instagram-platform/content-publishing). Meta documents a 100 API-published-posts per 24-hour moving limit; provider limits and policies may change.
