@@ -11,6 +11,8 @@ import {publishingConfig,openPublishing,sealPublishing,type PublishingConfig} fr
 import {publishingStorage,downloadPublishingAsset,hashPublishingFile,type PublishingStorage} from './publishing-storage.js';
 import {renderPublication,publicationRendererAvailable} from './publication-renderer.js';
 import {ensurePublishingSchema} from './publishing-schema.js';
+import {instagramConfig} from './instagram-connection.js';
+import {runInstagramReelOnce,quarantineExpiredInstagramClaims,instagramReelsServerEnabled} from './instagram-reels-worker.js';
 type WorkerOptions={storage:PublishingStorage;config:PublishingConfig;http?:typeof fetch;render?:typeof renderPublication};
 export async function recoverYouTubeClaims(db:QueryableV2):Promise<void>{
  // Only this pipeline's YouTube jobs: no bytes can be sent until the session
@@ -29,7 +31,10 @@ export async function recoverYouTubeClaims(db:QueryableV2):Promise<void>{
 async function cleanupArtifacts(db:QueryableV2,storage:PublishingStorage):Promise<void>{
  const rows=(await db.query(`SELECT a.object_key,a.user_id FROM v2_publication_artifacts a WHERE a.expires_at<clock_timestamp()
   AND NOT EXISTS (SELECT 1 FROM v2_youtube_checkpoints c JOIN v2_publication_targets t ON t.id=c.target_id
-   WHERE c.artifact_key=a.object_key AND t.state IN ('queued','retryable','running')) ORDER BY a.expires_at LIMIT 5`)).rows;
+   WHERE c.artifact_key=a.object_key AND t.state IN ('queued','retryable','running'))
+  AND NOT EXISTS (SELECT 1 FROM v2_instagram_checkpoints c JOIN v2_publication_targets t ON t.id=c.target_id
+   WHERE c.artifact_key=a.object_key AND t.state IN ('queued','retryable','running','needs_review'))
+  ORDER BY a.expires_at LIMIT 5`)).rows;
  for(const row of rows){
   const key=String(row.object_key);
   if(!key.startsWith('publishing/users/'+row.user_id+'/')||!/^publishing\/users\/\d+\/[0-9a-f-]+\/\d+\/[a-f0-9]{64}\.mp4$/.test(key))continue;
@@ -175,13 +180,17 @@ export async function runPublicationOnce(db:QueryableV2,{storage,config,http=fet
  return true;
 }
 export function startPublicationWorker(db:QueryableV2):()=>void{
- const config=publishingConfig(),storage=publishingStorage();
- if(!config||!storage||!publicationRendererAvailable())return()=>{};
+ const config=publishingConfig(),instagram=instagramConfig(),storage=publishingStorage();
+ if((!config&&!instagram)||!storage||!publicationRendererAvailable())return()=>{};
  let stopped=false,timer:ReturnType<typeof setTimeout>|null=null;
  const tick=async()=>{
-  try{await ensurePublishingSchema(db);await recoverYouTubeClaims(db);
+  try{
+   await ensurePublishingSchema(db);
+   if(config)await recoverYouTubeClaims(db);
+   if(instagram&&instagramReelsServerEnabled())await quarantineExpiredInstagramClaims(db);
    try{await cleanupArtifacts(db,storage)}catch{console.error('publication artifact cleanup temporarily unavailable');}
-   await runPublicationOnce(db,{config,storage});
+   if(config)await runPublicationOnce(db,{config,storage});
+   if(instagram&&instagramReelsServerEnabled())await runInstagramReelOnce(db,{config:instagram,storage});
   }catch{console.error('publication worker temporarily unavailable');}
   if(!stopped){timer=setTimeout(()=>{void tick()},5000);timer.unref();}
  };
