@@ -56,6 +56,9 @@ test('authorization navigation accepts only the configured API top-level start',
 test('actual backend errors have actionable descriptions and malformed status fails closed',async()=>{
  assert.match(publishingErrorMessage('shorts_must_be_under_3_minutes'),/3 minutes/);
  assert.match(publishingErrorMessage('youtube_reconnect_required'),/Reconnect/);
+ assert.match(publishingErrorMessage('instagram_code_exchange_failed'),/App ID, App Secret/);
+ assert.match(publishingErrorMessage('instagram_connection_save_failed'),/could not save/);
+ assert.match(publishingErrorMessage('instagram_session_missing'),/1CE login session/);
  assert.match(publishingErrorMessage('youtube_visibility_restricted'),/do not submit/);
  const original=globalThis.fetch;globalThis.fetch=async()=>Response.json(null);
  try{await assert.rejects(publishingRequest(api,'/status',new AbortController().signal),/Invalid publishing response/)}finally{globalThis.fetch=original;}
