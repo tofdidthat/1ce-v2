@@ -12,7 +12,7 @@ import {claimPublicationTarget,settlePublicationTarget} from './publication-queu
 import {openPublishing,sealPublishing} from './publishing-secrets.js';
 import {PublishingError} from './youtube-connection.js';
 import {type InstagramConfig} from './instagram-connection.js';
-import {InstagramReelError,createInstagramReel,instagramReelStatus,publishInstagramReel,
+import {InstagramReelError,createInstagramReel,instagramReelStatus,publishInstagramReel,resolveInstagramPublishingAccount,
  trustedInstagramDeliveryUrl} from './instagram-reels-api.js';
 import {type PublishingStorage,downloadPublishingAsset,hashPublishingFile} from './publishing-storage.js';
 import {renderPublication} from './publication-renderer.js';
@@ -97,7 +97,10 @@ export async function runInstagramReelOnce(db:QueryableV2,{config,storage,http=f
   if(!job||!job.audio_file_id||!job.cover_file_id||job.instagram_public_confirmed!==true||
    !job.instagram_generation)throw new PublishingError('instagram_public_consent_required',409);
   const owner=Number(job.user_id),generation=String(job.instagram_generation);
-  let auth=await loadInstagramAccess(db,owner,generation,config,http);
+  const auth=await loadInstagramAccess(db,owner,generation,config,http);
+  const publishingAccountId=await resolveInstagramPublishingAccount({
+   token:auth.accessToken,oauthUserId:auth.accountId,http
+  });
   const fence=async()=>{
    controller.signal.throwIfAborted();
    if(!eligible())throw new PublishingError('instagram_reels_not_enabled',503);
@@ -167,7 +170,7 @@ export async function runInstagramReelOnce(db:QueryableV2,{config,storage,http=f
     ON CONFLICT(target_id) DO UPDATE SET token_hash=EXCLUDED.token_hash,expires_at=EXCLUDED.expires_at`,
    [target.id,hash(capability)]);
    await fence();
-   containerId=await createInstagramReel({accountId:auth.accountId,token:auth.accessToken,
+   containerId=await createInstagramReel({accountId:publishingAccountId,token:auth.accessToken,
     videoUrl:delivery,caption:[job.description,job.hashtags].filter(Boolean).join('\n\n').slice(0,2200),http});
    await fence();
    const saved=await db.query(`UPDATE v2_instagram_checkpoints c SET container_id=$3,
@@ -196,7 +199,7 @@ export async function runInstagramReelOnce(db:QueryableV2,{config,storage,http=f
    RETURNING c.target_id`,args);
   if(marked.rowCount!==1)throw new PublishingError('instagram_publish_needs_review',409);
   publishStarted=true;
-  const mediaId=await publishInstagramReel({accountId:auth.accountId,containerId,token:auth.accessToken,http});
+  const mediaId=await publishInstagramReel({accountId:publishingAccountId,containerId,token:auth.accessToken,http});
   await db.query('UPDATE v2_instagram_checkpoints SET published_media_id=$2,updated_at=clock_timestamp() WHERE target_id=$1::bigint',
    [target.id,mediaId]);
   await settlePublicationTarget(db,target.id,target.claimToken,'succeeded',{remoteId:mediaId});
