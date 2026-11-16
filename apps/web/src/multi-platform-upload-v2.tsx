@@ -1,16 +1,123 @@
-import {useEffect,useMemo,useRef,useState} from 'react';
-import {ArrowLeft,Check,Globe2,ImagePlus,Music2,UploadCloud,Video} from 'lucide-react';
+import {useEffect,useId,useLayoutEffect,useMemo,useRef,useState,type CSSProperties} from 'react';
+import {createPortal} from 'react-dom';
+import {ArrowLeft,Check,ChevronDown,ChevronUp,Globe2,ImagePlus,Instagram,MessageCircle,Music2,Send,UploadCloud,Video,Youtube} from 'lucide-react';
 import './multi-platform-upload-v2.css';
 import {publishingRequest,publishingAuthorizationUrl,canRetryPublishingTarget,publishingErrorMessage,type PublishingStatus,type PublishingPayload} from './publishing-api-v2';
 import {uploadPublishingFile} from './upload-file-v2';
 
 type Platform='YouTube'|'TikTok'|'Instagram'|'Telegram'|'Discord';
 type Format='vertical'|'horizontal';
-const platforms:Platform[]=['YouTube','TikTok','Instagram','Telegram','Discord'];
+const platforms:Platform[]=['YouTube','Instagram','TikTok','Telegram','Discord'];
 const formats:{id:Format;label:string;ratio:string}[]=[
  {id:'vertical',label:'Vertical',ratio:'9:16'},
  {id:'horizontal',label:'Horizontal',ratio:'16:9'}
 ];
+type DestinationPickerProps={
+ selected:Platform[];
+ disabled:boolean;
+ status:PublishingStatus|null;
+ onToggle:(platform:Platform)=>void;
+ onConnection:(platform:'YouTube'|'Instagram')=>void;
+};
+// Same compact, anchored destination list used by the original 1CE upload.
+// The popover lives outside the card overflow, with viewport-aware placement.
+function DestinationSymbol({platform}:{platform:Platform}){
+ if(platform==='YouTube')return <Youtube size={17}/>;
+ if(platform==='Instagram')return <Instagram size={17}/>;
+ if(platform==='TikTok')return <Music2 size={17}/>;
+ if(platform==='Telegram')return <Send size={17}/>;
+ return <MessageCircle size={17}/>;
+}
+function DestinationPicker({selected,disabled,status,onToggle,onConnection}:DestinationPickerProps){
+ const [open,setOpen]=useState(false);
+ const [position,setPosition]=useState<CSSProperties>({});
+ const trigger=useRef<HTMLButtonElement|null>(null);
+ const panel=useRef<HTMLDivElement|null>(null);
+ const panelId=useId();
+ useEffect(()=>{if(disabled)setOpen(false)},[disabled]);
+ useLayoutEffect(()=>{
+  if(!open)return;
+  const place=()=>{
+   const rect=trigger.current?.getBoundingClientRect();
+   if(!rect)return;
+   const width=Math.min(420,window.innerWidth-24);
+   const below=window.innerHeight-rect.bottom-16;
+   const above=rect.top-16;
+   const useAbove=below<260&&above>below;
+   setPosition({
+    position:'fixed',width,
+    left:Math.max(12,Math.min(rect.right-width,window.innerWidth-width-12)),
+    maxHeight:Math.max(140,Math.min(480,useAbove?above:below)),
+    ...(useAbove?{bottom:window.innerHeight-rect.top+8,top:'auto'}:{top:rect.bottom+8,bottom:'auto'})
+   });
+  };
+  place();
+  window.addEventListener('resize',place);
+  window.addEventListener('scroll',place,true);
+  return()=>{
+   window.removeEventListener('resize',place);
+   window.removeEventListener('scroll',place,true);
+  };
+ },[open]);
+ useEffect(()=>{
+  if(!open)return;
+  panel.current?.querySelector<HTMLButtonElement>('.onece-multi-destination-option:not(:disabled)')?.focus();
+  const outside=(event:PointerEvent)=>{
+   if(!panel.current?.contains(event.target as Node)&&!trigger.current?.contains(event.target as Node))setOpen(false);
+  };
+  const onEscape=(event:KeyboardEvent)=>{
+   if(event.key==='Escape'){event.preventDefault();setOpen(false);trigger.current?.focus();}
+  };
+  document.addEventListener('pointerdown',outside);
+  document.addEventListener('keydown',onEscape);
+  return()=>{document.removeEventListener('pointerdown',outside);document.removeEventListener('keydown',onEscape);};
+ },[open]);
+ return <div className="onece-multi-destination-picker">
+  <button ref={trigger} type="button" className="onece-multi-destination-trigger"
+   disabled={disabled} aria-expanded={open} aria-controls={panelId}
+   aria-label={'Destinations, '+selected.length+' selected'}
+   onClick={()=>setOpen(value=>!value)}>
+   <span>Destinations</span>
+   <span className="onece-multi-destination-summary" aria-hidden="true">
+    {platforms.filter(platform=>selected.includes(platform)).map(platform=>
+     <span key={platform} title={platform}><DestinationSymbol platform={platform}/></span>)}
+    {!selected.length&&<small>Choose platforms</small>}
+   </span>
+   {open?<ChevronUp size={16}/>:<ChevronDown size={16}/>}
+  </button>
+  {open&&createPortal(
+   <div ref={panel} id={panelId} className="onece-multi-destination-popover" style={position}
+    role="region" aria-label="Destinations">
+    <div className="onece-multi-destination-popover-heading"><strong>Destinations</strong>
+     <span>{selected.length} selected</span>
+    </div>
+    <div className="onece-multi-destination-list" role="group" aria-label="Destination platforms">
+     {platforms.map(platform=>{
+      const youtube=platform==='YouTube',instagram=platform==='Instagram';
+      const connected=youtube?!!status?.connected:instagram?!!status?.instagram?.connected:false;
+      return <div className="onece-multi-destination-row" key={platform}>
+       <button type="button" className="onece-multi-destination-option"
+        disabled={disabled} aria-pressed={selected.includes(platform)}
+        onClick={()=>onToggle(platform)}>
+        <span className="onece-multi-checkbox">{selected.includes(platform)&&<Check size={13}/>}</span>
+        <DestinationSymbol platform={platform}/>
+        <span className="onece-multi-destination-label"><strong>{platform}</strong>
+         <small>{youtube||instagram?(connected?'Connected':'Not connected'):'Coming soon'}</small>
+        </span>
+       </button>
+       {(youtube||instagram)&&<button type="button" className="onece-multi-destination-account"
+        disabled={disabled||!status||(instagram&&!status.instagram?.available)}
+        onClick={()=>onConnection(platform)}>
+        {connected?'Disconnect':'Connect'}
+       </button>}
+      </div>;
+     })}
+    </div>
+    <p className="onece-multi-destination-footnote">Instagram Reels publish publicly. YouTube visibility is separate.</p>
+   </div>,document.body)}
+ </div>;
+}
+
 const publicationState=(state:string)=>({draft:'Draft',queued:'Queued',running:'Rendering or uploading',retryable:'Waiting to retry',succeeded:'Uploaded',failed:'Failed',needs_review:'Needs review',cancelled:'Cancelled'}[state]||'Updating');
 
 type Props={
@@ -32,7 +139,6 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
  const [hashtags,setHashtags]=useState('#shorts #music');
  const [selectedPlatforms,setSelectedPlatforms]=useState<Platform[]>([]);
  const [selectedYouTubeFormats,setSelectedYouTubeFormats]=useState<Format[]>(['vertical']);
- const [instagramPublicConsent,setInstagramPublicConsent]=useState(false);
  const visualInput=useRef<HTMLInputElement|null>(null);
  const audioInput=useRef<HTMLInputElement|null>(null);
  useEffect(()=>{if(initialTitle)setTitle(current=>current||initialTitle)},[initialTitle]);
@@ -50,11 +156,11 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
  const operation=useRef<AbortController|null>(null);
  const pending=useRef<PublishingPayload|null>(null);
  const viewer=useRef(userId);viewer.current=userId;
- useEffect(()=>{pending.current=null;setAccepted(false);},[title,description,hashtags,privacy,audioFile,image,video,selectedPlatforms,selectedYouTubeFormats,instagramPublicConsent]);
+ useEffect(()=>{pending.current=null;setAccepted(false);},[title,description,hashtags,privacy,audioFile,image,video,selectedPlatforms,selectedYouTubeFormats]);
  useEffect(()=>{
   operation.current?.abort();operation.current=null;pending.current=null;
   setStatus(null);setBusy(false);setNotice('');setFailure('');
-  setAudio(null);setVisual(null);setVideo(null);setTitle(initialTitle);setDescription('');setHashtags('#shorts #music');setPrivacy('private');setSelectedPlatforms([]);setSelectedYouTubeFormats(['vertical']);setInstagramPublicConsent(false);
+  setAudio(null);setVisual(null);setVideo(null);setTitle(initialTitle);setDescription('');setHashtags('#shorts #music');setPrivacy('private');setSelectedPlatforms([]);setSelectedYouTubeFormats(['vertical']);
   return()=>{operation.current?.abort();};
  },[userId]);
  useEffect(()=>{
@@ -93,7 +199,7 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
    selectedPlatforms.some(p=>p!=='YouTube'&&p!=='Instagram')||
    (selectedYoutube&&(!currentStatus?.available||!currentStatus.connected))||
    (selectedInstagram&&(!currentStatus?.instagram?.publishingEnabled||
-     !currentStatus.instagram.connected||!instagramPublicConsent)))return;
+     !currentStatus.instagram.connected)))return;
   if(!pending.current){
    setNotice('Uploading audio…');const audioFileId=await uploadPublishingFile(api,audioFile,'audio',signal,setNotice);
    signal.throwIfAborted();setNotice('Uploading image…');const coverFileId=await uploadPublishingFile(api,image,'cover',signal,setNotice);
@@ -123,9 +229,27 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
   }
  };
  const togglePlatform=(platform:Platform)=>{
-  if(platform==='Instagram')setInstagramPublicConsent(false);
   setSelectedPlatforms(current=>current.includes(platform)?current.filter(item=>item!==platform):[...current,platform]);
  };
+ const manageDestination=(platform:'YouTube'|'Instagram')=>void act(async signal=>{
+  if(platform==='YouTube'){
+   if(currentStatus?.connected){
+    await publishingRequest(api,'/youtube/disconnect',signal,{});
+    signal.throwIfAborted();setStatus(null);
+   }else{
+    const result=await publishingRequest<{url:string}>(api,'/youtube/connect',signal,{});
+    signal.throwIfAborted();window.location.assign(publishingAuthorizationUrl(api,result.url));
+   }
+  }else{
+   if(currentStatus?.instagram?.connected){
+    await publishingRequest(api,'/instagram/disconnect',signal,{});
+    signal.throwIfAborted();setStatus(null);
+   }else{
+    const result=await publishingRequest<{url:string}>(api,'/instagram/connect',signal,{});
+    signal.throwIfAborted();window.location.assign(publishingAuthorizationUrl(api,result.url));
+   }
+  }
+ });
  const toggleYouTubeFormat=(format:Format)=>{
   setSelectedYouTubeFormats(current=>current.includes(format)
    ?(current.length===1?current:current.filter(item=>item!==format))
@@ -134,7 +258,7 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
  const youtubeSelected=selectedPlatforms.includes('YouTube');
  const instagramSelected=selectedPlatforms.includes('Instagram');
  const youtubeReady=!youtubeSelected||!!(currentStatus?.available&&currentStatus.connected);
- const instagramReady=!instagramSelected||!!(currentStatus?.instagram?.connected&&currentStatus.instagram.publishingEnabled&&instagramPublicConsent);
+ const instagramReady=!instagramSelected||!!(currentStatus?.instagram?.connected&&currentStatus.instagram.publishingEnabled);
  const destinationsValid=selectedPlatforms.length>0&&selectedPlatforms.every(p=>p==='YouTube'||p==='Instagram');
  const previewFormats=youtubeSelected
   ? formats.filter(format=>selectedYouTubeFormats.includes(format.id))
@@ -148,7 +272,7 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
     </button>
     <div className="onece-multi-title"><Globe2 size={22}/><h1>1CE Upload</h1></div>
     <p>Prepare one upload for multiple platforms. Inspired by the original 1CE workflow.</p>
-    {!currentStatus?.connected&&<p>Connect YouTube to publish now. Instagram professional account connection is also available when configured.</p>}
+    {!currentStatus?.connected&&!currentStatus?.instagram?.connected&&<p>Connect a destination to start publishing.</p>}
    </header>
 
    <div className="onece-multi-grid">
@@ -190,16 +314,9 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
       {youtubeSelected&&<label>YouTube visibility<select value={privacy} onChange={event=>setPrivacy(event.target.value as PublishingPayload['privacy'])}><option value="private">Private</option><option value="unlisted">Unlisted</option><option value="public">Public</option></select></label>}
      </div>
 
-     <div className="onece-multi-panel">
-      <h2>Destinations</h2>
-      <p className="onece-multi-hint">Choose the platforms you want to publish to when connections are available.</p>
-      <div className="onece-multi-destinations" role="group" aria-label="Destination platforms">
-       {platforms.map(platform=><button key={platform} type="button" aria-pressed={selectedPlatforms.includes(platform)}
-        onClick={()=>togglePlatform(platform)}>
-         <span className="onece-multi-checkbox">{selectedPlatforms.includes(platform)&&<Check size={13}/>}</span>
-         {platform}
-       </button>)}
-      </div>
+     <div className="onece-multi-panel onece-multi-destinations-panel">
+      <DestinationPicker selected={selectedPlatforms} disabled={busy||!active}
+       status={currentStatus} onToggle={togglePlatform} onConnection={manageDestination}/>
       {youtubeSelected&&<div className="onece-multi-youtube-options">
        <h3>YouTube video formats</h3>
        <p className="onece-multi-hint">Choose Shorts (9:16), standard video (16:9), or both.</p>
@@ -211,42 +328,15 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
         </button>)}
        </div>
       </div>}
-      <p className="onece-multi-hint">YouTube supports image + MP3/WAV, Shorts up to 3 minutes or standard video up to 20 minutes. Audio: 150 MiB; image: 15 MiB, 32 megapixels, 8192 pixels per side. Instagram Reels use a vertical video from the selected image and audio (up to 3 minutes in 1CE). Other destinations remain previews.</p>
-      <p>{!userId?'Sign in to publish.':!currentStatus?'Checking publishing availability…':!currentStatus.available?'Publishing is unavailable on this server.':currentStatus.connected?'YouTube connected':'Connect YouTube to publish.'}</p>
-      <button type="button" disabled={!currentStatus} onClick={()=>void act(async signal=>{
-       if(currentStatus?.connected){await publishingRequest(api,'/youtube/disconnect',signal,{});signal.throwIfAborted();setStatus(null);}
-       else{const result=await publishingRequest<{url:string}>(api,'/youtube/connect',signal,{});signal.throwIfAborted();window.location.assign(publishingAuthorizationUrl(api,result.url));}
-      })}>{currentStatus?.connected?'Disconnect YouTube':'Connect YouTube'}</button>
-      <div className="onece-multi-instagram-connection">
-       <p>{currentStatus?.instagram?.connected
-        ?'Instagram connected: @'+currentStatus.instagram.username
-        :currentStatus?.instagram?.available
-         ?'Connect an Instagram Creator or Business account. This will not post any Reels.'
-         :'Instagram connection requires Meta app configuration by the 1CE administrator.'}</p>
-       <button type="button" disabled={!currentStatus?.instagram?.available} onClick={()=>void act(async signal=>{
-        if(currentStatus?.instagram?.connected){
-         await publishingRequest(api,'/instagram/disconnect',signal,{});signal.throwIfAborted();setStatus(null);
-        }else{
-         const result=await publishingRequest<{url:string}>(api,'/instagram/connect',signal,{});
-         signal.throwIfAborted();window.location.assign(publishingAuthorizationUrl(api,result.url));
-        }
-       })}>{currentStatus?.instagram?.connected?'Disconnect Instagram':'Connect Instagram'}</button>
-       <p className="onece-multi-hint">Reels publish publicly to the connected account. Simply connecting does not post anything.</p>
-       {instagramSelected&&currentStatus?.instagram?.publishingEnabled&&<label className="onece-multi-public-confirmation">
-        <input type="checkbox" checked={instagramPublicConsent} onChange={event=>setInstagramPublicConsent(event.target.checked)}/>
-        <span>I understand that this Reel will be <strong>publicly posted</strong> on Instagram
-         {currentStatus.instagram.username?' (@'+currentStatus.instagram.username+')':''}. YouTube visibility is independent.</span>
-       </label>}
-      </div>
+      <p className="onece-multi-hint onece-multi-destinations-hint">Reels publish publicly on Instagram. YouTube visibility stays independent.</p>
      </div>
      </fieldset>
      <div className="onece-multi-publish">
       <button type="button" onClick={submit} disabled={accepted||busy||!active||!userId||!audioFile||!image||!!video||!title.trim()||!destinationsValid||!youtubeReady||!instagramReady}>{accepted?'Submitted — see history':
-       youtubeSelected&&instagramSelected?'Publish to YouTube + Instagram':instagramSelected?'Publish public Instagram Reel':'Publish to YouTube'}</button>
+       youtubeSelected&&instagramSelected?'Publish to YouTube + public Instagram Reel':instagramSelected?'Publish public Instagram Reel':'Publish to YouTube'}</button>
       {notice&&<p role="status">{notice}</p>}{failure&&<p role="alert">{failure}</p>}
       {video&&<p>Original video publishing is unavailable. Choose an image and MP3/WAV audio.</p>}
       {instagramSelected&&!currentStatus?.instagram?.publishingEnabled&&<p>Instagram account connected, but public Reels publishing is not enabled on this server yet. You can submit YouTube-only jobs.</p>}
-      {instagramSelected&&currentStatus?.instagram?.publishingEnabled&&!instagramPublicConsent&&<p>Public Instagram posting requires your explicit confirmation above.</p>}
       {selectedPlatforms.some(platform=>platform!=='YouTube'&&platform!=='Instagram')&&<p>Other destinations are previews only. Remove them before publishing.</p>}
       <p>After an uncertain submit error, retry without editing to reuse the same request. An accepted job is not yet a published video.</p>
      </div>
