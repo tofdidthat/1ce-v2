@@ -33,7 +33,7 @@ async function cleanupArtifacts(db:QueryableV2,storage:PublishingStorage):Promis
   AND NOT EXISTS (SELECT 1 FROM v2_youtube_checkpoints c JOIN v2_publication_targets t ON t.id=c.target_id
    WHERE c.artifact_key=a.object_key AND t.state IN ('queued','retryable','running'))
   AND NOT EXISTS (SELECT 1 FROM v2_instagram_checkpoints c JOIN v2_publication_targets t ON t.id=c.target_id
-   WHERE c.artifact_key=a.object_key AND t.state IN ('queued','retryable','running','needs_review'))
+   WHERE c.artifact_key=a.object_key AND t.state IN ('queued','retryable','running'))
   ORDER BY a.expires_at LIMIT 5`)).rows;
  for(const row of rows){
   const key=String(row.object_key);
