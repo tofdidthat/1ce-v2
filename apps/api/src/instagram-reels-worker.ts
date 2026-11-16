@@ -172,7 +172,7 @@ export async function runInstagramReelOnce(db:QueryableV2,{config,storage,http=f
    [target.id,hash(capability)]);
    await fence();
    containerId=await createInstagramReel({accountId:publishingAccountId,token:auth.accessToken,
-    videoUrl:delivery,apiOrigin,caption:[job.description,job.hashtags].filter(Boolean).join('\n\n').slice(0,2200),http});
+    videoUrl:delivery,apiOrigin,caption:[job.title,job.description,job.hashtags].filter(Boolean).join('\n\n').slice(0,2200),http});
    await fence();
    const saved=await db.query(`UPDATE v2_instagram_checkpoints c SET container_id=$3,
     updated_at=clock_timestamp() FROM v2_publication_targets t
