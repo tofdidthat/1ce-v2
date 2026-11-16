@@ -1,16 +1,25 @@
 export type PublishingTarget={id:string;platform:string;variant:string;state:string;remoteId?:string|null;errorCode?:string|null};
-export type InstagramPublishingStatus={available:boolean;connected:boolean;username:string|null;publishingEnabled:false};
+export type InstagramPublishingStatus={available:boolean;connected:boolean;username:string|null;publishingEnabled:boolean};
 export type PublishingStatus={available:boolean;connected:boolean;channelTitle?:string;instagram?:InstagramPublishingStatus;jobs:{id:string;title:string;state:string;targets:PublishingTarget[]}[]};
 export function publishingErrorMessage(code:unknown):string{
  const messages:Record<string,string>={
   youtube_reconnect_required:'Reconnect YouTube and grant both channel and upload permissions.',
   instagram_not_configured:'Instagram Business Login is not configured on this server.',
+  instagram_reels_not_enabled:'Instagram Reels publishing is still being enabled for your account. You can submit YouTube-only jobs for now.',
+  instagram_reconnect_required:'Reconnect your Instagram professional account before publishing.',
+  instagram_public_consent_required:'Confirm that this Reel will be published publicly on Instagram.',
+  instagram_reel_processing_failed:'Instagram could not process the rendered Reel. Review your video before retrying.',
+  instagram_reel_processing_timeout:'Instagram is still processing this Reel. Check status before trying again.',
+  instagram_publish_needs_review:'Instagram publication needs manual review. Do not submit again before checking your profile.',
+  instagram_claim_expired:'Instagram publication was interrupted. Check your Instagram profile before submitting again.',
+  instagram_identity_mismatch:'Instagram returned an unexpected account. Reconnect Instagram and verify the username.',
+  instagram_provider_rejected:'Instagram rejected the publishing request. Verify account permissions and the video.',
+  instagram_profile_unavailable:'Instagram profile information is unavailable. Reconnect the professional account.',
+  instagram_temporarily_unavailable:'Instagram publication could not be confirmed. Check history before trying again.',
   instagram_session_missing:'Your 1CE login session was not available when Instagram returned. Sign in to 1CE and try connecting again.',
   instagram_consent_denied:'Instagram did not return a valid authorization. Start from Connect Instagram again.',
   instagram_code_exchange_failed:'Instagram consent was received, but Meta rejected the authorization exchange. Verify the Instagram App ID, App Secret and registered callback in the existing Meta app.',
   instagram_long_token_failed:'Instagram authorized the account, but Meta could not issue a long-lived token. Verify Instagram API permissions and the Meta app settings.',
-  instagram_profile_unavailable:'Instagram authorized the account, but its professional profile could not be read. Check Instagram API permissions.',
-  instagram_identity_mismatch:'Meta returned a different Instagram account than the one authorized. Confirm the correct account and reconnect.',
   instagram_connection_save_failed:'Instagram authorized the account, but 1CE could not save its connection. Please retry after the service is checked.',
   instagram_state_expired:'Your Instagram authorization expired. Start again from Upload.',
   instagram_authorization_failed:'Instagram authorization failed. Try connecting again.',
@@ -51,7 +60,7 @@ export function publishingErrorMessage(code:unknown):string{
  };
  return typeof code==='string'&&Object.hasOwn(messages,code)?messages[code]:'Publishing could not complete. Check your connection and YouTube permissions, then review the job status.';
 }
-export type PublishingPayload={requestId:string;title:string;description:string;hashtags:string;targets:{platform:'youtube';variant:'shorts'|'standard'}[];audioFileId:number;coverFileId:number;privacy:'private'|'unlisted'|'public'};
+export type PublishingPayload={requestId:string;title:string;description:string;hashtags:string;targets:({platform:'youtube';variant:'shorts'|'standard'}|{platform:'instagram';variant:'default'})[];audioFileId:number;coverFileId:number;privacy:'private'|'unlisted'|'public';instagramPublicConsent?:boolean};
 export const canRetryPublishingTarget=(target:PublishingTarget)=>['failed','retryable'].includes(target.state)&&!target.remoteId;
 export function publishingAuthorizationUrl(api:string,value:unknown):string{
  if(typeof value!=='string')throw Error('Invalid authorization URL');
@@ -76,7 +85,7 @@ export async function publishingRequest<T>(api:string,path:string,signal:AbortSi
   if(!ig||typeof ig!=='object'||Array.isArray(ig))throw Error('Invalid Instagram publishing status');
   const data=ig as Record<string,unknown>;
   if(typeof data.available!=='boolean'||typeof data.connected!=='boolean'||
-   !(typeof data.username==='string'||data.username===null)||data.publishingEnabled!==false)
+   !(typeof data.username==='string'||data.username===null)||typeof data.publishingEnabled!=='boolean')
    throw Error('Invalid Instagram publishing status');
  }
  if(path==='/jobs'&&(typeof result.id!=='string'||typeof result.state!=='string'))throw Error('Invalid queue response; retry without editing');

@@ -44,8 +44,11 @@ test('multiplatform mode supports original v1 destination choices and two format
  assert.match(multi,/initialTitle/);
 });
 
-test('publishing requires connected YouTube and supported media without calling v1',()=>{
- assert.match(multi,/disabled=\{accepted\|\|busy\|\|!active\|\|!userId\|\|!currentStatus\?\.available\|\|!currentStatus.connected/);
+test('publishing requires connected selected destinations and supported media without calling v1',()=>{
+ assert.match(multi,/disabled=\{accepted\|\|busy\|\|!active\|\|!userId/);
+ assert.match(multi,/!destinationsValid\|\|!youtubeReady\|\|!instagramReady/);
+ assert.match(multi,/instagramPublicConsent/);
+ assert.match(multi,/Publish public Instagram Reel/);
  assert.match(multi,/Original video publishing is unavailable/);
  assert.match(multi,/pending.current=\{requestId:crypto.randomUUID\(\)/);
  assert.match(multi,/if\(!pending.current\)/);

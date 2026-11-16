@@ -37,8 +37,9 @@ export function parseMediaDuration(stderr:string):number{
  if(!Number.isFinite(seconds)||seconds<=0||seconds>1200)throw new PublishingError('audio_must_be_under_20_minutes',422);
  return seconds;
 }
-export async function renderPublication({audio,cover,output,variant,signal}:{
- audio:string;cover:string;output:string;variant:'shorts'|'standard';signal:AbortSignal
+export async function renderPublication({audio,cover,output,variant,signal,audioBitrate='192k',audioSampleRate}:{
+ audio:string;cover:string;output:string;variant:'shorts'|'standard';signal:AbortSignal;
+ audioBitrate?:'128k'|'192k';audioSampleRate?:48000
 }):Promise<void>{
  if(!publicationRendererAvailable())throw new PublishingError('renderer_unavailable',503);
  const audioInfo=await run(['-hide_banner','-nostdin','-max_alloc','67108864','-protocol_whitelist','file,pipe','-i',audio],{signal});
@@ -53,7 +54,7 @@ export async function renderPublication({audio,cover,output,variant,signal}:{
   '-protocol_whitelist','file,pipe','-i',audio,'-map','0:v:0','-map','1:a:0',
   '-vf',`scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1`,
   '-c:v','libx264','-preset','veryfast','-tune','stillimage','-crf','23','-pix_fmt','yuv420p','-threads','2',
-  '-r','30','-c:a','aac','-b:a','192k','-shortest','-t',String(duration),'-map_metadata','-1','-movflags','+faststart',output],
+  '-r','30','-c:a','aac','-b:a',audioBitrate,...(audioSampleRate?['-ar',String(audioSampleRate)]:[]),'-shortest','-t',String(duration),'-map_metadata','-1','-movflags','+faststart',output],
  {signal,output,timeout:30*60*1000});
  if(result.code!==0)throw new PublishingError('video_render_failed',422);
  const size=(await stat(output)).size;

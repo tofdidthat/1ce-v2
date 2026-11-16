@@ -8,13 +8,17 @@ export function parsePublicationInput(input:unknown){
  let draft:ReturnType<typeof parsePublicationDraft>;
  try{draft=parsePublicationDraft(input)}catch{throw new PublishingError('invalid_publication_request');}
  const raw=input as Record<string,unknown>;
- if(draft.targets.some(t=>t.platform!=='youtube')||draft.targets.length>2)throw new PublishingError('destination_not_available');
+ const hasInstagram=draft.targets.some(t=>t.platform==='instagram');
+ if(draft.targets.some(t=>!['youtube','instagram'].includes(t.platform))||draft.targets.length>3)
+  throw new PublishingError('destination_not_available');
+ if(hasInstagram&&raw.instagramPublicConsent!==true)throw new PublishingError('instagram_public_consent_required');
  if(/[<>]/.test(draft.title))throw new PublishingError('invalid_youtube_title');
  for(const field of ['audioFileId','coverFileId'])if(!Number.isSafeInteger(raw[field])||Number(raw[field])<1)throw new PublishingError('audio_and_cover_required');
  if(!['private','unlisted','public'].includes(String(raw.privacy)))throw new PublishingError('invalid_privacy');
  const media={audioFileId:Number(raw.audioFileId),coverFileId:Number(raw.coverFileId),privacy:String(raw.privacy)};
- const fingerprint=createHash('sha256').update(publicationRequestHash(draft)+JSON.stringify(media)).digest('hex');
- return {draft,...media,fingerprint};
+ const fingerprint=createHash('sha256').update(publicationRequestHash(draft)+JSON.stringify(media)+
+  (hasInstagram?':instagram-public-confirmed-v1':'')).digest('hex');
+ return {draft,...media,hasInstagram,fingerprint};
 }
 export async function enqueuePublication(pool:PublishingPool,owner:number,input:unknown):Promise<{id:string;state:string}>{
  const data=parsePublicationInput(input),db=await pool.connect();
@@ -25,8 +29,18 @@ export async function enqueuePublication(pool:PublishingPool,owner:number,input:
    if(existing.request_hash!==data.fingerprint)throw new PublishingError('request_id_conflict',409);
    await db.query('COMMIT');return {id:String(existing.id),state:String(existing.state)};
   }
-  const connected=await db.query('SELECT user_id,generation FROM v2_youtube_connections WHERE user_id=$1 FOR SHARE',[owner]);
-  if(connected.rowCount!==1)throw new PublishingError('youtube_reconnect_required',409);
+  const requiresYouTube=data.draft.targets.some(t=>t.platform==='youtube');
+  const youtube=requiresYouTube
+   ?(await db.query('SELECT user_id,generation FROM v2_youtube_connections WHERE user_id=$1 FOR SHARE',[owner])).rows[0]
+   :null;
+  if(requiresYouTube&&!youtube)throw new PublishingError('youtube_reconnect_required',409);
+  if(data.hasInstagram&&process.env.INSTAGRAM_REELS_ENABLED!=='true')
+   throw new PublishingError('instagram_reels_not_enabled',503);
+  const instagram=data.hasInstagram
+   ?(await db.query(`SELECT user_id,generation FROM v2_instagram_connections
+      WHERE user_id=$1 AND expires_at>clock_timestamp()+interval '30 minutes' FOR SHARE`,[owner])).rows[0]
+   :null;
+  if(data.hasInstagram&&!instagram)throw new PublishingError('instagram_reconnect_required',409);
   const pending=await db.query("SELECT count(*)::int AS total FROM v2_publication_jobs WHERE user_id=$1 AND state IN ('ready','running')",[owner]);
   if(Number(pending.rows[0]?.total)>=10)throw new PublishingError('publication_queue_full',429);
   const assets=await db.query(`SELECT id,kind,byte_size FROM library_files WHERE user_id=$1 AND status='ready'
@@ -35,11 +49,14 @@ export async function enqueuePublication(pool:PublishingPool,owner:number,input:
   const cover=assets.rows.find(r=>String(r.id)===String(data.coverFileId)&&r.kind==='cover');
   if(!audio||!cover||Number(audio.byte_size)>150*1024*1024||Number(cover.byte_size)>15*1024*1024)throw new PublishingError('owned_ready_media_required',404);
   if(await rateLimitExceeded(db,'publication-enqueue',owner,30,60))throw new PublishingError('publication_hourly_limit',429);
-  const job=(await db.query(`INSERT INTO v2_publication_jobs(user_id,request_id,request_hash,title,description,hashtags,state,audio_file_id,cover_file_id,privacy,youtube_generation)
-   VALUES($1,$2::uuid,$3,$4,$5,$6,'ready',$7,$8,$9,$10::uuid) RETURNING id`,
-  [owner,data.draft.requestId,data.fingerprint,data.draft.title,data.draft.description,data.draft.hashtags,data.audioFileId,data.coverFileId,data.privacy,connected.rows[0].generation])).rows[0];
+  const job=(await db.query(`INSERT INTO v2_publication_jobs
+   (user_id,request_id,request_hash,title,description,hashtags,state,audio_file_id,cover_file_id,
+    privacy,youtube_generation,instagram_generation,instagram_public_confirmed)
+   VALUES($1,$2::uuid,$3,$4,$5,$6,'ready',$7,$8,$9,$10::uuid,$11::uuid,$12) RETURNING id`,
+  [owner,data.draft.requestId,data.fingerprint,data.draft.title,data.draft.description,data.draft.hashtags,
+   data.audioFileId,data.coverFileId,data.privacy,youtube?.generation||null,instagram?.generation||null,data.hasInstagram])).rows[0];
   for(const target of data.draft.targets)await db.query(`INSERT INTO v2_publication_targets(job_id,platform,variant,state)
-   VALUES($1::uuid,'youtube',$2,'queued')`,[job.id,target.variant]);
+   VALUES($1::uuid,$2,$3,'queued')`,[job.id,target.platform,target.variant]);
   await db.query('COMMIT');return {id:String(job.id),state:'queued'};
  }catch(error){try{await db.query('ROLLBACK')}catch{}throw error;}finally{db.release();}
 }
@@ -66,9 +83,15 @@ export async function retryPublication(db:QueryableV2,owner:number,targetId:stri
  const result=await db.query(`WITH changed AS (UPDATE v2_publication_targets t SET state='retryable',next_attempt_at=clock_timestamp(),last_error_code=NULL
   FROM v2_publication_jobs j WHERE j.id=t.job_id AND j.user_id=$1 AND t.id=$2::bigint
    AND t.state IN ('failed','retryable') AND t.attempts<30 AND t.remote_id IS NULL
-   AND EXISTS (SELECT 1 FROM v2_youtube_connections c WHERE c.user_id=j.user_id AND c.generation=j.youtube_generation)
+   AND ((t.platform='youtube' AND EXISTS
+     (SELECT 1 FROM v2_youtube_connections c WHERE c.user_id=j.user_id AND c.generation=j.youtube_generation))
+    OR (t.platform='instagram' AND $3::boolean=true AND j.instagram_public_confirmed=true
+     AND EXISTS (SELECT 1 FROM v2_instagram_connections c WHERE c.user_id=j.user_id
+       AND c.generation=j.instagram_generation AND c.expires_at>clock_timestamp()+interval '30 minutes')
+     AND NOT EXISTS (SELECT 1 FROM v2_instagram_checkpoints cp
+       WHERE cp.target_id=t.id AND cp.publish_started_at IS NOT NULL)))
    AND j.audio_file_id IS NOT NULL AND j.cover_file_id IS NOT NULL RETURNING t.id,t.job_id)
   UPDATE v2_publication_jobs j SET state='ready',updated_at=clock_timestamp() FROM changed c
-   WHERE j.id=c.job_id RETURNING c.id`,[owner,targetId]);
+   WHERE j.id=c.job_id RETURNING c.id`,[owner,targetId,process.env.INSTAGRAM_REELS_ENABLED==='true']);
  return result.rowCount===1;
 }
