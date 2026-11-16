@@ -45,7 +45,7 @@ function DestinationPicker({selected,disabled,status,selectedYouTubeFormats,onTo
   const place=()=>{
    const rect=trigger.current?.getBoundingClientRect();
    if(!rect)return;
-   const width=Math.min(420,window.innerWidth-24);
+   const width=Math.min(360,window.innerWidth-24);
    const below=window.innerHeight-rect.bottom-16;
    const above=rect.top-16;
    const useAbove=below<260&&above>below;
@@ -103,9 +103,7 @@ function DestinationPicker({selected,disabled,status,selectedYouTubeFormats,onTo
          disabled={disabled} aria-pressed={selected.includes(platform)} onClick={()=>onToggle(platform)}>
          <span className="onece-multi-checkbox">{selected.includes(platform)&&<Check size={13}/>}</span>
          <DestinationSymbol platform={platform}/>
-         <span className="onece-multi-destination-label"><strong>{platform}</strong>
-          {(youtube||instagram)&&<small>{connected?'Connected':'Not connected'}</small>}
-         </span>
+         <span className="onece-multi-destination-label"><strong>{platform}</strong></span>
         </button>
         {(youtube||instagram)&&<button type="button" className="onece-multi-destination-account"
          disabled={disabled||!status||(instagram&&!status.instagram?.available)}
