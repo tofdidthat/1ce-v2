@@ -22,13 +22,14 @@ test('temporary object cleanup is bounded and never reports completion in the sa
 test('R2 errors roll back progress so a retry cannot falsely acknowledge deletion',async()=>{
  const f=fixture([artifact]);f.storage.s3.send=async()=>{throw Error('Synthetic R2 unavailable')};
  await assert.rejects(processInstagramDataDeletionOnce(f.db,f.storage),/Synthetic R2/);
- assert.equal(f.calls.at(-1).sql,'ROLLBACK');assert.equal(f.calls.some(call=>call.sql.startsWith('DELETE')),false);
+ assert.ok(f.calls.some(call=>call.sql==='ROLLBACK'));assert.equal(f.calls.some(call=>call.sql.startsWith('DELETE')),false);
+ assert.match(f.calls.at(-1).sql,/not_before=clock_timestamp\(\)\+interval '1 minute'/,'Backoff lets other owners progress');
 });
 test('missing storage, original keys, cross-owner keys and shared YouTube artifacts fail closed',async()=>{
  for(const [row,available] of [[artifact,false],[{...artifact,object_key:'users/42/assets/audio/original.mp3'},true],
   [{...artifact,object_key:key.replace('/42/','/43/')},true],[{...artifact,shared:true},true]]){
   const f=fixture([row]);await assert.rejects(processInstagramDataDeletionOnce(f.db,available?f.storage:null),/unavailable or unsafe/);
-  assert.deepEqual(f.deleted,[]);assert.equal(f.calls.at(-1).sql,'ROLLBACK');
+  assert.deepEqual(f.deleted,[]);assert.ok(f.calls.some(call=>call.sql==='ROLLBACK'));
  }
 });
 test('metadata completion clears owner links and only addresses Instagram integration tables',async()=>{

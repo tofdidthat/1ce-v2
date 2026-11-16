@@ -182,6 +182,7 @@ export async function runInstagramReelOnce(db:QueryableV2,{config,storage,http=f
     ON CONFLICT(object_key) DO UPDATE SET expires_at=clock_timestamp()+interval '7 days' RETURNING object_key`,
    [artifactKey,owner,...args]);
    if(registered.rowCount!==1)throw new PublishingError('publication_connection_changed',409);
+   await fence();
    const stream=createReadStream(output);
    try{await storage.s3.send(new PutObjectCommand({Bucket:storage.bucket,Key:artifactKey,Body:stream,
     ContentLength:bytes,ContentType:'video/mp4'}),{abortSignal:AbortSignal.any([controller.signal,AbortSignal.timeout(60000)])})}finally{stream.destroy();}

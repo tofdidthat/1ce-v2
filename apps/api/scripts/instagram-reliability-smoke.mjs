@@ -171,6 +171,8 @@ export async function instagramReliabilitySmoke(db){
    failedDelete=true;throw Error('Synthetic R2 outage');}return storage.s3.send(command)}}};
   await assert.rejects(processInstagramDataDeletionOnce(db,unreliable),/Synthetic R2 outage/);
   assert.equal(await deletionStatus(),'pending','No false completion when R2 fails');
+  assert.equal(await processInstagramDataDeletionOnce(db,storage),false,'Failure backoff must be respected');
+  await db.query(`UPDATE v2_instagram_data_deletions SET not_before=clock_timestamp()-interval '1 second'`);
   for(let pass=0;pass<10&&await deletionStatus()==='pending';pass++)await processInstagramDataDeletionOnce(db,storage);
   assert.equal(await deletionStatus(),'completed');
   const deleted=(await db.query(`SELECT owners,completed_at FROM v2_instagram_data_deletions`)).rows[0];

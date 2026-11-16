@@ -54,12 +54,14 @@ export async function serveInstagramDataDeletionStatus(req:IncomingMessage,res:S
 // which is idempotent. No originals or provider-side posts are deleted here.
 export async function processInstagramDataDeletionOnce(pool:PublishingPool,storage:PublishingStorage|null):Promise<boolean>{
  const db=await pool.connect();
+ let requestHash:string|null=null;
  try{
   await db.query('BEGIN');
   const request=(await db.query(`SELECT request_hash,owners FROM v2_instagram_data_deletions
    WHERE completed_at IS NULL AND not_before<=clock_timestamp()
    ORDER BY not_before,request_hash LIMIT 1 FOR UPDATE SKIP LOCKED`)).rows[0];
   if(!request){await db.query('COMMIT');return false;}
+  requestHash=String(request.request_hash);
   const owners=request.owners as number[];
   for(const owner of [...owners].sort((a,b)=>a-b)){
    const lock=(await db.query('SELECT pg_try_advisory_xact_lock($1::bigint) AS locked',[owner])).rows[0];
@@ -103,6 +105,12 @@ export async function processInstagramDataDeletionOnce(pool:PublishingPool,stora
   await db.query(`UPDATE v2_instagram_data_deletions SET owners='{}'::integer[],completed_at=clock_timestamp()
    WHERE request_hash=$1`,[request.request_hash]);
   await db.query('COMMIT');return true;
- }catch(error){try{await db.query('ROLLBACK')}catch{}throw error;}
+ }catch(error){
+  try{await db.query('ROLLBACK')}catch{}
+  // A bad artifact or a failing bucket must not starve other owners' requests.
+  if(requestHash)try{await db.query(`UPDATE v2_instagram_data_deletions
+   SET not_before=clock_timestamp()+interval '1 minute' WHERE request_hash=$1 AND completed_at IS NULL`,[requestHash])}catch{}
+  throw error;
+ }
  finally{db.release();}
 }
