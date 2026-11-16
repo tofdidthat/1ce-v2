@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createInstagramReel,instagramReelStatus,publishInstagramReel,trustedInstagramDeliveryUrl} from '../dist/instagram-reels-api.js';
+import {createInstagramReel,instagramReelStatus,publishInstagramReel,trustedInstagramDeliveryUrl,resolveInstagramPublishingAccount} from '../dist/instagram-reels-api.js';
 
 const origin='https://1ce-v2-production.up.railway.app';
 const mediaUrl=origin+'/api/publishing/meta-media?token='+'a'.repeat(43);
@@ -36,4 +36,14 @@ test('provider errors do not leak credentials or body into errors',async()=>{
  await assert.rejects(createInstagramReel({accountId:'28621378697485455',token:'secret-token-fixture',videoUrl:mediaUrl,caption:'safe',
   http:async()=>new Response('{"error":{"message":"private-provider-diagnostic"}}',{status:403})}),
   error=>{assert.equal(error.code,'instagram_provider_rejected');assert.doesNotMatch(String(error),/secret-token|private-provider-diagnostic/);return true;});
+});
+
+test('resolve Instagram publishing ID from /me user_id without losing precision',async()=>{
+ const http=async()=>new Response('{"id":17841405309211844,"user_id":28621378697485455,"username":"producer"}');
+ assert.equal(await resolveInstagramPublishingAccount({token:'x',oauthUserId:'17841405309211844',http}),
+  '28621378697485455');
+ assert.equal(await resolveInstagramPublishingAccount({token:'x',oauthUserId:'28621378697485455',http}),
+  '28621378697485455');
+ await assert.rejects(resolveInstagramPublishingAccount({token:'x',oauthUserId:'11111111111111111',http}),
+  {code:'instagram_identity_mismatch'});
 });
