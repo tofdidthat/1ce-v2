@@ -2,20 +2,19 @@
 
 1CE v2 is an independent music-project platform. The monorepo contains a React + TypeScript frontend, a Node.js API, a PostgreSQL database model and private Cloudflare R2 storage.
 
-**Documentation:** This README is the quick-start guide. All maintained technical decisions, module maps, operational instructions, release evidence and pending checks live in **[docs/architecture.md](docs/architecture.md)**. Historical documents and per-PR implementation notes remain recoverable in Git history, rather than maintained as separate Markdown files.
+**Documentation:** This README is the entry point. [Architecture and release guide](docs/architecture.md) is the canonical current status, decisions, module map and prioritized audit. [Instagram runbook](docs/instagram-integration.md) covers OAuth, Reels, private R2 delivery and safety. [Domain cutover log](docs/domain-cutover-1ce-lol.md) retains the migration evidence and historical GO/NO-GO checklist. Old dated checkpoints below these current sections are historical, not deployment instructions.
 
-## Current verified baseline (2026-11-08 UTC)
+## Current production checkpoint (2026-11-16)
 
-- **Source:** [`tofdidthat/1ce-v2`](https://github.com/tofdidthat/1ce-v2) is public. This checkpoint describes main `8b195df98ef062b01a9b6ea10abc9ecf9c8fa20c` (PR #83); the older v1 repository and all its production resources are strictly read-only.
-- **Deployment:** Vercel production for `8b195df` was READY, and the login-used `1ce-v2-tofdidthat.vercel.app` alias was verified pointing to that deployment. Railway skipped this frontend-only change; its deployed API from PR #72 remains in service and `/health` returned OK. Recheck deployments and the alias after every release: this alias is manually assigned and does not automatically follow production.
-- **Backend:** PR #70 extracted four private metadata GET handlers; PR #72 extracted private audio, stems and cover streaming into `apps/api/src/library-streaming.ts`. The facade keeps method/auth/R2 gates; upload POST and completion paths were not part of these extractions.
-- **Frontend:** Home and Profile packs use the original inline Home detail and Back control; the global player remains mounted. PRs #73/#76/#78/#79 improved in-session loading and owner-scoped reuse. A full reload still needs session validation and new library/cover requests; persistent offline storage is not implemented.
-- **CI:** GitHub Actions has seven required checks. CI success is not proof of authenticated two-account or live R2 end-to-end behavior; verify CI on each final commit.
-- **Next:** Plan a separately reviewed offline experience for the user's own library, including storage limits, account isolation, authorization, synchronization, invalidation and logout. This is a proposal, not an implemented or approved architecture. See [docs/architecture.md](docs/architecture.md).
+- **Official site:** [https://1ce.lol](https://1ce.lol), deployed from `tofdidthat/1ce-v2` main to Vercel. The checked project alias points to deployment `dpl_FbmUpKoxtFkc4UJ96WGKaeB7FTgM` for main `37c9d6a` ([PR #103](https://github.com/tofdidthat/1ce-v2/pull/103)). The old v1 site remains separate at its fallback hostname; **the domain switch did not import v1 users or files**.
+- **Runtime:** Railway API `https://1ce-v2-production.up.railway.app` and PostgreSQL both reported online and SUCCESS in the read-only 2026-11-16 check. Cloudflare R2 remains the private-media store; the browser uses signed, time-limited PUT URLs.
+- **Publishing:** YouTube image + MP3/WAV with 9:16 Shorts, 16:9 standard video and selectable `private` / `unlisted` / `public`; Instagram Business Login (reusing the registered v1 Meta app) and **public Reels** are implemented on v2 ([PRs #96–#102](https://github.com/tofdidthat/1ce-v2/pulls?q=is%3Apr+is%3Amerged+instagram)). A user reported a real Instagram Reel published and history showed `Uploaded`; this verifies one happy-path example, **not** Meta App Review for external accounts or fault recovery. TikTok, Telegram and Discord are **selection previews**, not publishers. Original video submission remains unavailable.
+- **Upload UI:** One Destinations button; YouTube 9:16/16:9 choices live under the `⋯` on YouTube, to the **left** of Disconnect. The right media preview uses the v1-like 342.2px maximum width, with 16:9 above 9:16 when both are selected.
+- **Safety:** Instagram posts are public; the actual submit button says so, without a redundant confirmation checkbox. Server requires `instagramPublicConsent:true` on an explicitly submitted Instagram job and `INSTAGRAM_REELS_ENABLED=true`. YouTube privacy is independent. Connecting a platform or selecting a destination does not publish.
+- **CI:** PR #103 was merged after **7/7 GitHub Actions checks**. These checks do not prove R2 CORS, Meta callback lifecycle, provider timeouts or dual-account browser isolation. The owner fixed a browser R2 PUT failure after reviewing the bucket's CORS policy; the exact Cloudflare rule was not independently inspected.
+- **Next:** Close the [2026-11-16 technical audit in the architecture guide](docs/architecture.md) before adding providers: Meta deauthorization/data-deletion callbacks, delivery-token log redaction, ambiguity/crash recovery, and end-to-end tests. Backup restore and coordinated production credential rotation remain separate operational follow-ups.
 
 ## Repository structure
-
-**Upload implementation checkpoint (2026-11-14, PR #93):** YouTube image + MP3/WAV publishing is implemented with server-rendered 9:16 Shorts (up to 3 minutes) and 16:9 video (up to 20 minutes), private-by-default visibility, a durable queue and owner-scoped history/retries. The user connects their channel through Google consent; TikTok/Instagram/Telegram/Discord and original-video inputs remain previews in this first delivery. See R02/R03 in the architecture guide for runtime configuration, evidence and remaining real-provider acceptance. The historical baseline above is not a claim that this candidate is deployed.
 
 | Directory | Responsibility |
 | --- | --- |
@@ -25,9 +24,11 @@
 | `history/database/` | v2 SQL migrations and guarded historical application scripts |
 | `scripts/` | Dependency and repository audits |
 | `.github/workflows/` | CI, API tests, disposable PostgreSQL smoke, frontend builds |
-| `docs/architecture.md` | **Single technical guide and release reference** |
+| `docs/architecture.md` | **Canonical technical decisions, current audit and release reference** |
+| `docs/instagram-integration.md` | Instagram Business Login, Reel publishing and security runbook |
+| `docs/domain-cutover-1ce-lol.md` | Domain transition evidence and historical gates |
 
-The original v1 repository, its live application, database, buckets and credentials are **read-only and outside the v2 deployment boundary**.
+The original v1 application, database, buckets and repository remain outside the v2 data/deployment boundary. The **existing Meta developer app registration and Instagram client credentials** were deliberately reused for v2 Business Login, without copying v1 users' access tokens or touching v1 data.
 
 ## Local development
 
@@ -44,7 +45,7 @@ In a second terminal:
 pnpm --filter @1ce/api dev
 ```
 
-Copy only the **variable names** from `apps/web/.env.example` and `apps/api/.env.example`; configure environment-specific secrets outside Git. `VITE_API_URL` must point to the intended **v2** API. Never reuse v1 production credentials.
+Copy only the **variable names** from `apps/web/.env.example` and `apps/api/.env.example`; configure environment-specific secrets outside Git. `VITE_API_URL` must point to the intended **v2** API. Do not reuse v1 database, sessions or R2 credentials; the already approved shared Meta Instagram app is a documented exception. Never commit or paste secrets.
 
 ## Validation
 
