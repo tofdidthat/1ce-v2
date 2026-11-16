@@ -199,3 +199,13 @@
 .onece-multi-instagram-connection p { font-size: 12px; color: #aaa0bd; line-height: 1.5; }
 .onece-multi-instagram-connection button { padding: 11px 14px; background: #17151e; border: 1px solid #ffffff20; border-radius: 12px; color: #f5f3ff; font: inherit; font-size: 12px; cursor: pointer; }
 .onece-multi-instagram-connection button:disabled { opacity: .48; cursor: not-allowed; }
+
+/* Explicit per-job approval for irreversible public Instagram Reels. */
+.onece-multi-public-confirmation {
+ display: flex; align-items: flex-start; gap: 11px; margin-top: 14px;
+ padding: 14px; border: 1px solid #6e4b9b75; border-radius: 12px;
+ background: #20182e; color: #e7d9ff; font-size: 12px; line-height: 1.55; cursor: pointer;
+}
+.onece-multi-public-confirmation input { accent-color: #a78bfa; width: 18px; height: 18px; flex: 0 0 auto; margin-top: 2px; }
+.onece-multi-public-confirmation strong { font-weight: 650; }
+.onece-multi-public-confirmation:focus-within { outline: 2px solid #b59aff; outline-offset: 2px; }
