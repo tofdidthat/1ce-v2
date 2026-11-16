@@ -13,7 +13,6 @@ export function publishingErrorMessage(code:unknown):string{
   instagram_identity_mismatch:'Meta returned a different Instagram account than the one authorized. Confirm the correct account and reconnect.',
   instagram_connection_save_failed:'Instagram authorized the account, but 1CE could not save its connection. Please retry after the service is checked.',
   instagram_state_expired:'Your Instagram authorization expired. Start again from Upload.',
-  instagram_consent_denied:'Instagram authorization was cancelled or rejected.',
   instagram_authorization_failed:'Instagram authorization failed. Try connecting again.',
   instagram_professional_account_required:'A professional Instagram account (Creator or Business) is required.',
   youtube_not_configured:'YouTube publishing is not configured on this server.',
