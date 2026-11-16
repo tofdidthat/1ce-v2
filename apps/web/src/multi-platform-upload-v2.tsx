@@ -95,8 +95,8 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
    (selectedInstagram&&(!currentStatus?.instagram?.publishingEnabled||
      !currentStatus.instagram.connected||!instagramPublicConsent)))return;
   if(!pending.current){
-   setNotice('Uploading audio…');const audioFileId=await uploadPublishingFile(api,audioFile,'audio',signal);
-   signal.throwIfAborted();setNotice('Uploading image…');const coverFileId=await uploadPublishingFile(api,image,'cover',signal);
+   setNotice('Uploading audio…');const audioFileId=await uploadPublishingFile(api,audioFile,'audio',signal,setNotice);
+   signal.throwIfAborted();setNotice('Uploading image…');const coverFileId=await uploadPublishingFile(api,image,'cover',signal,setNotice);
    signal.throwIfAborted();
    const targets:PublishingPayload['targets']=[];
    if(selectedYoutube)for(const format of selectedYouTubeFormats)

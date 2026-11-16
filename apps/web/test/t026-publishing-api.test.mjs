@@ -68,3 +68,47 @@ test('signed upload destinations must be private R2 HTTPS URLs',async()=>{
  globalThis.fetch=async()=>{calls++;return Response.json({id:12,uploadUrl:'https://evil.invalid/file'})};
  try{await assert.rejects(uploadPublishingFile(api,new File(['image'],'cover.png'),'cover',new AbortController().signal),/Invalid storage upload URL/);assert.equal(calls,1)}finally{globalThis.fetch=original;}
 });
+
+test('upload reports exact network boundary and never queues publication on fetch failure',async()=>{
+ const original=globalThis.fetch;
+ const file=new File(['fixture-audio'],'beat.mp3');
+ const scenarios=[
+  {step:1,expected:/Could not contact the 1CE upload API/,calls:1},
+  {step:2,expected:/could not send the audio to Cloudflare R2/i,calls:2},
+  {step:3,expected:/Could not confirm the audio upload/i,calls:3}
+ ];
+ try{
+  for(const scenario of scenarios){
+   const stages=[],requests=[];
+   globalThis.fetch=async(url,options)=>{
+    requests.push({url,options});
+    if(requests.length===scenario.step)throw new TypeError('Failed to fetch');
+    if(requests.length===1)return Response.json({id:11,uploadUrl:'https://fixture.r2.cloudflarestorage.com/object'});
+    if(requests.length===2)return new Response(null,{status:200});
+    return Response.json({id:11});
+   };
+   await assert.rejects(
+    uploadPublishingFile(api,file,'audio',new AbortController().signal,stage=>stages.push(stage)),
+    scenario.expected);
+   assert.equal(requests.length,scenario.calls);
+   assert.ok(stages.length>0);
+   assert.equal(requests.some(req=>String(req.url).includes('/api/publishing/jobs')),false);
+   if(scenario.step===2)assert.match(stages.at(-1),/Sending audio to secure storage/);
+   if(scenario.step===3)assert.match(stages.at(-1),/Verifying audio upload/);
+  }
+ }finally{globalThis.fetch=original;}
+});
+test('successful upload exposes safe file progress without leaking signed URLs',async()=>{
+ const original=globalThis.fetch,steps=[];
+ globalThis.fetch=async(url)=>{
+  if(String(url).endsWith('/init'))return Response.json({id:21,uploadUrl:'https://fixture.r2.cloudflarestorage.com/opaque-secret?signature=private'});
+  if(String(url).includes('r2.cloudflarestorage.com'))return new Response(null,{status:200});
+  return Response.json({id:21});
+ };
+ try{
+  assert.equal(await uploadPublishingFile(api,new File(['audio'],'sample.mp3'),'audio',new AbortController().signal,
+   message=>steps.push(message)),21);
+  assert.deepEqual(steps,['Checking audio file…','Starting audio upload…','Sending audio to secure storage…','Verifying audio upload…','Audio ready.']);
+  assert.doesNotMatch(steps.join(' '),/opaque-secret|signature=private/);
+ }finally{globalThis.fetch=original;}
+});
