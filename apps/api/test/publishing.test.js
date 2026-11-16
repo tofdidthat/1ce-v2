@@ -65,7 +65,7 @@ test('refresh revocation removes only the matching connection generation',async(
  await assert.rejects(youtubeAccess(db,7,config,async()=>Response.json({error:'invalid_grant'},{status:400})),/youtube_reconnect_required/);
  assert.match(queries[1].sql,/generation=\$2::uuid AND refresh_cipher=\$3/);
 });
-test('idempotency binds media IDs and privacy, with only real YouTube destinations accepted',()=>{
+test('idempotency binds media IDs and privacy and rejects unavailable platforms',()=>{
  const input={requestId:randomUUID(),title:'Fixture',description:'',hashtags:'',targets:[{platform:'youtube',variant:'shorts'}],audioFileId:1,coverFileId:2,privacy:'private'};
  const first=parsePublicationInput(input);
  assert.notEqual(parsePublicationInput({...input,privacy:'public'}).fingerprint,first.fingerprint);
@@ -114,4 +114,17 @@ test('real FFmpeg renders a synthetic PNG/WAV into both promised aspect ratios',
   const long=join(dir,'long.wav');await writeFile(long,wav(44100*181));
   await assert.rejects(renderPublication({audio:long,cover,output:join(dir,'not-a-short.mp4'),variant:'shorts',signal:new AbortController().signal}),/shorts_must_be_under_3_minutes/);
  }finally{if(dirname(resolve(dir))===resolve(tmpdir())&&basename(dir).startsWith('onece-render-test-'))await rm(dir,{recursive:true,force:true});}
+});
+
+test('Instagram Reels require explicit public acknowledgement even with private YouTube',()=>{
+ const original={requestId:randomUUID(),title:'Fixture Reel',description:'Beat',hashtags:'#producer',
+  targets:[{platform:'youtube',variant:'shorts'},{platform:'instagram',variant:'default'}],
+  audioFileId:1,coverFileId:2,privacy:'private'};
+ assert.throws(()=>parsePublicationInput(original),/instagram_public_consent_required/);
+ assert.throws(()=>parsePublicationInput({...original,instagramPublicConsent:'true'}),/instagram_public_consent_required/);
+ const result=parsePublicationInput({...original,instagramPublicConsent:true});
+ assert.equal(result.hasInstagram,true);assert.equal(result.privacy,'private');
+ assert.deepEqual(result.draft.targets,[{platform:'instagram',variant:'default'},{platform:'youtube',variant:'shorts'}]);
+ assert.notEqual(result.fingerprint,parsePublicationInput({
+  ...original,instagramPublicConsent:true,targets:[{platform:'youtube',variant:'shorts'}]}).fingerprint);
 });
