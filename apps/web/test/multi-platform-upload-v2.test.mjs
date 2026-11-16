@@ -37,7 +37,7 @@ test('multiplatform mode supports original v1 destination choices and two format
  assert.match(multi,/ratio:'9:16'/);
  assert.match(multi,/ratio:'16:9'/);
  assert.match(multi,/selectedYouTubeFormats/);
- assert.match(multi,/aria-pressed=\{selectedPlatforms\.includes\(platform\)\}/);
+ assert.match(multi,/aria-pressed=\{selected\.includes\(platform\)\}/);
  assert.match(multi,/aria-pressed=\{selectedYouTubeFormats\.includes\(format\.id\)\}/);
  assert.match(multi,/initialAudio/);
  assert.match(multi,/initialCover/);
@@ -47,7 +47,16 @@ test('multiplatform mode supports original v1 destination choices and two format
 test('publishing requires connected selected destinations and supported media without calling v1',()=>{
  assert.match(multi,/disabled=\{accepted\|\|busy\|\|!active\|\|!userId/);
  assert.match(multi,/!destinationsValid\|\|!youtubeReady\|\|!instagramReady/);
- assert.match(multi,/instagramPublicConsent/);
+ assert.match(multi,/instagramPublicConsent:true/);
+ assert.doesNotMatch(multi,/setInstagramPublicConsent|onece-multi-public-confirmation/);
+ assert.match(multi,/createPortal\(/);
+ assert.match(multi,/className="onece-multi-destination-trigger"/);
+ assert.match(multi,/aria-expanded=\{open\}/);
+ assert.match(multi,/document\.addEventListener\('pointerdown'/);
+ assert.match(multi,/event\.key==='Escape'/);
+ assert.match(multi,/selected\.length\+' selected'/);
+ assert.match(multi,/Publish to YouTube \+ public Instagram Reel/);
+ assert.match(css,/\.onece-multi-destination-popover/);
  assert.match(multi,/Publish public Instagram Reel/);
  assert.match(multi,/Original video publishing is unavailable/);
  assert.match(multi,/pending.current=\{requestId:crypto.randomUUID\(\)/);
