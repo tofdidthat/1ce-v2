@@ -246,7 +246,7 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
       {notice&&<p role="status">{notice}</p>}{failure&&<p role="alert">{failure}</p>}
       {video&&<p>Original video publishing is unavailable. Choose an image and MP3/WAV audio.</p>}
       {instagramSelected&&!currentStatus?.instagram?.publishingEnabled&&<p>Instagram account connected, but public Reels publishing is not enabled on this server yet. You can submit YouTube-only jobs.</p>}
-      {instagramSelected&&currentStatus?.instagram?.publishingEnabled&&!instagramPublicConsent&&<p>Public Instagram posting requires your explicit confirmation above.</p>}}
+      {instagramSelected&&currentStatus?.instagram?.publishingEnabled&&!instagramPublicConsent&&<p>Public Instagram posting requires your explicit confirmation above.</p>}
       {selectedPlatforms.some(platform=>platform!=='YouTube'&&platform!=='Instagram')&&<p>Other destinations are previews only. Remove them before publishing.</p>}
       <p>After an uncertain submit error, retry without editing to reuse the same request. An accepted job is not yet a published video.</p>
      </div>
