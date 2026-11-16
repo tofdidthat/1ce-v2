@@ -45,7 +45,7 @@ function DestinationPicker({selected,disabled,status,selectedYouTubeFormats,onTo
   const place=()=>{
    const rect=trigger.current?.getBoundingClientRect();
    if(!rect)return;
-   const width=Math.min(360,window.innerWidth-24);
+   const width=Math.min(398,window.innerWidth-24);
    const below=window.innerHeight-rect.bottom-16;
    const above=rect.top-16;
    const useAbove=below<260&&above>below;
@@ -93,6 +93,9 @@ function DestinationPicker({selected,disabled,status,selectedYouTubeFormats,onTo
   {open&&createPortal(
    <div ref={panel} id={panelId} className="onece-multi-destination-popover" style={position}
     role="region" aria-label="Destinations">
+    <div className="onece-multi-destination-popover-heading">
+     <strong>Destinations</strong><span>{selected.length} selected</span>
+    </div>
     <div className="onece-multi-destination-list" role="group" aria-label="Destination platforms">
      {platforms.map(platform=>{
       const youtube=platform==='YouTube',instagram=platform==='Instagram';
@@ -103,18 +106,20 @@ function DestinationPicker({selected,disabled,status,selectedYouTubeFormats,onTo
          disabled={disabled} aria-pressed={selected.includes(platform)} onClick={()=>onToggle(platform)}>
          <span className="onece-multi-checkbox">{selected.includes(platform)&&<Check size={13}/>}</span>
          <DestinationSymbol platform={platform}/>
-         <span className="onece-multi-destination-label"><strong>{platform}</strong></span>
+         <span className="onece-multi-destination-label"><strong>{platform}</strong>
+          {(youtube||instagram)&&<small>{connected?'Connected':'Not connected'}</small>}
+         </span>
         </button>
-        {(youtube||instagram)&&<button type="button" className="onece-multi-destination-account"
-         disabled={disabled||!status||(instagram&&!status.instagram?.available)}
-         onClick={()=>onConnection(platform)}>
-         {connected?'Disconnect':'Connect'}
-        </button>}
         {youtube&&<button type="button" className="onece-multi-destination-more"
          disabled={disabled} title="YouTube formats" aria-label="YouTube formats"
          aria-controls={formatsId} aria-expanded={youtubeFormatsOpen}
          onClick={()=>setYoutubeFormatsOpen(value=>!value)}>
          <MoreHorizontal size={18}/>
+        </button>}
+        {(youtube||instagram)&&<button type="button" className="onece-multi-destination-account"
+         disabled={disabled||!status||(instagram&&!status.instagram?.available)}
+         onClick={()=>onConnection(platform)}>
+         {connected?'Disconnect':'Connect'}
         </button>}
        </div>
        {youtube&&youtubeFormatsOpen&&<div id={formatsId} className="onece-multi-youtube-formats"

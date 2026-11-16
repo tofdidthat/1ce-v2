@@ -92,3 +92,18 @@ test('9:16 and 16:9 are YouTube-only options, not global platform settings',()=>
  assert.match(css,/\.onece-multi-youtube-formats \{/);
  assert.doesNotMatch(css,/\.onece-multi-youtube-options \{/);
 });
+
+test('YouTube formats ellipsis is before Disconnect and list retains balanced spacing',()=>{
+ const picker=multi.slice(multi.indexOf('function DestinationPicker'),multi.indexOf('const publicationState'));
+ const more=picker.indexOf('className="onece-multi-destination-more"');
+ const connection=picker.indexOf('className="onece-multi-destination-account"');
+ assert.ok(more>0&&connection>more,'YouTube ellipsis must precede Disconnect');
+ assert.match(picker,/onece-multi-destination-popover-heading/);
+ assert.match(picker,/\{connected\?'Connected':'Not connected'\}/);
+ assert.match(picker,/Math\.min\(398,window\.innerWidth-24\)/);
+ assert.match(picker,/\{youtube&&youtubeFormatsOpen&&<div id=\{formatsId\}/);
+ assert.match(css,/\.onece-multi-destination-popover-heading \{ display: flex;/);
+ assert.match(css,/\.onece-multi-destination-label small \{/);
+ assert.match(css,/padding: 11px;/);
+ assert.doesNotMatch(multi,/onece-multi-youtube-options/);
+});
