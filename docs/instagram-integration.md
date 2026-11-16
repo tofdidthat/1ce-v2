@@ -129,3 +129,30 @@ The existing Meta dashboard is not modified by this change.
   callback delivery scenarios. Meta/R2 are simulated. Local unit tests do not
   establish that live Meta callback URLs, legacy hosting, edge query logging or
   production deletion behavior are configured correctly.
+
+### T030 follow-up verification (2026-11-16)
+
+- Reproduced the cancelled Node 26 CI job: a synchronous storage exception in
+  its native Web Locks callback left the promise pending. The callback now
+  rejects asynchronously. A bounded regression covers rejection/recovery and
+  concurrent reservations. All 205 web tests pass locally on Node 22 and 26;
+  API tests pass (266 passed, one renderer test skipped locally).
+- An isolated Chromium check exercised the actual recovery module with real
+  localStorage/Web Locks: reload, a second tab, twelve concurrent reservations,
+  account isolation, storage rejection, acknowledgement and explicit restart.
+  No publishing API was called; this does not attest the full signed-in UI.
+- A bounded Railway production sample for 2026-11-16 00:00–16:15 UTC contained
+  101 status requests and two media-delivery requests, with no query strings in
+  the returned paths. The 36 runtime records sampled contained no credential
+  markers. These samples do not establish upstream tracing or retention policy.
+  No raw log records or credentials are included in this evidence.
+- The fixed v1 callback returned HTTP 400 `Invalid signed request` for an
+  intentionally invalid synthetic signature. No valid deletion/revocation was
+  sent. Successful signed forwarding and v1 backend deletion remain unverified.
+- The Meta dashboard had no authenticated session. Vercel project access
+  returned HTTP 403 for the configured team, despite MCP connection readiness;
+  its access logs could not be inspected. No configuration was changed.
+- Neither the generic retention language in `apps/web/src/legal.tsx` nor the
+  v1 callback's forwarding contract defines which V2 publication/library/account
+  records a Meta deletion should erase. This remains a product decision, not a
+  completed P0: known V2 subjects still receive 503, with no deletion claim.

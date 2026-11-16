@@ -50,11 +50,21 @@ test('old unresolved attempts do not silently turn into a duplicate job',async()
  assert.throws(()=>beginAnotherPublishingRequest(42,first,shared),/save this publication/);
 });
 
-test('restricted or corrupt local storage prevents submission with an unrecoverable UUID',async()=>{
+test('restricted or corrupt local storage prevents submission with an unrecoverable UUID',{timeout:5000},async()=>{
  const unavailable={length:0,getItem(){throw Error('storage blocked')},setItem(){throw Error('storage blocked')},removeItem(){throw Error('storage blocked')},key(){throw Error('storage blocked')}};
  await assert.rejects(requestIdForPublishingIntent(42,intent,unavailable,1000),/Enable site storage/);
  assert.doesNotThrow(()=>reconcilePublishingRequestIds(42,[],unavailable,1000));
  const shared=storage();await requestIdForPublishingIntent(42,intent,shared,1000);
  shared.setItem(shared.key(0),'{corrupt');
  await assert.rejects(requestIdForPublishingIntent(42,intent,shared,1000),/Enable site storage/);
+ shared.removeItem(shared.key(0));
+ assert.match(await requestIdForPublishingIntent(42,intent,shared,1000),/^[0-9a-f-]{36}$/i,
+  'a rejected storage callback releases the lock for the next attempt');
+});
+
+test('concurrent same-intent reservations keep a single recovery record',{timeout:5000},async()=>{
+ const shared=storage();let writes=0;
+ const setItem=shared.setItem;shared.setItem=(...args)=>{writes++;setItem(...args)};
+ const requestIds=await Promise.all(Array.from({length:12},()=>requestIdForPublishingIntent(42,intent,shared,1000)));
+ assert.equal(new Set(requestIds).size,1);assert.equal(shared.length,1);assert.equal(writes,1);
 });

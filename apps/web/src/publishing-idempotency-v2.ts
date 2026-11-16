@@ -47,8 +47,10 @@ export async function requestIdForPublishingIntent(userId:number,intent:unknown,
    return requestId;
   };
   // Web Locks serialize same-intent submissions in different browser tabs.
+  // Reject through a promise: Node 26's LockManager leaves a synchronous
+  // callback exception pending, which otherwise stalls storage-failure tests.
   return typeof navigator!=='undefined'&&navigator.locks
-   ?await navigator.locks.request(key,reserve):reserve();
+   ?await navigator.locks.request(key,async()=>reserve()):reserve();
  }catch{throw storageError();}
 }
 
