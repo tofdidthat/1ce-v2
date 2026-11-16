@@ -136,7 +136,9 @@ The existing Meta dashboard is not modified by this change.
   its native Web Locks callback left the promise pending. The callback now
   rejects asynchronously. A bounded regression covers rejection/recovery and
   concurrent reservations. All 205 web tests pass locally on Node 22 and 26;
-  API tests pass (266 passed, one renderer test skipped locally).
+  API tests pass (267 passed, one renderer test skipped locally). A real local
+  HTTP test injects synthetic upstream secrets into database-health and account
+  errors and verifies that neither console output nor response bodies expose them.
 - An isolated Chromium check exercised the actual recovery module with real
   localStorage/Web Locks: reload, a second tab, twelve concurrent reservations,
   account isolation, storage rejection, acknowledgement and explicit restart.
