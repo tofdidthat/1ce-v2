@@ -7,6 +7,8 @@ import {writeFile} from 'node:fs/promises';
 import {enqueuePublication,listPublications,retryPublication} from '../dist/publishing-jobs.js';
 import {runInstagramReelOnce,quarantineExpiredInstagramClaims} from '../dist/instagram-reels-worker.js';
 import {handleInstagramMetaCompliance} from '../dist/instagram-meta-compliance.js';
+import {processInstagramDataDeletionOnce,serveInstagramDataDeletionStatus} from '../dist/instagram-data-deletion.js';
+import {beginInstagramConnection} from '../dist/instagram-connection.js';
 import {sealPublishing} from '../dist/publishing-secrets.js';
 
 const hash=value=>createHash('sha256').update(value).digest('hex');
@@ -19,7 +21,7 @@ export async function instagramReliabilitySmoke(db){
  const config={appId:'synthetic',appSecret:'synthetic-meta-compliance-secret',encryptionSecret:'synthetic-publishing-key',
   redirectUri:'https://api.invalid/auth/instagram/callback',webOrigin:'https://web.invalid'};
  const objects=new Map(),receipts=[];
- let owner;
+ let owner,other;
  try{
   owner=Number((await db.query('INSERT INTO account_users(email) VALUES($1) RETURNING id',
    ['instagram-reliability-'+randomUUID()+'@ci.invalid'])).rows[0].id);
@@ -128,16 +130,77 @@ export async function instagramReliabilitySmoke(db){
   assert.equal((await callback('deauthorize')).status,200);assert.equal(forwards,1);
   assert.equal((await db.query('SELECT 1 FROM v2_instagram_connections WHERE user_id=$1',[owner])).rowCount,1,
    'Replayed deauth cannot remove a newly connected generation');
+  const youtubeGeneration=randomUUID();
+  await db.query(`INSERT INTO v2_youtube_connections(user_id,refresh_cipher,channel_id,channel_title,generation)
+   VALUES($1,'synthetic-cipher','synthetic-channel','Fixture',$2)`,[owner,youtubeGeneration]);
+  const mixed=await enqueuePublication(db,owner,{requestId:randomUUID(),title:'Mixed fixture',description:'Keep for YouTube',
+   hashtags:'',privacy:'private',audioFileId:files[0],coverFileId:files[1],instagramPublicConsent:true,
+   targets:[{platform:'youtube',variant:'standard'},{platform:'instagram',variant:'default'}]});
+  const mixedTargets=(await db.query('SELECT id,platform FROM v2_publication_targets WHERE job_id=$1',[mixed.id])).rows;
+  const youtubeTarget=mixedTargets.find(t=>t.platform==='youtube').id;
+  const youtubeKey=`publishing/users/${owner}/${mixed.id}/${youtubeTarget}/${hash('youtube-artifact')}.mp4`;
+  objects.set(youtubeKey,Buffer.from('youtube-artifact'));
+  await db.query('INSERT INTO v2_publication_artifacts(object_key,user_id) VALUES($1,$2)',[youtubeKey,owner]);
+  await db.query(`INSERT INTO v2_youtube_checkpoints(target_id,connection_generation,artifact_key,artifact_sha,artifact_bytes)
+   VALUES($1,$2,$3,$4,16)`,[youtubeTarget,youtubeGeneration,youtubeKey,hash('youtube-artifact')]);
+  other=Number((await db.query('INSERT INTO account_users(email) VALUES($1) RETURNING id',
+   ['instagram-other-'+randomUUID()+'@ci.invalid'])).rows[0].id);
+  const foreignJob=(await db.query(`INSERT INTO v2_publication_jobs(user_id,request_id,request_hash,title)
+   VALUES($1,$2,$3,'Foreign fixture') RETURNING id`,[other,randomUUID(),hash('foreign')])).rows[0].id;
+  await db.query(`INSERT INTO v2_publication_targets(job_id,platform,state) VALUES($1,'instagram','succeeded')`,[foreignJob]);
   const deletions=await Promise.all([callback('data-deletion'),callback('data-deletion')]);
-  assert.ok(deletions.every(item=>item.status===503&&JSON.parse(item.body).error==='v2_data_deletion_contract_required'));
-  assert.equal(forwards,2,'Unknown V2 deletion contract does not repeat v1 deletion');
-  console.log('Instagram reliability PASS: real PostgreSQL leases, crash recovery, late confirmation, reconnect, request dedup and concurrent Meta receipts; external providers simulated.');
+  assert.ok(deletions.every(item=>item.status===200));assert.equal(deletions[0].body,deletions[1].body);
+  assert.equal(forwards,2,'Duplicate deletion must not repeat v1 handling');
+  const acknowledgement=JSON.parse(deletions[0].body),statusUrl=new URL(acknowledgement.url);
+  assert.equal(statusUrl.pathname,'/api/instagram/data-deletion-status');
+  const deletionStatus=async()=>{
+   const response={status:0,body:'',writeHead(status){this.status=status},end(body){this.body=body}};
+   await serveInstagramDataDeletionStatus({method:'GET'},response,statusUrl,db);
+   return JSON.parse(response.body).status;
+  };
+  assert.equal(await deletionStatus(),'pending');
+  assert.equal(await processInstagramDataDeletionOnce(db,storage),false,'Default quiet period must be respected');
+  await assert.rejects(beginInstagramConnection(db,owner,config),{code:'instagram_data_deletion_pending'});
+  await assert.rejects(enqueuePublication(db,owner,{requestId:randomUUID(),title:'Blocked',description:'',hashtags:'',privacy:'private',
+   audioFileId:files[0],coverFileId:files[1],targets:[{platform:'instagram',variant:'default'}],instagramPublicConsent:true}),
+  {code:'instagram_data_deletion_pending'});
+  // Only disposable CI advances the delay; there are no in-flight writers here.
+  await db.query(`UPDATE v2_instagram_data_deletions SET not_before=clock_timestamp()-interval '1 second'`);
+  let failedDelete=false;
+  const unreliable={...storage,s3:{async send(command){if(command.constructor.name==='DeleteObjectCommand'&&!failedDelete){
+   failedDelete=true;throw Error('Synthetic R2 outage');}return storage.s3.send(command)}}};
+  await assert.rejects(processInstagramDataDeletionOnce(db,unreliable),/Synthetic R2 outage/);
+  assert.equal(await deletionStatus(),'pending','No false completion when R2 fails');
+  for(let pass=0;pass<10&&await deletionStatus()==='pending';pass++)await processInstagramDataDeletionOnce(db,storage);
+  assert.equal(await deletionStatus(),'completed');
+  const deleted=(await db.query(`SELECT owners,completed_at FROM v2_instagram_data_deletions`)).rows[0];
+  assert.deepEqual(deleted.owners,[]);assert.ok(deleted.completed_at,'Completion drops owner links');
+  assert.equal((await db.query('SELECT 1 FROM v2_instagram_connections WHERE user_id=$1',[owner])).rowCount,0);
+  assert.equal((await db.query('SELECT 1 FROM v2_instagram_compliance_subjects WHERE user_id=$1',[owner])).rowCount,0);
+  assert.equal((await db.query(`SELECT 1 FROM v2_publication_targets t JOIN v2_publication_jobs j ON j.id=t.job_id
+   WHERE j.user_id=$1 AND t.platform='instagram'`,[owner])).rowCount,0);
+  assert.equal((await db.query('SELECT 1 FROM library_files WHERE user_id=$1',[owner])).rowCount,2);
+  assert.equal((await db.query('SELECT 1 FROM account_users WHERE id=$1',[owner])).rowCount,1);
+  assert.equal((await db.query('SELECT 1 FROM v2_youtube_connections WHERE user_id=$1',[owner])).rowCount,1);
+  assert.equal((await db.query('SELECT 1 FROM v2_youtube_checkpoints WHERE target_id=$1',[youtubeTarget])).rowCount,1);
+  assert.equal((await db.query('SELECT 1 FROM v2_publication_targets WHERE job_id=$1',[foreignJob])).rowCount,1);
+  assert.equal((await db.query('SELECT description,instagram_generation FROM v2_publication_jobs WHERE id=$1',[mixed.id])).rows[0].description,'Keep for YouTube');
+  assert.ok(objects.has(youtubeKey));
+  assert.equal([...objects.keys()].filter(key=>key.startsWith('publishing/users/'+owner+'/')&&key!==youtubeKey).length,0);
+  await connect();
+  assert.equal((await callback('data-deletion')).status,200);
+  assert.equal((await db.query('SELECT 1 FROM v2_instagram_connections WHERE user_id=$1',[owner])).rowCount,1,
+   'A completed deletion replay must not revoke a later connection');
+  assert.equal(forwards,2);
+  console.log('Instagram reliability PASS: PostgreSQL leases, crash recovery, late confirmation, reconnect, request dedup, concurrent Meta receipts, durable deletion/R2 retry and mixed-platform/owner isolation; external providers simulated.');
  }finally{
+  for(const receipt of receipts)await db.query('DELETE FROM v2_instagram_data_deletions WHERE request_hash=$1',[receipt]);
   for(const receipt of receipts)await db.query('DELETE FROM v2_instagram_compliance_receipts WHERE request_hash=$1',[receipt]);
   if(owner){
    await db.query('DELETE FROM v2_publication_artifacts WHERE user_id=$1',[owner]);
    await db.query('DELETE FROM account_users WHERE id=$1',[owner]);
   }
+  if(other)await db.query('DELETE FROM account_users WHERE id=$1',[other]);
   if(previous===undefined)delete process.env.INSTAGRAM_REELS_ENABLED;else process.env.INSTAGRAM_REELS_ENABLED=previous;
  }
 }

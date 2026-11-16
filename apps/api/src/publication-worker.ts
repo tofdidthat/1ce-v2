@@ -13,6 +13,8 @@ import {renderPublication,publicationRendererAvailable} from './publication-rend
 import {ensurePublishingSchema} from './publishing-schema.js';
 import {instagramConfig} from './instagram-connection.js';
 import {runInstagramReelOnce,quarantineExpiredInstagramClaims,instagramReelsServerEnabled} from './instagram-reels-worker.js';
+import {processInstagramDataDeletionOnce} from './instagram-data-deletion.js';
+import type {PublishingPool} from './publishing-jobs.js';
 type WorkerOptions={storage:PublishingStorage;config:PublishingConfig;http?:typeof fetch;render?:typeof renderPublication};
 export async function recoverYouTubeClaims(db:QueryableV2):Promise<void>{
  // Only this pipeline's YouTube jobs: no bytes can be sent until the session
@@ -179,20 +181,25 @@ export async function runPublicationOnce(db:QueryableV2,{storage,config,http=fet
  }
  return true;
 }
-export function startPublicationWorker(db:QueryableV2):()=>void{
+export function startPublicationWorker(db:PublishingPool):()=>void{
  const config=publishingConfig(),instagram=instagramConfig(),storage=publishingStorage();
- if((!config&&!instagram)||!storage||!publicationRendererAvailable())return()=>{};
+ if(!config&&!instagram&&!storage)return()=>{};
+ const renderer=publicationRendererAvailable();
  let stopped=false,timer:ReturnType<typeof setTimeout>|null=null;
  const tick=async()=>{
   try{
    await ensurePublishingSchema(db);
+   // Compliance cleanup runs with publishing disabled and without FFmpeg.
+   await processInstagramDataDeletionOnce(db,storage);
+   if(storage){
    if(config)await recoverYouTubeClaims(db);
    if(instagram&&instagramReelsServerEnabled())await quarantineExpiredInstagramClaims(db);
    try{await cleanupArtifacts(db,storage)}catch{console.error('publication artifact cleanup temporarily unavailable');}
-   if(config)await runPublicationOnce(db,{config,storage});
-   if(instagram&&instagramReelsServerEnabled())await runInstagramReelOnce(db,{config:instagram,storage});
+   if(renderer&&config)await runPublicationOnce(db,{config,storage});
+   if(renderer&&instagram&&instagramReelsServerEnabled())await runInstagramReelOnce(db,{config:instagram,storage});
+   }
   }catch{console.error('publication worker temporarily unavailable');}
   if(!stopped){timer=setTimeout(()=>{void tick()},5000);timer.unref();}
  };
- void tick();return()=>{stopped=true;if(timer)clearTimeout(timer);storage.s3.destroy();};
+ void tick();return()=>{stopped=true;if(timer)clearTimeout(timer);storage?.s3.destroy();};
 }

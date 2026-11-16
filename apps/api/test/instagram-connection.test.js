@@ -1,11 +1,40 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {beginInstagramConnection,startInstagramConnection,finishInstagramConnection,
+import {beginInstagramConnection as beginConnection,startInstagramConnection as startConnection,finishInstagramConnection as finishConnection,
  instagramConnectionStatus,disconnectInstagram,instagramConfig} from '../dist/instagram-connection.js';
 import {openPublishing} from '../dist/publishing-secrets.js';
-
 const config={appId:'123456',appSecret:'fixture-meta-secret-not-real',redirectUri:'https://api.invalid/auth/instagram/callback',
  webOrigin:'https://1ce.lol',encryptionSecret:'fixture-existing-publishing-master-key'};
+
+function pool(db){
+ const query=(sql,args)=>sql.startsWith('SELECT 1 FROM v2_instagram_data_deletions')
+  ?Promise.resolve({rowCount:0,rows:[]}):db.query(sql,args);
+ return{query,async connect(){return{query,release(){}}}};
+}
+const beginInstagramConnection=(db,...args)=>beginConnection(pool(db),...args);
+const startInstagramConnection=(db,...args)=>startConnection(pool(db),...args);
+const finishInstagramConnection=(req,res,url,db,...args)=>finishConnection(req,res,url,pool(db),...args);
+
+test('pending deletion blocks a new OAuth transaction under the owner lock',async()=>{
+ const calls=[],client={async query(sql,args){calls.push({sql,args});return{rowCount:sql.includes('FROM v2_instagram_data_deletions')?1:0,rows:[]}},release(){}};
+ await assert.rejects(beginConnection({connect:async()=>client,query:client.query},42,config),{code:'instagram_data_deletion_pending'});
+ assert.ok(calls.some(call=>call.sql==='ROLLBACK'));assert.equal(calls.some(call=>call.sql.startsWith('INSERT')),false);
+});
+
+test('an OAuth claim erased by deletion cannot reconnect even after cleanup has finished',async()=>{
+ const calls=[],db={async query(sql,args){calls.push({sql,args});
+  return sql.startsWith('DELETE FROM v2_instagram_oauth WHERE state_hash=')?{rowCount:0,rows:[]}:{rowCount:1,rows:[{user_id:42}]};
+ }};
+ const http=async url=>String(url).startsWith('https://api.instagram.com/')
+  ?Response.json({user_id:'123456789',access_token:'synthetic-short'})
+  :String(url).startsWith('https://graph.instagram.com/access_token')
+   ?Response.json({access_token:'synthetic-long',expires_in:5184000}):Response.json({id:'123456789',username:'fixture'});
+ const input=callback(),output=response();
+ await finishInstagramConnection(input.req,output,input.url,db,config,42,http);
+ assert.match(output.headers.Location,/instagram-error&reason=instagram_state_expired/);
+ assert.equal(calls.some(call=>call.sql.includes('INSERT INTO v2_instagram_connections')),false);
+});
+
 function response(){return{status:0,headers:{},body:'',writeHead(status,headers){this.status=status;this.headers=headers},end(body){this.body=body||''}}}
 function callback(state='igpub_'+'a'.repeat(43),cookie='onece_v2_instagram_state='+'b'.repeat(43)){
  const req={headers:{cookie}},url=new URL(config.redirectUri+'?state='+state+'&code=fixture-code');
@@ -45,7 +74,7 @@ test('Instagram callback rejects missing browser cookie and state replay without
 });
 test('Instagram exchange verifies account, encrypts long-lived token and returns no credentials to browser',async()=>{
  const queries=[];
- const db={async query(sql,args){queries.push({sql,args});return sql.startsWith('DELETE')?
+ const db={async query(sql,args){queries.push({sql,args});return sql.startsWith('DELETE')||sql.startsWith('UPDATE v2_instagram_oauth SET claim_token')?
   {rowCount:1,rows:[{user_id:42}]}:{rowCount:1,rows:[]}}};
  const http=async(url,init)=>{
   const host=new URL(String(url)).hostname;

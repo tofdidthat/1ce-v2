@@ -175,11 +175,16 @@ export async function runInstagramReelOnce(db:QueryableV2,{config,storage,http=f
     audioBitrate:'128k',audioSampleRate:48000});
    await fence();bytes=(await stat(output)).size;sha=await hashPublishingFile(output);
    artifactKey=`publishing/users/${owner}/${target.jobId}/${target.id}/${sha}.mp4`;
-   await db.query(`INSERT INTO v2_publication_artifacts(object_key,user_id) VALUES($1,$2)
-    ON CONFLICT(object_key) DO UPDATE SET expires_at=clock_timestamp()+interval '7 days'`,[artifactKey,owner]);
+   const registered=await db.query(`INSERT INTO v2_publication_artifacts(object_key,user_id)
+    SELECT $1,$2 FROM v2_publication_targets t JOIN v2_publication_jobs j ON j.id=t.job_id
+    JOIN v2_instagram_connections i ON i.user_id=j.user_id AND i.generation=j.instagram_generation
+    WHERE t.id=$3::bigint AND t.claim_token=$4::uuid AND t.state='running' AND t.claim_until>clock_timestamp()
+    ON CONFLICT(object_key) DO UPDATE SET expires_at=clock_timestamp()+interval '7 days' RETURNING object_key`,
+   [artifactKey,owner,...args]);
+   if(registered.rowCount!==1)throw new PublishingError('publication_connection_changed',409);
    const stream=createReadStream(output);
    try{await storage.s3.send(new PutObjectCommand({Bucket:storage.bucket,Key:artifactKey,Body:stream,
-    ContentLength:bytes,ContentType:'video/mp4'}),{abortSignal:controller.signal})}finally{stream.destroy();}
+    ContentLength:bytes,ContentType:'video/mp4'}),{abortSignal:AbortSignal.any([controller.signal,AbortSignal.timeout(60000)])})}finally{stream.destroy();}
    await fence();
    await db.query(`INSERT INTO v2_instagram_checkpoints
     (target_id,connection_generation,artifact_key,artifact_sha,artifact_bytes)

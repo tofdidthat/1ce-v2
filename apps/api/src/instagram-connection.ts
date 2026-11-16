@@ -3,6 +3,7 @@ import type {IncomingMessage,ServerResponse} from 'node:http';
 import type {QueryableV2} from '../../../packages/shared/contracts.js';
 import {openPublishing,sealPublishing} from './publishing-secrets.js';
 import {PublishingError} from './youtube-connection.js';
+import type {PublishingPool} from './publishing-jobs.js';
 
 export type InstagramConfig={appId:string;appSecret:string;redirectUri:string;webOrigin:string;encryptionSecret:string};
 const cookieName='onece_v2_instagram_state';
@@ -42,18 +43,30 @@ export function instagramConfig():InstagramConfig|null{
 export function instagramCallbackPath(config:InstagramConfig):string{
  return new URL(config.redirectUri).pathname;
 }
-export async function beginInstagramConnection(db:QueryableV2,owner:number,config:InstagramConfig):Promise<{url:string}>{
+async function instagramMutation<T>(pool:PublishingPool,owner:number,task:(db:QueryableV2)=>Promise<T>):Promise<T>{
+ const db=await pool.connect();
+ try{
+  await db.query('BEGIN');await db.query('SELECT pg_advisory_xact_lock($1::bigint)',[owner]);
+  const pending=await db.query(`SELECT 1 FROM v2_instagram_data_deletions
+   WHERE completed_at IS NULL AND $1=ANY(owners) LIMIT 1`,[owner]);
+  if(pending.rowCount)throw new PublishingError('instagram_data_deletion_pending',409);
+  const result=await task(db);await db.query('COMMIT');return result;
+ }catch(error){try{await db.query('ROLLBACK')}catch{}throw error;}finally{db.release();}
+}
+export async function beginInstagramConnection(db:PublishingPool,owner:number,config:InstagramConfig):Promise<{url:string}>{
  const state='igpub_'+randomBytes(32).toString('base64url');
- await db.query('DELETE FROM v2_instagram_oauth WHERE expires_at<clock_timestamp() OR user_id=$1',[owner]);
- await db.query(`INSERT INTO v2_instagram_oauth(state_hash,user_id,browser_hash,expires_at)
-  VALUES($1,$2,'',clock_timestamp()+interval '10 minutes')`,[sha(state),owner]);
+ await instagramMutation(db,owner,async client=>{
+  await client.query('DELETE FROM v2_instagram_oauth WHERE expires_at<clock_timestamp() OR user_id=$1',[owner]);
+  await client.query(`INSERT INTO v2_instagram_oauth(state_hash,user_id,browser_hash,expires_at)
+   VALUES($1,$2,'',clock_timestamp()+interval '10 minutes')`,[sha(state),owner]);
+ });
  return {url:new URL('/auth/instagram/start?state='+state,config.redirectUri).href};
 }
-export async function startInstagramConnection(db:QueryableV2,owner:number,state:string,config:InstagramConfig):Promise<{url:string;cookie:string}>{
+export async function startInstagramConnection(db:PublishingPool,owner:number,state:string,config:InstagramConfig):Promise<{url:string;cookie:string}>{
  if(!statePattern.test(state))throw new PublishingError('instagram_state_expired',409);
  const browser=randomBytes(32).toString('base64url');
- const result=await db.query(`UPDATE v2_instagram_oauth SET browser_hash=$3 WHERE state_hash=$1 AND user_id=$2
-  AND browser_hash='' AND expires_at>clock_timestamp() RETURNING user_id`,[sha(state),owner,sha(browser)]);
+ const result=await instagramMutation(db,owner,client=>client.query(`UPDATE v2_instagram_oauth SET browser_hash=$3 WHERE state_hash=$1 AND user_id=$2
+  AND browser_hash='' AND expires_at>clock_timestamp() RETURNING user_id`,[sha(state),owner,sha(browser)]));
  if(result.rowCount!==1)throw new PublishingError('instagram_state_expired',409);
  const url=new URL('https://www.instagram.com/oauth/authorize');
  for(const [k,v] of Object.entries({client_id:config.appId,redirect_uri:config.redirectUri,response_type:'code',
@@ -61,7 +74,7 @@ export async function startInstagramConnection(db:QueryableV2,owner:number,state
   enable_fb_login:'0',force_authentication:'1'}))url.searchParams.set(k,v);
  return {url:url.href,cookie:`${cookieName}=${browser}; HttpOnly; Secure; SameSite=Lax; Path=/auth/instagram/callback; Max-Age=600`};
 }
-export async function finishInstagramConnection(req:IncomingMessage,res:ServerResponse,url:URL,db:QueryableV2,config:InstagramConfig,owner:number|null,http:typeof fetch=fetch):Promise<void>{
+export async function finishInstagramConnection(req:IncomingMessage,res:ServerResponse,url:URL,db:PublishingPool,config:InstagramConfig,owner:number|null,http:typeof fetch=fetch):Promise<void>{
  const clear=`${cookieName}=; HttpOnly; Secure; SameSite=Lax; Path=/auth/instagram/callback; Max-Age=0`;
  let outcome='error';
  let stage='session';
@@ -74,8 +87,9 @@ export async function finishInstagramConnection(req:IncomingMessage,res:ServerRe
   if(!statePattern.test(state)||!browserPattern.test(browser)||!code||code.length>4096||
    /[\s\r\n]/.test(code)||url.searchParams.has('error'))throw new PublishingError('instagram_consent_denied');
   stage='state';
-  const used=await db.query(`DELETE FROM v2_instagram_oauth WHERE state_hash=$1 AND browser_hash=$2
-   AND user_id=$3 AND expires_at>clock_timestamp() RETURNING user_id`,[sha(state),sha(browser),owner]);
+  const oauthClaim=randomUUID();
+  const used=await db.query(`UPDATE v2_instagram_oauth SET claim_token=$4::uuid WHERE state_hash=$1 AND browser_hash=$2
+   AND user_id=$3 AND expires_at>clock_timestamp() AND claim_token IS NULL RETURNING user_id`,[sha(state),sha(browser),owner,oauthClaim]);
   if(used.rowCount!==1||Number(used.rows[0]?.user_id)!==owner)throw new PublishingError('instagram_state_expired',409);
   stage='short_token';
   const short=await http('https://api.instagram.com/oauth/access_token',{method:'POST',redirect:'error',
@@ -125,7 +139,15 @@ export async function finishInstagramConnection(req:IncomingMessage,res:ServerRe
    throw new PublishingError('instagram_professional_account_required',409);
   if(!meIds.includes(instagramId))throw new PublishingError('instagram_identity_mismatch',409);
   stage='storage';
-  await db.query(`WITH connected AS (
+  const accessCipher=sealPublishing(longData.access_token,'instagram-access:'+owner,config.encryptionSecret);
+  await instagramMutation(db,owner,async client=>{
+   // Deletion/revocation removes this durable claim even while Meta is in
+   // flight. A paused old callback cannot reconnect after cleanup completes.
+   const claimed=await client.query(`DELETE FROM v2_instagram_oauth WHERE state_hash=$1 AND browser_hash=$2
+    AND user_id=$3 AND claim_token=$4::uuid AND expires_at>clock_timestamp() RETURNING user_id`,
+   [sha(state),sha(browser),owner,oauthClaim]);
+   if(claimed.rowCount!==1)throw new PublishingError('instagram_state_expired',409);
+   await client.query(`WITH connected AS (
     INSERT INTO v2_instagram_connections
      (user_id,instagram_user_id,username,access_cipher,expires_at,generation)
      VALUES($1,$2,$3,$4,clock_timestamp()+($5::int*interval '1 second'),$6::uuid)
@@ -134,8 +156,9 @@ export async function finishInstagramConnection(req:IncomingMessage,res:ServerRe
      generation=EXCLUDED.generation,updated_at=clock_timestamp() RETURNING user_id
    ) INSERT INTO v2_instagram_compliance_subjects(user_id,instagram_user_id_hash)
     SELECT user_id,$7 FROM connected ON CONFLICT(user_id,instagram_user_id_hash) DO NOTHING`,
-   [owner,instagramId,profile.username,sealPublishing(longData.access_token,'instagram-access:'+owner,config.encryptionSecret),
+   [owner,instagramId,profile.username,accessCipher,
     expires,randomUUID(),sha('instagram-meta-subject:'+instagramId)]);
+  });
   outcome='connected';
  }catch(error){
   // Emit *only* a fixed internal stage/reason; never print provider response,
@@ -147,7 +170,7 @@ export async function finishInstagramConnection(req:IncomingMessage,res:ServerRe
   };
   const allowed=new Set(['instagram_session_missing','instagram_consent_denied','instagram_state_expired',
    'instagram_code_exchange_failed','instagram_long_token_failed','instagram_profile_unavailable',
-   'instagram_professional_account_required','instagram_identity_mismatch','instagram_connection_save_failed']);
+   'instagram_professional_account_required','instagram_identity_mismatch','instagram_connection_save_failed','instagram_data_deletion_pending']);
   reason=error instanceof PublishingError&&allowed.has(error.code)?error.code:(stageReason[stage]||'instagram_authorization_failed');
   console.warn('Instagram connection not completed',{stage,reason});
  }

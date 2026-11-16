@@ -19,8 +19,12 @@ function req(action='deauthorize',signed=signedRequest()){
  return {request,url:new URL('https://api.invalid/api/instagram/meta-compliance'+(action==='deauthorize'?'':'?action='+action))};
 }
 function res(){return{status:0,headers:{},body:'',setHeader(name,value){this.headers[name]=value},writeHead(status,headers){this.status=status;Object.assign(this.headers,headers)},end(value){this.body=value||''}};}
-function pool({matched=false}={}){
- const calls=[],receipts=new Map(),state={connected:matched,known:matched};const client={async query(sql,args){calls.push({sql,args});
+function pool({matched=false,unmapped=false}={}){
+ const calls=[],receipts=new Map(),deletions=new Map(),state={connected:matched,known:matched};const client={async query(sql,args){calls.push({sql,args});
+  if(sql.startsWith('SELECT request_hash FROM v2_instagram_data_deletions'))return{rowCount:deletions.has(args[0])?1:0,rows:deletions.has(args[0])?[{}]:[]};
+  if(sql.startsWith('SELECT 1 FROM v2_publication_jobs j WHERE j.instagram_generation'))return{rowCount:unmapped?1:0,rows:unmapped?[{}]:[]};
+  if(sql.startsWith('INSERT INTO v2_instagram_data_deletions'))deletions.set(args[0],{owners:args[2]});
+  if(sql.startsWith('SELECT user_id FROM v2_instagram_connections'))return{rowCount:state.known?1:0,rows:state.known?[{user_id:42}]:[]};
   if(sql.startsWith('SELECT legacy_response'))return{rowCount:receipts.has(args[0])?1:0,rows:receipts.has(args[0])?[receipts.get(args[0])]:[]};
   if(sql.startsWith('INSERT INTO v2_instagram_compliance_receipts'))receipts.set(args[0],{legacy_response:null});
   if(sql.startsWith('UPDATE v2_instagram_compliance_receipts'))receipts.get(args[0]).legacy_response=JSON.parse(args[1]);
@@ -82,7 +86,7 @@ test('deauthorization revokes matched v2 tokens and fences queued work, then pre
  assert.ok(db.calls.some(call=>call.sql==='COMMIT'));
 });
 
-test('data deletion after deauthorization still recognizes V2 history and refuses a false success',async()=>{
+test('data deletion after deauthorization recognizes V2 history and returns a processing status URL',async()=>{
  const db=pool({matched:true}),actions=[];
  const http=async(url)=>{
   const action=new URL(String(url)).searchParams.get('action');actions.push(action);
@@ -94,22 +98,26 @@ test('data deletion after deauthorization still recognizes V2 history and refuse
  assert.equal(revoked.status,200);
  const deletion=req('data-deletion'),response=res();
  await handleInstagramMetaCompliance(deletion.request,response,deletion.url,db,config,{http});
- assert.equal(response.status,503);
- assert.deepEqual(JSON.parse(response.body),{error:'v2_data_deletion_contract_required'});
+ assert.equal(response.status,200);
+ const data=JSON.parse(response.body);
+ assert.equal(new URL(data.url).pathname,'/api/instagram/data-deletion-status');
+ assert.match(data.confirmation_code,/^[a-f0-9]{32}$/);
+ assert.ok(db.calls.some(call=>call.sql.startsWith('INSERT INTO v2_instagram_data_deletions')));
  assert.deepEqual(actions,['deauthorize','data-deletion']);
 });
 
-test('v1 data deletion is proxied unchanged; a v2 request fails closed without deleting data absent a contract',async()=>{
+test('v1 deletion is proxied unchanged; V2 schedules only approved integration cleanup',async()=>{
  const input=req('data-deletion'),db=pool(),response=res();
  await handleInstagramMetaCompliance(input.request,response,input.url,db,config,{http:legacyResponse('data-deletion')});
  assert.equal(response.status,200);
  assert.deepEqual(JSON.parse(response.body),{url:'https://1ce.lol/privacy?deletion=0123456789abcdef0123456789abcdef',confirmation_code:'0123456789abcdef0123456789abcdef'});
  const v2=pool({matched:true}),v2Response=res(),v2Input=req('data-deletion');
  await handleInstagramMetaCompliance(v2Input.request,v2Response,v2Input.url,v2,config,{http:legacyResponse('data-deletion')});
- assert.equal(v2Response.status,503);
- assert.deepEqual(JSON.parse(v2Response.body),{error:'v2_data_deletion_contract_required'});
- assert.equal(v2.calls.some(call=>/DELETE|UPDATE/.test(call.sql)&&!call.sql.startsWith('UPDATE v2_instagram_compliance_receipts')),false);
- assert.match(v2.calls.find(call=>call.sql.includes('v2_instagram_compliance_subjects')).sql,/UNION ALL/);
+ assert.equal(v2Response.status,200);
+ assert.equal(new URL(JSON.parse(v2Response.body).url).pathname,'/api/instagram/data-deletion-status');
+ assert.equal(v2.calls.some(call=>/DELETE FROM (account_users|library_)/.test(call.sql)),false);
+ assert.ok(v2.calls.some(call=>call.sql.startsWith('DELETE FROM v2_instagram_connections')));
+ assert.match(v2.calls.find(call=>call.sql.includes('v2_instagram_compliance_subjects')).sql,/UNION/);
 });
 
 test('publishing schema installs the compliance identity tombstone migration',async()=>{
@@ -164,12 +172,24 @@ test('a v1 outage can retry delivery without repeating local revocation after re
  assert.equal(b.status,200);assert.equal(upstream,2);assert.equal(db.state.connected,true);
 });
 
-test('duplicate V2 deletion keeps the pending contract and forwards v1 only once',async()=>{
+test('duplicate V2 deletion keeps its receipt and forwards v1 only once',async()=>{
  const db=pool({matched:true});let upstream=0;
  const http=async(...args)=>{upstream++;return legacyResponse('data-deletion')(...args)};
  for(let index=0;index<2;index++){
   const input=req('data-deletion'),output=res();await handleInstagramMetaCompliance(input.request,output,input.url,db,config,{http});
-  assert.equal(output.status,503);assert.equal(JSON.parse(output.body).error,'v2_data_deletion_contract_required');
+  assert.equal(output.status,200);assert.match(JSON.parse(output.body).confirmation_code,/^[a-f0-9]{32}$/);
+  if(index===0)db.state.connected=true; // A completed cleanup may later reconnect.
  }
  assert.equal(upstream,1);assert.equal(db.state.connected,true);
+ assert.equal(db.calls.filter(call=>call.sql.startsWith('INSERT INTO v2_instagram_data_deletions')).length,1);
+});
+
+test('unmapped pre-migration V2 history cannot be falsely acknowledged as v1-only deletion',async()=>{
+ const db=pool({unmapped:true}),input=req('data-deletion'),output=res();let forwards=0;
+ await handleInstagramMetaCompliance(input.request,output,input.url,db,config,{http:async(...args)=>{
+  forwards++;return legacyResponse('data-deletion')(...args);
+ }});
+ assert.equal(forwards,1);assert.equal(output.status,503);
+ assert.deepEqual(JSON.parse(output.body),{error:'instagram_deletion_identity_unresolved'});
+ assert.equal(db.calls.some(call=>call.sql.startsWith('INSERT INTO v2_instagram_data_deletions')),false);
 });

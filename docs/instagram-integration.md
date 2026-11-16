@@ -94,13 +94,35 @@ The existing Meta dashboard is not modified by this change.
   hashed callback receipts. A PostgreSQL advisory lock serializes duplicate
   deliveries, and the receipt prevents a replay from revoking a later connection.
   Receipts contain only a digest, action, time and validated v1 acknowledgement.
-- V1-only deletion responses pass through. For a known V2 identity, V1 is called
-  once after a confirmed receipt and V2 returns HTTP 503
-  `v2_data_deletion_contract_required`. **V2 deletion is incomplete** until the
-  owner defines the records to erase and their retention requirements. The
-  callback must not delete library media or account data on an assumed scope.
-  A lost database commit after a successful v1 call may cause another v1
-  delivery; the legacy deletion operation must remain idempotent.
+- V1-only deletion responses pass through. For a known V2 identity, the callback
+  revokes credentials, fences queued/running Instagram targets and schedules
+  durable cleanup (migration 021). It returns an opaque confirmation code and
+  `/api/instagram/data-deletion-status?code=...`, which reports `pending` until
+  both local cleanup and verified legacy handling complete. A lost database
+  commit after a successful v1 call may cause another v1 delivery; the legacy
+  deletion operation must remain idempotent.
+- **Approved scope (user decision, 2026-11-16):** erase Instagram connections,
+  OAuth claims, identifiers/identity links, targets, attempt history, checkpoints,
+  grants, and Instagram-only job metadata/temporary rendered MP4s for associated
+  1CE accounts, including older connections. Preserve the 1CE account, original
+  library media and all other destinations. Mixed jobs retain metadata needed by
+  their remaining destinations; only their Instagram fields/targets are erased.
+  This does not delete posts already hosted by Instagram or backups/provider logs.
+  Completed cleanup keeps only an opaque receipt/status, with owner links removed.
+- New OAuth/storage and enqueue mutations share the owner's transaction lock;
+  pending deletion blocks reconnect/enqueue. An OAuth claim remains durably fenced
+  until token storage, so an old paused callback cannot restore a deleted link.
+  The cleaner waits two minutes for in-flight bounded PUTs to abort, deletes only
+  validated rendered keys in batches, and retries R2/DB failures without claiming
+  completion. It runs without FFmpeg and with Reels publishing disabled. Unsafe
+  keys or unavailable R2 keep status pending; original/YouTube keys are refused.
+- Older disconnected identities absent from the pre-migration database cannot
+  be reconstructed from a hash. Current connections are backfilled, and new
+  connects/disconnects preserve identity links until deletion. An unknown subject
+  with unmapped V2 history receives retryable `instagram_deletion_identity_unresolved`
+  after v1 handling, requiring verified operator identity resolution. Inventory
+  historical identity mappings before release; do not infer ownership or claim
+  those records were deleted.
 - Graph resource requests use Bearer headers; code exchange and YouTube refresh
   use POST bodies. Meta's current [Business Login documentation](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/business-login)
   still specifies GET parameters for Instagram long-token exchange and refresh.
@@ -136,7 +158,7 @@ The existing Meta dashboard is not modified by this change.
   its native Web Locks callback left the promise pending. The callback now
   rejects asynchronously. A bounded regression covers rejection/recovery and
   concurrent reservations. All 205 web tests pass locally on Node 22 and 26;
-  API tests pass (267 passed, one renderer test skipped locally). A real local
+  API tests pass (276 passed, one renderer test skipped locally). A real local
   HTTP test injects synthetic upstream secrets into database-health and account
   errors and verifies that neither console output nor response bodies expose them.
 - An isolated Chromium check exercised the actual recovery module with real
@@ -154,7 +176,7 @@ The existing Meta dashboard is not modified by this change.
 - The Meta dashboard had no authenticated session. Vercel project access
   returned HTTP 403 for the configured team, despite MCP connection readiness;
   its access logs could not be inspected. No configuration was changed.
-- Neither the generic retention language in `apps/web/src/legal.tsx` nor the
-  v1 callback's forwarding contract defines which V2 publication/library/account
-  records a Meta deletion should erase. This remains a product decision, not a
-  completed P0: known V2 subjects still receive 503, with no deletion claim.
+- The generic policy and v1 forwarding contract initially lacked a V2 deletion
+  scope. The user subsequently approved the integration-only scope above. Its
+  implementation is tested against disposable PostgreSQL and simulated R2;
+  no production migration, callback setting or real data deletion was performed.

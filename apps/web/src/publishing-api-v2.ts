@@ -3,6 +3,7 @@ export type InstagramPublishingStatus={available:boolean;connected:boolean;usern
 export type PublishingStatus={available:boolean;connected:boolean;channelTitle?:string;instagram?:InstagramPublishingStatus;jobs:{id:string;requestId:string;title:string;state:string;targets:PublishingTarget[]}[]};
 export function publishingErrorMessage(code:unknown):string{
  const messages:Record<string,string>={
+  instagram_data_deletion_pending:'Instagram data deletion is in progress. Reconnect after it completes.',
   youtube_reconnect_required:'Reconnect YouTube and grant both channel and upload permissions.',
   instagram_not_configured:'Instagram Business Login is not configured on this server.',
   instagram_reels_not_enabled:'Instagram Reels publishing is still being enabled for your account. You can submit YouTube-only jobs for now.',

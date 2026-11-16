@@ -2,6 +2,7 @@ import {createHash,createHmac,timingSafeEqual} from 'node:crypto';
 import type {IncomingMessage,ServerResponse} from 'node:http';
 import type {QueryableV2} from '../../../packages/shared/contracts.js';
 import type {InstagramConfig} from './instagram-connection.js';
+import {scheduleInstagramDataDeletion} from './instagram-data-deletion.js';
 
 type CompliancePool=QueryableV2&{connect():Promise<QueryableV2&{release():void}>};
 type MetaAction='deauthorize'|'data-deletion';
@@ -75,10 +76,14 @@ async function forwardLegacy(action:MetaAction,signedRequest:string,http:typeof 
 }
 async function revokeV2Connection(client:QueryableV2,metaUserId:string):Promise<boolean>{
   const found=await client.query(`SELECT user_id,generation FROM v2_instagram_connections
-   WHERE instagram_user_id=$1 FOR UPDATE`,[metaUserId]);
+   WHERE instagram_user_id=$1 ORDER BY user_id`,[metaUserId]);
   if(!found.rowCount)return false;
   const owners=found.rows.map(row=>Number(row.user_id)).filter(Number.isSafeInteger);
   for(const owner of owners){
+   await client.query('SELECT pg_advisory_xact_lock($1::bigint)',[owner]);
+   const current=await client.query(`SELECT user_id FROM v2_instagram_connections
+    WHERE user_id=$1 AND instagram_user_id=$2 FOR UPDATE`,[owner,metaUserId]);
+   if(!current.rowCount)continue;
    await client.query(`INSERT INTO v2_instagram_compliance_subjects(user_id,instagram_user_id_hash)
     VALUES($1,$2) ON CONFLICT(user_id,instagram_user_id_hash) DO NOTHING`,[owner,subjectHash(metaUserId)]);
    await client.query('DELETE FROM v2_instagram_oauth WHERE user_id=$1',[owner]);
@@ -90,12 +95,6 @@ async function revokeV2Connection(client:QueryableV2,metaUserId:string):Promise<
    await client.query('DELETE FROM v2_instagram_connections WHERE user_id=$1 AND instagram_user_id=$2',[owner,metaUserId]);
   }
   return true;
-}
-async function hasV2Connection(db:QueryableV2,metaUserId:string):Promise<boolean>{
- const result=await db.query(`SELECT 1 FROM v2_instagram_connections WHERE instagram_user_id=$1
-  UNION ALL SELECT 1 FROM v2_instagram_compliance_subjects WHERE instagram_user_id_hash=$2 LIMIT 1`,
- [metaUserId,subjectHash(metaUserId)]);
- return result.rows.length>0;
 }
 export async function handleInstagramMetaCompliance(req:IncomingMessage,res:ServerResponse,url:URL,db:CompliancePool,
  config:InstagramConfig|null,{http=fetch}:{http?:typeof fetch}={}):Promise<void>{
@@ -131,16 +130,21 @@ export async function handleInstagramMetaCompliance(req:IncomingMessage,res:Serv
    if(action==='deauthorize')await revokeV2Connection(client,userId);
    await client.query('INSERT INTO v2_instagram_compliance_receipts(request_hash,action) VALUES($1,$2)',[requestHash,action]);
   }
-  const v2Matched=action==='data-deletion'&&await hasV2Connection(client,userId);
+  const confirmationCode=createHmac('sha256',config.appSecret).update('meta-v2-deletion:'+requestHash).digest('hex').slice(0,32);
+  const v2Matched=action==='data-deletion'&&await scheduleInstagramDataDeletion(client,requestHash,confirmationCode,subjectHash(userId),userId);
   const legacy=receipt?.legacy_response?{ok:true,body:receipt.legacy_response}:await forwardLegacy(action,signedRequest,http);
   if(legacy.ok&&!receipt?.legacy_response)
    await client.query('UPDATE v2_instagram_compliance_receipts SET legacy_response=$2::jsonb WHERE request_hash=$1',
     [requestHash,JSON.stringify(legacy.body)]);
   await client.query('COMMIT');
   if(!legacy.ok){json(res,503,{error:'legacy_compliance_unavailable'});return;}
+  if(v2Matched==='unresolved'){json(res,503,{error:'instagram_deletion_identity_unresolved'});return;}
   if(v2Matched){
-   // The v1 handler has run, but V2 deletion needs an explicit data contract.
-   json(res,503,{error:'v2_data_deletion_contract_required'});return;
+   // This acknowledges an accepted request, not completed deletion. The opaque
+   // URL reports pending until local cleanup and legacy handling both finish.
+   const status=new URL('/api/instagram/data-deletion-status',config.webOrigin);
+   status.searchParams.set('code',confirmationCode);
+   json(res,200,{url:status.href,confirmation_code:confirmationCode});return;
   }
   json(res,200,legacy.body);
  }catch{

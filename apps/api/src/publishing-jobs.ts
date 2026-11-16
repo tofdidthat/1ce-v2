@@ -30,6 +30,9 @@ export async function enqueuePublication(pool:PublishingPool,owner:number,input:
    await db.query('COMMIT');return {id:String(existing.id),state:String(existing.state)};
   }
   const requiresYouTube=data.draft.targets.some(t=>t.platform==='youtube');
+  if(data.hasInstagram&&(await db.query(`SELECT 1 FROM v2_instagram_data_deletions
+   WHERE completed_at IS NULL AND $1=ANY(owners) LIMIT 1`,[owner])).rowCount)
+   throw new PublishingError('instagram_data_deletion_pending',409);
   const youtube=requiresYouTube
    ?(await db.query('SELECT user_id,generation FROM v2_youtube_connections WHERE user_id=$1 FOR SHARE',[owner])).rows[0]
    :null;

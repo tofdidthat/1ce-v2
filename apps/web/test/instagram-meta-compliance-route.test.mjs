@@ -9,4 +9,7 @@ test('legacy Meta callback path reaches the V2 signed callback before the SPA ca
  assert.ok(route);
  assert.equal(route.destination,'https://1ce-v2-production.up.railway.app/api/instagram/meta-compliance');
  assert.ok(vercel.rewrites.indexOf(route)<spa);
+ const status=vercel.rewrites.find(rule=>rule.source==='/api/instagram/data-deletion-status');
+ assert.equal(status.destination,'https://1ce-v2-production.up.railway.app/api/instagram/data-deletion-status');
+ assert.ok(vercel.rewrites.indexOf(status)<spa);
 });

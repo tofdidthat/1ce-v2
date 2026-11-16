@@ -8,6 +8,7 @@ import {ensurePublishingSchema} from './publishing-schema.js';
 import {serveInstagramReelMedia} from './instagram-reel-media.js';
 import {instagramReelsServerEnabled} from './instagram-reels-worker.js';
 import {handleInstagramMetaCompliance} from './instagram-meta-compliance.js';
+import {serveInstagramDataDeletionStatus} from './instagram-data-deletion.js';
 import {enqueuePublication,listPublications,retryPublication,type PublishingPool} from './publishing-jobs.js';
 const send=(res:ServerResponse,status:number,value:unknown,headers:Record<string,string>={})=>{
  res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'private, no-store',...headers});res.end(JSON.stringify(value));
@@ -28,8 +29,12 @@ export async function handlePublishing(req:IncomingMessage,res:ServerResponse,pa
  const instagramCallback=!!instagram&&pathname===instagramCallbackPath(instagram);
  const instagramStart=pathname==='/auth/instagram/start';
  const metaCompliance=pathname==='/api/instagram/meta-compliance';
- if(!callback&&!start&&!instagramCallback&&!instagramStart&&!metaCompliance&&!pathname.startsWith('/api/publishing/'))return false;
+ const deletionStatus=pathname==='/api/instagram/data-deletion-status';
+ if(!callback&&!start&&!instagramCallback&&!instagramStart&&!metaCompliance&&!deletionStatus&&!pathname.startsWith('/api/publishing/'))return false;
  try{
+  if(deletionStatus){
+   await ensurePublishingSchema(db);await serveInstagramDataDeletionStatus(req,res,url,db);return true;
+  }
   if(metaCompliance){
    await ensurePublishingSchema(db);
    await handleInstagramMetaCompliance(req,res,url,db,instagram,{http});return true;
