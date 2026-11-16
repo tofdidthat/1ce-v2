@@ -5,6 +5,8 @@ import {publicationRendererAvailable} from './publication-renderer.js';
 import {instagramConfig,instagramCallbackPath,beginInstagramConnection,startInstagramConnection,
  finishInstagramConnection,instagramConnectionStatus,disconnectInstagram,type InstagramConfig} from './instagram-connection.js';
 import {ensurePublishingSchema} from './publishing-schema.js';
+import {serveInstagramReelMedia} from './instagram-reel-media.js';
+import {instagramReelsServerEnabled} from './instagram-reels-worker.js';
 import {enqueuePublication,listPublications,retryPublication,type PublishingPool} from './publishing-jobs.js';
 const send=(res:ServerResponse,status:number,value:unknown,headers:Record<string,string>={})=>{
  res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'private, no-store',...headers});res.end(JSON.stringify(value));
@@ -34,6 +36,13 @@ export async function handlePublishing(req:IncomingMessage,res:ServerResponse,pa
    const current=await currentUser(req);
    await ensurePublishingSchema(db);
    await finishInstagramConnection(req,res,url,db,instagram!,current?.id??null,http);return true;
+  }
+  if(pathname==='/api/publishing/meta-media'){
+   // Meta's video fetch cannot send a 1CE session cookie. It receives only
+   // a short-lived hash-checked capability for one rendered output MP4.
+   if(!instagram||!instagramReelsServerEnabled()){send(res,404,{error:'not_found'});return true;}
+   await ensurePublishingSchema(db);
+   await serveInstagramReelMedia(req,res,url,db);return true;
   }
   const user=await currentUser(req);
   if(!user){send(res,401,{error:'not_authenticated'});return true;}
@@ -65,8 +74,10 @@ export async function handlePublishing(req:IncomingMessage,res:ServerResponse,pa
    }
    const storage=!!(process.env.R2_ACCOUNT_ID&&process.env.R2_ACCESS_KEY_ID&&process.env.R2_SECRET_ACCESS_KEY&&process.env.R2_BUCKET_NAME);
    const instagramStatus=await instagramConnectionStatus(db,user.id,instagram);
+   const reelsEnabled=instagramStatus.connected&&storage&&renderer()&&instagramReelsServerEnabled();
    send(res,200,{available:!!config&&storage&&renderer(),connected:!!connection,
-    channelTitle:connection?String(connection.channel_title):null,instagram:instagramStatus,jobs:await listPublications(db,user.id)});return true;
+    channelTitle:connection?String(connection.channel_title):null,
+    instagram:{...instagramStatus,publishingEnabled:!!reelsEnabled},jobs:await listPublications(db,user.id)});return true;
   }
   if(req.method==='POST'&&pathname==='/api/publishing/instagram/connect'){
    if(!instagram)throw new PublishingError('instagram_not_configured',503);
@@ -78,7 +89,10 @@ export async function handlePublishing(req:IncomingMessage,res:ServerResponse,pa
    await ensurePublishingSchema(db);await body(req);
    await disconnectInstagram(db,user.id);send(res,200,{ok:true});return true;
   }
-  if(!config){send(res,503,{error:'youtube_not_configured'});return true;}
+  if(!config&&pathname!=='/api/publishing/jobs'&&
+    !/^\/api\/publishing\/targets\/[1-9]\d*\/retry$/.test(pathname)){
+   send(res,503,{error:'youtube_not_configured'});return true;
+  }
   await ensurePublishingSchema(db);
   if(req.method==='POST'&&pathname==='/api/publishing/youtube/connect'){
    await body(req);
