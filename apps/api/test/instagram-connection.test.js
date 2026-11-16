@@ -62,6 +62,7 @@ test('Instagram exchange verifies account, encrypts long-lived token and returns
  assert.equal(save.args[0],42);assert.equal(save.args[1],'17841405309211844');
  assert.equal(save.args[2],'artist.fixture');
  assert.equal(openPublishing(save.args[3],'instagram-access:42',config.encryptionSecret),'long-token-fixture');
+ assert.match(save.args[6],/^[a-f0-9]{64}$/,'Meta identity tombstone stores a one-way hash');
  assert.doesNotMatch(JSON.stringify(save),/long-token-fixture|short-token-fixture/);
  assert.doesNotMatch(JSON.stringify(res),/token-fixture|fixture-code/);
 });
@@ -80,6 +81,7 @@ test('personal accounts cannot be connected or stored',async()=>{
 });
 test('status uses local ciphertext, never leaks access token, disconnect is account scoped',async()=>{
  const row={username:'fixture',expires_at:new Date(Date.now()+86400000).toISOString(),
+  instagram_user_id:'17841405309211844',
   access_cipher:(await import('../dist/publishing-secrets.js')).sealPublishing('long-token-fixture','instagram-access:42',config.encryptionSecret)};
  const queries=[],db={async query(sql,args){queries.push({sql,args});return{rows:[row],rowCount:1}}};
  assert.deepEqual(await instagramConnectionStatus(db,42,null),
@@ -88,6 +90,7 @@ test('status uses local ciphertext, never leaks access token, disconnect is acco
   {available:true,connected:true,username:'fixture',publishingEnabled:false});
  await disconnectInstagram(db,42);
  assert.equal(queries.filter(q=>q.sql.startsWith('DELETE')).length,2);
+ assert.ok(queries.some(q=>q.sql.includes('INSERT INTO v2_instagram_compliance_subjects')));
  assert.ok(queries.every(q=>q.args[0]===42));
 });
 

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {randomUUID} from 'node:crypto';
+import {createHmac,randomUUID} from 'node:crypto';
 import {Readable} from 'node:stream';
 import {mkdtemp,writeFile,stat,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
@@ -83,6 +83,27 @@ test('publishing HTTP mutations require authenticated session and exact origin b
  const req={method:'GET',headers:{},url:'/api/publishing/status'},res=response();
  await handlePublishing(req,res,req.url,db,async()=>({id:7}),{config:null});
  assert.deepEqual(JSON.parse(res.body),{available:false,connected:false,jobs:[]});
+});
+test('Meta callback route is public, verifies through its handler and preserves the legacy endpoint',async()=>{
+ const secret='fixture-meta-callback-secret',payload=Buffer.from(JSON.stringify({algorithm:'HMAC-SHA256',user_id:'17841405309211844'})).toString('base64url');
+ const signed=createHmac('sha256',secret).update(payload).digest('base64url')+'.'+payload;
+ const request=Readable.from([new URLSearchParams({signed_request:signed}).toString()]);
+ request.url='/api/instagram/meta-compliance';request.method='POST';request.headers={'content-type':'application/x-www-form-urlencoded'};
+ const meta={appId:'fixture-meta-app',appSecret:secret,redirectUri:'https://api.invalid/auth/instagram/callback',
+  webOrigin:'https://web.invalid',encryptionSecret:'fixture-meta-publishing-secret'};
+ let authCalls=0,forwarded=false;
+ const client={async query(sql){return sql.startsWith('SELECT user_id,generation FROM v2_instagram_connections')
+  ?{rowCount:0,rows:[]}:{rowCount:0,rows:[]}},release(){}};
+ const db={async query(sql){return sql.startsWith('SELECT user_id,instagram_user_id FROM v2_instagram_connections')
+  ?{rowCount:0,rows:[]}:{rowCount:0,rows:[]}},async connect(){return client}};
+ const result=response();
+ const handled=await handlePublishing(request,result,request.url,db,async()=>{authCalls++;return null},{
+  config:null,instagram:meta,http:async(url,options)=>{
+   forwarded=true;assert.equal(new URL(String(url)).hostname,'autoshorts-nine.vercel.app');
+   assert.equal(options.method,'POST');return Response.json({success:true});
+  }});
+ assert.equal(handled,true);assert.equal(result.status,200);assert.deepEqual(JSON.parse(result.body),{success:true});
+ assert.equal(authCalls,0);assert.equal(forwarded,true);
 });
 test('renderer rejects unknown/overlong duration',()=>{
  assert.equal(parseMediaDuration('Duration: 00:03:01.50'),181.5);

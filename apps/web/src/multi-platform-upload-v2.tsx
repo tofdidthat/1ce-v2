@@ -4,6 +4,7 @@ import {ArrowLeft,Check,ChevronDown,ChevronUp,Globe2,ImagePlus,Instagram,Message
 import './multi-platform-upload-v2.css';
 import {publishingRequest,publishingAuthorizationUrl,canRetryPublishingTarget,publishingErrorMessage,type PublishingStatus,type PublishingPayload} from './publishing-api-v2';
 import {uploadPublishingFile} from './upload-file-v2';
+import {reconcilePublishingRequestIds,requestIdForPublishingIntent} from './publishing-idempotency-v2';
 
 type Platform='YouTube'|'TikTok'|'Instagram'|'Telegram'|'Discord';
 type Format='vertical'|'horizontal';
@@ -199,7 +200,11 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
   const poll=async()=>{
    try{
     const value=await publishingRequest<PublishingStatus>(api,'/status',controller.signal);
-    if(!controller.signal.aborted)setStatus({viewer:userId,value});
+    if(!controller.signal.aborted){
+     reconcilePublishingRequestIds(userId,value.jobs.filter(job=>['succeeded','failed','cancelled'].includes(job.state))
+      .flatMap(job=>job.requestId?[job.requestId]:[]));
+     setStatus({viewer:userId,value});
+    }
    }catch(error){if(!controller.signal.aborted){setStatus(null);setFailure(error instanceof Error?error.message:'Unable to load publishing status');}}
    finally{if(!controller.signal.aborted)timer=setTimeout(poll,5000);}
   };
@@ -215,7 +220,7 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
  };
  const submit=()=>void act(async signal=>{
   const selectedYoutube=selectedPlatforms.includes('YouTube'),selectedInstagram=selectedPlatforms.includes('Instagram');
-  if(accepted||video||!audioFile||!image||!title.trim()||!selectedPlatforms.length||
+  if(!userId||accepted||video||!audioFile||!image||!title.trim()||!selectedPlatforms.length||
    selectedPlatforms.some(p=>p!=='YouTube'&&p!=='Instagram')||
    (selectedYoutube&&(!currentStatus?.available||!currentStatus.connected))||
    (selectedInstagram&&(!currentStatus?.instagram?.publishingEnabled||
@@ -228,8 +233,10 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
    if(selectedYoutube)for(const format of selectedYouTubeFormats)
     targets.push({platform:'youtube',variant:format==='vertical'?'shorts':'standard'});
    if(selectedInstagram)targets.push({platform:'instagram',variant:'default'});
-   pending.current={requestId:crypto.randomUUID(),title:title.trim(),description,hashtags,privacy,
-    audioFileId,coverFileId,targets,...(selectedInstagram?{instagramPublicConsent:true}:{})};
+   const intent={title:title.trim(),description,hashtags,privacy,audioFileId,coverFileId,targets,
+    ...(selectedInstagram?{instagramPublicConsent:true}:{})};
+   const requestId=await requestIdForPublishingIntent(userId,intent);
+   pending.current={requestId,...intent};
   }
   setNotice('Submitting to queue…');
   await publishingRequest<{id:string;state:string}>(api,'/jobs',signal,pending.current);

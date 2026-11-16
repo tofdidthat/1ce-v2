@@ -121,14 +121,17 @@ export async function finishInstagramConnection(req:IncomingMessage,res:ServerRe
    throw new PublishingError('instagram_professional_account_required',409);
   if(!meIds.includes(instagramId))throw new PublishingError('instagram_identity_mismatch',409);
   stage='storage';
-  await db.query(`INSERT INTO v2_instagram_connections
-    (user_id,instagram_user_id,username,access_cipher,expires_at,generation)
-    VALUES($1,$2,$3,$4,clock_timestamp()+($5::int*interval '1 second'),$6::uuid)
-    ON CONFLICT(user_id) DO UPDATE SET instagram_user_id=EXCLUDED.instagram_user_id,
-    username=EXCLUDED.username,access_cipher=EXCLUDED.access_cipher,expires_at=EXCLUDED.expires_at,
-    generation=EXCLUDED.generation,updated_at=clock_timestamp()`,
+  await db.query(`WITH connected AS (
+    INSERT INTO v2_instagram_connections
+     (user_id,instagram_user_id,username,access_cipher,expires_at,generation)
+     VALUES($1,$2,$3,$4,clock_timestamp()+($5::int*interval '1 second'),$6::uuid)
+     ON CONFLICT(user_id) DO UPDATE SET instagram_user_id=EXCLUDED.instagram_user_id,
+     username=EXCLUDED.username,access_cipher=EXCLUDED.access_cipher,expires_at=EXCLUDED.expires_at,
+     generation=EXCLUDED.generation,updated_at=clock_timestamp() RETURNING user_id
+   ) INSERT INTO v2_instagram_compliance_subjects(user_id,instagram_user_id_hash)
+    SELECT user_id,$7 FROM connected ON CONFLICT(user_id,instagram_user_id_hash) DO NOTHING`,
    [owner,instagramId,profile.username,sealPublishing(longData.access_token,'instagram-access:'+owner,config.encryptionSecret),
-    expires,randomUUID()]);
+    expires,randomUUID(),sha('instagram-meta-subject:'+instagramId)]);
   outcome='connected';
  }catch(error){
   // Emit *only* a fixed internal stage/reason; never print provider response,
@@ -160,6 +163,11 @@ export async function instagramConnectionStatus(db:QueryableV2,owner:number,conf
 }
 export async function disconnectInstagram(db:QueryableV2,owner:number):Promise<void>{
  await db.query('DELETE FROM v2_instagram_oauth WHERE user_id=$1',[owner]);
+ const connection=(await db.query('SELECT instagram_user_id FROM v2_instagram_connections WHERE user_id=$1',[owner])).rows[0];
+ if(connection&&/^[0-9]{1,32}$/.test(String(connection.instagram_user_id)))
+  await db.query(`INSERT INTO v2_instagram_compliance_subjects(user_id,instagram_user_id_hash)
+   VALUES($1,$2) ON CONFLICT(user_id,instagram_user_id_hash) DO NOTHING`,
+  [owner,sha('instagram-meta-subject:'+String(connection.instagram_user_id))]);
  // This disconnects 1CE; users may additionally revoke the app from Instagram settings.
  await db.query('DELETE FROM v2_instagram_connections WHERE user_id=$1',[owner]);
 }

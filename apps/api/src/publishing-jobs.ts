@@ -61,13 +61,13 @@ export async function enqueuePublication(pool:PublishingPool,owner:number,input:
  }catch(error){try{await db.query('ROLLBACK')}catch{}throw error;}finally{db.release();}
 }
 export async function listPublications(db:QueryableV2,owner:number){
- const rows=(await db.query(`SELECT j.id,j.title,j.state AS job_state,t.id AS target_id,t.platform,t.variant,t.state,t.remote_id,t.last_error_code
+ const rows=(await db.query(`SELECT j.id,j.request_id,j.title,j.state AS job_state,t.id AS target_id,t.platform,t.variant,t.state,t.remote_id,t.last_error_code
   FROM (SELECT * FROM v2_publication_jobs WHERE user_id=$1 ORDER BY created_at DESC,id DESC LIMIT 30) j
   JOIN v2_publication_targets t ON t.job_id=j.id ORDER BY j.created_at DESC,j.id,t.id`,[owner])).rows;
- const jobs=new Map<string,{id:string;title:string;state:string;targets:Array<{id:string;platform:string;variant:string;state:string;remoteId:string|null;errorCode:string|null}>}>();
+ const jobs=new Map<string,{id:string;requestId:string;title:string;state:string;targets:Array<{id:string;platform:string;variant:string;state:string;remoteId:string|null;errorCode:string|null}>}>();
  for(const row of rows){
   const id=String(row.id);let job=jobs.get(id);
-  if(!job){job={id,title:String(row.title),state:String(row.job_state),targets:[]};jobs.set(id,job);}
+  if(!job){job={id,requestId:String(row.request_id),title:String(row.title),state:String(row.job_state),targets:[]};jobs.set(id,job);}
   job.targets.push({id:String(row.target_id),platform:String(row.platform),variant:String(row.variant),state:String(row.state),
    remoteId:typeof row.remote_id==='string'?row.remote_id:null,errorCode:typeof row.last_error_code==='string'?row.last_error_code:null});
  }

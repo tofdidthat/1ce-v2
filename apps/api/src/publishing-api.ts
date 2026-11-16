@@ -7,6 +7,7 @@ import {instagramConfig,instagramCallbackPath,beginInstagramConnection,startInst
 import {ensurePublishingSchema} from './publishing-schema.js';
 import {serveInstagramReelMedia} from './instagram-reel-media.js';
 import {instagramReelsServerEnabled} from './instagram-reels-worker.js';
+import {handleInstagramMetaCompliance} from './instagram-meta-compliance.js';
 import {enqueuePublication,listPublications,retryPublication,type PublishingPool} from './publishing-jobs.js';
 const send=(res:ServerResponse,status:number,value:unknown,headers:Record<string,string>={})=>{
  res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'private, no-store',...headers});res.end(JSON.stringify(value));
@@ -26,8 +27,13 @@ export async function handlePublishing(req:IncomingMessage,res:ServerResponse,pa
  const start=pathname==='/auth/youtube/start';
  const instagramCallback=!!instagram&&pathname===instagramCallbackPath(instagram);
  const instagramStart=pathname==='/auth/instagram/start';
- if(!callback&&!start&&!instagramCallback&&!instagramStart&&!pathname.startsWith('/api/publishing/'))return false;
+ const metaCompliance=pathname==='/api/instagram/meta-compliance';
+ if(!callback&&!start&&!instagramCallback&&!instagramStart&&!metaCompliance&&!pathname.startsWith('/api/publishing/'))return false;
  try{
+  if(metaCompliance){
+   await ensurePublishingSchema(db);
+   await handleInstagramMetaCompliance(req,res,url,db,instagram,{http});return true;
+  }
   if(callback&&req.method==='GET'){
    const current=await currentUser(req);
    await ensurePublishingSchema(db);await finishYouTubeConnection(req,res,url,db,config!,current?.id??null,http);return true;

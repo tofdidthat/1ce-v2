@@ -1,6 +1,6 @@
 export type PublishingTarget={id:string;platform:string;variant:string;state:string;remoteId?:string|null;errorCode?:string|null};
 export type InstagramPublishingStatus={available:boolean;connected:boolean;username:string|null;publishingEnabled:boolean};
-export type PublishingStatus={available:boolean;connected:boolean;channelTitle?:string;instagram?:InstagramPublishingStatus;jobs:{id:string;title:string;state:string;targets:PublishingTarget[]}[]};
+export type PublishingStatus={available:boolean;connected:boolean;channelTitle?:string;instagram?:InstagramPublishingStatus;jobs:{id:string;requestId:string;title:string;state:string;targets:PublishingTarget[]}[]};
 export function publishingErrorMessage(code:unknown):string{
  const messages:Record<string,string>={
   youtube_reconnect_required:'Reconnect YouTube and grant both channel and upload permissions.',
@@ -79,7 +79,7 @@ export async function publishingRequest<T>(api:string,path:string,signal:AbortSi
  if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))throw Error('Invalid publishing response');
  const result=parsed as Record<string,unknown>;
  if(!response.ok)throw Error(publishingErrorMessage(result?.error));
- if(path==='/status'&&(typeof result.available!=='boolean'||typeof result.connected!=='boolean'||!Array.isArray(result.jobs)||!result.jobs.every((job:Record<string,unknown>)=>job&&typeof job.id==='string'&&typeof job.title==='string'&&typeof job.state==='string'&&Array.isArray(job.targets)&&job.targets.every((target:Record<string,unknown>)=>target&&typeof target.id==='string'&&typeof target.state==='string'&&typeof target.platform==='string'&&typeof target.variant==='string'))))throw Error('Invalid publishing status');
+ if(path==='/status'&&(typeof result.available!=='boolean'||typeof result.connected!=='boolean'||!Array.isArray(result.jobs)||!result.jobs.every((job:Record<string,unknown>)=>job&&typeof job.id==='string'&&typeof job.requestId==='string'&&typeof job.title==='string'&&typeof job.state==='string'&&Array.isArray(job.targets)&&job.targets.every((target:Record<string,unknown>)=>target&&typeof target.id==='string'&&typeof target.state==='string'&&typeof target.platform==='string'&&typeof target.variant==='string'))))throw Error('Invalid publishing status');
  if(path==='/status'&&result.instagram!==undefined){
   const ig=result.instagram;
   if(!ig||typeof ig!=='object'||Array.isArray(ig))throw Error('Invalid Instagram publishing status');

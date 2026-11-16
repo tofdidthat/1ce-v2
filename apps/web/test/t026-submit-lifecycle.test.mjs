@@ -4,11 +4,11 @@ import {readFileSync} from 'node:fs';
 import {transformSync} from 'esbuild';
 const source=readFileSync(new URL('../src/multi-platform-upload-v2.tsx',import.meta.url),'utf8');
 const submit=source.slice(source.indexOf(' const submit='),source.indexOf(' const visualUrl='));
-const code=transformSync(`function run(ctx){const {act,accepted,setAccepted,currentStatus,video,audioFile,image,title,selectedPlatforms,pending,setNotice,uploadPublishingFile,api,description,hashtags,privacy,selectedYouTubeFormats,publishingRequest}=ctx;${submit};submit();}`,{loader:'ts'}).code;
+const code=transformSync(`function run(ctx){const {act,accepted,setAccepted,currentStatus,video,audioFile,image,title,selectedPlatforms,pending,setNotice,uploadPublishingFile,api,description,hashtags,privacy,selectedYouTubeFormats,publishingRequest,userId,requestIdForPublishingIntent}=ctx;${submit};submit();}`,{loader:'ts'}).code;
 const run=new Function(code+';return run;')();
 function fixture(){
  let work;const requests=[],uploads=[];
- const ctx={act:fn=>{work=fn(new AbortController().signal)},currentStatus:{available:true,connected:true},video:null,audioFile:{name:'audio.mp3'},image:{name:'cover.png'},title:'fixture',selectedPlatforms:['YouTube'],pending:{current:null},setNotice:()=>{},api:'https://api.invalid',description:'',hashtags:'',privacy:'private',selectedYouTubeFormats:['vertical','horizontal'],
+ const ctx={act:fn=>{work=fn(new AbortController().signal)},currentStatus:{available:true,connected:true},video:null,audioFile:{name:'audio.mp3'},image:{name:'cover.png'},title:'fixture',selectedPlatforms:['YouTube'],pending:{current:null},setNotice:()=>{},api:'https://api.invalid',description:'',hashtags:'',privacy:'private',selectedYouTubeFormats:['vertical','horizontal'],userId:42,requestIdForPublishingIntent:async()=>`idempotent-uuid-${requests.length}`,
  accepted:false,setAccepted:value=>{ctx.accepted=value},uploadPublishingFile:async(_api,_file,kind)=>{uploads.push(kind);return kind==='audio'?1:2},publishingRequest:async(_api,_path,_signal,body)=>{requests.push(JSON.stringify(body));if(requests.length===1)throw Error('Transport lost');return{id:'job',state:'queued'}}};
  return{ctx,requests,uploads,start(){run(ctx);return work}};
 }
