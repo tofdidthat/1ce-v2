@@ -65,3 +65,20 @@ export async function publishInstagramReel({accountId,containerId,token,http=fet
  const body=await request(graph+'/'+accountId+'/media_publish',token,'POST',{creation_id:containerId},http);
  return exactId(body);
 }
+
+export async function resolveInstagramPublishingAccount({token,oauthUserId,http=fetch}:{
+ token:string;oauthUserId:string;http?:typeof fetch
+}):Promise<string>{
+ if(!digits.test(oauthUserId))throw new InstagramReelError('instagram_identity_mismatch');
+ const raw=await request('https://graph.instagram.com/me?fields=id,user_id,username',token,'GET',null,http);
+ // Preserve all digits. OAuth user_id and /me id may differ, but the /me
+ // user_id returned by Instagram Login identifies the publishing account.
+ const exact=(field:string)=>new RegExp('"' + field + '"\\s*:\\s*(?:"([0-9]{1,32})"|([0-9]{1,32}))(?=\\s*[,}])').exec(raw);
+ const id=exact('id'),userId=exact('user_id');
+ const a=id?.[1]||id?.[2]||'',b=userId?.[1]||userId?.[2]||'';
+ if(oauthUserId!==a&&oauthUserId!==b)
+  throw new InstagramReelError('instagram_identity_mismatch');
+ const chosen=b||a;
+ if(!digits.test(chosen))throw new InstagramReelError('instagram_profile_unavailable');
+ return chosen;
+}
