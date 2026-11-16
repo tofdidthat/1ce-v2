@@ -140,7 +140,8 @@ export async function runInstagramReelOnce(db:QueryableV2,{config,storage,http=f
     typeof audio.sha256==='string'?audio.sha256:null,controller.signal);
    await downloadPublishingAsset(storage,String(cover.object_key),coverPath,Number(cover.byte_size),
     typeof cover.sha256==='string'?cover.sha256:null,controller.signal);
-   await render({audio:audioPath,cover:coverPath,output,variant:'shorts',signal:controller.signal});
+   await render({audio:audioPath,cover:coverPath,output,variant:'shorts',signal:controller.signal,
+    audioBitrate:'128k',audioSampleRate:48000});
    await fence();bytes=(await stat(output)).size;sha=await hashPublishingFile(output);
    artifactKey=`publishing/users/${owner}/${target.jobId}/${target.id}/${sha}.mp4`;
    await db.query(`INSERT INTO v2_publication_artifacts(object_key,user_id) VALUES($1,$2)
