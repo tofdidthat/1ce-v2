@@ -1,6 +1,6 @@
 import {useEffect,useId,useLayoutEffect,useMemo,useRef,useState,type CSSProperties} from 'react';
 import {createPortal} from 'react-dom';
-import {ArrowLeft,Check,ChevronDown,ChevronUp,Globe2,ImagePlus,Instagram,MessageCircle,Music2,Send,UploadCloud,Video,Youtube} from 'lucide-react';
+import {ArrowLeft,Check,ChevronDown,ChevronUp,Globe2,ImagePlus,Instagram,MessageCircle,MoreHorizontal,Music2,Send,UploadCloud,Video,Youtube} from 'lucide-react';
 import './multi-platform-upload-v2.css';
 import {publishingRequest,publishingAuthorizationUrl,canRetryPublishingTarget,publishingErrorMessage,type PublishingStatus,type PublishingPayload} from './publishing-api-v2';
 import {uploadPublishingFile} from './upload-file-v2';
@@ -16,6 +16,8 @@ type DestinationPickerProps={
  selected:Platform[];
  disabled:boolean;
  status:PublishingStatus|null;
+ selectedYouTubeFormats:Format[];
+ onToggleYouTubeFormat:(format:Format)=>void;
  onToggle:(platform:Platform)=>void;
  onConnection:(platform:'YouTube'|'Instagram')=>void;
 };
@@ -28,19 +30,22 @@ function DestinationSymbol({platform}:{platform:Platform}){
  if(platform==='Telegram')return <Send size={17}/>;
  return <MessageCircle size={17}/>;
 }
-function DestinationPicker({selected,disabled,status,onToggle,onConnection}:DestinationPickerProps){
+function DestinationPicker({selected,disabled,status,selectedYouTubeFormats,onToggleYouTubeFormat,onToggle,onConnection}:DestinationPickerProps){
  const [open,setOpen]=useState(false);
+ const [youtubeFormatsOpen,setYoutubeFormatsOpen]=useState(false);
  const [position,setPosition]=useState<CSSProperties>({});
  const trigger=useRef<HTMLButtonElement|null>(null);
  const panel=useRef<HTMLDivElement|null>(null);
  const panelId=useId();
+ const formatsId=useId();
+ useEffect(()=>{if(!open)setYoutubeFormatsOpen(false)},[open]);
  useEffect(()=>{if(disabled)setOpen(false)},[disabled]);
  useLayoutEffect(()=>{
   if(!open)return;
   const place=()=>{
    const rect=trigger.current?.getBoundingClientRect();
    if(!rect)return;
-   const width=Math.min(420,window.innerWidth-24);
+   const width=Math.min(360,window.innerWidth-24);
    const below=window.innerHeight-rect.bottom-16;
    const above=rect.top-16;
    const useAbove=below<260&&above>below;
@@ -88,32 +93,42 @@ function DestinationPicker({selected,disabled,status,onToggle,onConnection}:Dest
   {open&&createPortal(
    <div ref={panel} id={panelId} className="onece-multi-destination-popover" style={position}
     role="region" aria-label="Destinations">
-    <div className="onece-multi-destination-popover-heading"><strong>Destinations</strong>
-     <span>{selected.length} selected</span>
-    </div>
     <div className="onece-multi-destination-list" role="group" aria-label="Destination platforms">
      {platforms.map(platform=>{
       const youtube=platform==='YouTube',instagram=platform==='Instagram';
       const connected=youtube?!!status?.connected:instagram?!!status?.instagram?.connected:false;
-      return <div className="onece-multi-destination-row" key={platform}>
-       <button type="button" className="onece-multi-destination-option"
-        disabled={disabled} aria-pressed={selected.includes(platform)}
-        onClick={()=>onToggle(platform)}>
-        <span className="onece-multi-checkbox">{selected.includes(platform)&&<Check size={13}/>}</span>
-        <DestinationSymbol platform={platform}/>
-        <span className="onece-multi-destination-label"><strong>{platform}</strong>
-         <small>{youtube||instagram?(connected?'Connected':'Not connected'):'Coming soon'}</small>
-        </span>
-       </button>
-       {(youtube||instagram)&&<button type="button" className="onece-multi-destination-account"
-        disabled={disabled||!status||(instagram&&!status.instagram?.available)}
-        onClick={()=>onConnection(platform)}>
-        {connected?'Disconnect':'Connect'}
-       </button>}
+      return <div className="onece-multi-destination-group" key={platform}>
+       <div className="onece-multi-destination-row">
+        <button type="button" className="onece-multi-destination-option"
+         disabled={disabled} aria-pressed={selected.includes(platform)} onClick={()=>onToggle(platform)}>
+         <span className="onece-multi-checkbox">{selected.includes(platform)&&<Check size={13}/>}</span>
+         <DestinationSymbol platform={platform}/>
+         <span className="onece-multi-destination-label"><strong>{platform}</strong></span>
+        </button>
+        {(youtube||instagram)&&<button type="button" className="onece-multi-destination-account"
+         disabled={disabled||!status||(instagram&&!status.instagram?.available)}
+         onClick={()=>onConnection(platform)}>
+         {connected?'Disconnect':'Connect'}
+        </button>}
+        {youtube&&<button type="button" className="onece-multi-destination-more"
+         disabled={disabled} title="YouTube formats" aria-label="YouTube formats"
+         aria-controls={formatsId} aria-expanded={youtubeFormatsOpen}
+         onClick={()=>setYoutubeFormatsOpen(value=>!value)}>
+         <MoreHorizontal size={18}/>
+        </button>}
+       </div>
+       {youtube&&youtubeFormatsOpen&&<div id={formatsId} className="onece-multi-youtube-formats"
+        role="group" aria-label="YouTube video formats">
+        {formats.map(format=><button type="button" key={format.id}
+         disabled={disabled} aria-pressed={selectedYouTubeFormats.includes(format.id)}
+         onClick={()=>onToggleYouTubeFormat(format.id)}>
+         <span className="onece-multi-checkbox">{selectedYouTubeFormats.includes(format.id)&&<Check size={12}/>}</span>
+         <span>{format.id==='vertical'?'Shorts 9:16':'Standard 16:9'}</span>
+        </button>)}
+       </div>}
       </div>;
      })}
     </div>
-    <p className="onece-multi-destination-footnote">Instagram Reels publish publicly. YouTube visibility is separate.</p>
    </div>,document.body)}
  </div>;
 }
@@ -316,19 +331,9 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
 
      <div className="onece-multi-panel onece-multi-destinations-panel">
       <DestinationPicker selected={selectedPlatforms} disabled={busy||!active}
-       status={currentStatus} onToggle={togglePlatform} onConnection={manageDestination}/>
-      {youtubeSelected&&<div className="onece-multi-youtube-options">
-       <h3>YouTube video formats</h3>
-       <p className="onece-multi-hint">Choose Shorts (9:16), standard video (16:9), or both.</p>
-       <div className="onece-multi-formats" role="group" aria-label="YouTube video formats">
-        {formats.map(format=><button type="button" key={format.id} aria-pressed={selectedYouTubeFormats.includes(format.id)}
-         onClick={()=>toggleYouTubeFormat(format.id)}>
-         <span className="onece-multi-checkbox">{selectedYouTubeFormats.includes(format.id)&&<Check size={13}/>}</span>
-         <span>{format.id==='vertical'?'Shorts':'Standard video'}<small>{format.ratio}</small></span>
-        </button>)}
-       </div>
-      </div>}
-      <p className="onece-multi-hint onece-multi-destinations-hint">Reels publish publicly on Instagram. YouTube visibility stays independent.</p>
+       status={currentStatus} selectedYouTubeFormats={selectedYouTubeFormats}
+       onToggleYouTubeFormat={toggleYouTubeFormat}
+       onToggle={togglePlatform} onConnection={manageDestination}/>
      </div>
      </fieldset>
      <div className="onece-multi-publish">

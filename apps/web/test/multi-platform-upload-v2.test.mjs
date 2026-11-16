@@ -75,11 +75,20 @@ test('mobile layout and original full-width audio dropzone remain independent',(
 
 test('9:16 and 16:9 are YouTube-only options, not global platform settings',()=>{
  assert.match(multi,/const youtubeSelected=selectedPlatforms\.includes\('YouTube'\)/);
- assert.match(multi,/\{youtubeSelected&&<div className="onece-multi-youtube-options">/);
+ assert.match(multi,/\{youtube&&<button type="button" className="onece-multi-destination-more"/);
+ assert.match(multi,/title="YouTube formats" aria-label="YouTube formats"/);
+ assert.match(multi,/onClick=\{\(\)=>setYoutubeFormatsOpen\(value=>!value\)\}/);
+ assert.match(multi,/aria-controls=\{formatsId\} aria-expanded=\{youtubeFormatsOpen\}/);
+ assert.match(multi,/\{youtube&&youtubeFormatsOpen&&<div id=\{formatsId\}/);
  assert.match(multi,/aria-label="YouTube video formats"/);
- assert.match(multi,/format\.id==='vertical'\?'Shorts':'Standard video'/);
+ assert.match(multi,/onToggleYouTubeFormat\(format\.id\)/);
+ assert.match(multi,/format\.id==='vertical'\?'Shorts 9:16':'Standard 16:9'/);
+ assert.match(multi,/selectedYouTubeFormats=\{selectedYouTubeFormats\}/);
+ assert.match(multi,/onToggleYouTubeFormat=\{toggleYouTubeFormat\}/);
  assert.match(multi,/const previewFormats=youtubeSelected[\s\S]*?selectedYouTubeFormats\.includes\(format\.id\)[\s\S]*?format\.id==='vertical'/);
  assert.match(multi,/previewFormats\.map\(format=>/);
- assert.doesNotMatch(multi,/<h2>Video formats<\/h2>/);
- assert.match(css,/\.onece-multi-youtube-options \{/);
+ assert.doesNotMatch(multi,/onece-multi-youtube-options|Choose Shorts \(9:16\), standard video/);
+ assert.match(css,/\.onece-multi-destination-more \{/);
+ assert.match(css,/\.onece-multi-youtube-formats \{/);
+ assert.doesNotMatch(css,/\.onece-multi-youtube-options \{/);
 });
