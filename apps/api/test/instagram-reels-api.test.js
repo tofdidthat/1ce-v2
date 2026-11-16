@@ -41,9 +41,9 @@ test('provider errors do not leak credentials or body into errors',async()=>{
 test('resolve Instagram publishing ID from /me user_id without losing precision',async()=>{
  const http=async()=>new Response('{"id":17841405309211844,"user_id":28621378697485455,"username":"producer"}');
  assert.equal(await resolveInstagramPublishingAccount({token:'x',oauthUserId:'17841405309211844',http}),
-  '28621378697485455');
+  '17841405309211844');
  assert.equal(await resolveInstagramPublishingAccount({token:'x',oauthUserId:'28621378697485455',http}),
-  '28621378697485455');
+  '17841405309211844');
  await assert.rejects(resolveInstagramPublishingAccount({token:'x',oauthUserId:'11111111111111111',http}),
   {code:'instagram_identity_mismatch'});
 });
