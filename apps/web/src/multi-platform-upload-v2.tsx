@@ -1,16 +1,123 @@
-import {useEffect,useMemo,useRef,useState} from 'react';
-import {ArrowLeft,Check,Globe2,ImagePlus,Music2,UploadCloud,Video} from 'lucide-react';
+import {useEffect,useId,useLayoutEffect,useMemo,useRef,useState,type CSSProperties} from 'react';
+import {createPortal} from 'react-dom';
+import {ArrowLeft,Check,ChevronDown,ChevronUp,Globe2,ImagePlus,Instagram,MessageCircle,Music2,Send,UploadCloud,Video,Youtube} from 'lucide-react';
 import './multi-platform-upload-v2.css';
 import {publishingRequest,publishingAuthorizationUrl,canRetryPublishingTarget,publishingErrorMessage,type PublishingStatus,type PublishingPayload} from './publishing-api-v2';
 import {uploadPublishingFile} from './upload-file-v2';
 
 type Platform='YouTube'|'TikTok'|'Instagram'|'Telegram'|'Discord';
 type Format='vertical'|'horizontal';
-const platforms:Platform[]=['YouTube','TikTok','Instagram','Telegram','Discord'];
+const platforms:Platform[]=['YouTube','Instagram','TikTok','Telegram','Discord'];
 const formats:{id:Format;label:string;ratio:string}[]=[
  {id:'vertical',label:'Vertical',ratio:'9:16'},
  {id:'horizontal',label:'Horizontal',ratio:'16:9'}
 ];
+type DestinationPickerProps={
+ selected:Platform[];
+ disabled:boolean;
+ status:PublishingStatus|null;
+ onToggle:(platform:Platform)=>void;
+ onConnection:(platform:'YouTube'|'Instagram')=>void;
+};
+// Same compact, anchored destination list used by the original 1CE upload.
+// The popover lives outside the card overflow, with viewport-aware placement.
+function DestinationSymbol({platform}:{platform:Platform}){
+ if(platform==='YouTube')return <Youtube size={17}/>;
+ if(platform==='Instagram')return <Instagram size={17}/>;
+ if(platform==='TikTok')return <Music2 size={17}/>;
+ if(platform==='Telegram')return <Send size={17}/>;
+ return <MessageCircle size={17}/>;
+}
+function DestinationPicker({selected,disabled,status,onToggle,onConnection}:DestinationPickerProps){
+ const [open,setOpen]=useState(false);
+ const [position,setPosition]=useState<CSSProperties>({});
+ const trigger=useRef<HTMLButtonElement|null>(null);
+ const panel=useRef<HTMLDivElement|null>(null);
+ const panelId=useId();
+ useEffect(()=>{if(disabled)setOpen(false)},[disabled]);
+ useLayoutEffect(()=>{
+  if(!open)return;
+  const place=()=>{
+   const rect=trigger.current?.getBoundingClientRect();
+   if(!rect)return;
+   const width=Math.min(420,window.innerWidth-24);
+   const below=window.innerHeight-rect.bottom-16;
+   const above=rect.top-16;
+   const useAbove=below<260&&above>below;
+   setPosition({
+    position:'fixed',width,
+    left:Math.max(12,Math.min(rect.right-width,window.innerWidth-width-12)),
+    maxHeight:Math.max(140,Math.min(480,useAbove?above:below)),
+    ...(useAbove?{bottom:window.innerHeight-rect.top+8,top:'auto'}:{top:rect.bottom+8,bottom:'auto'})
+   });
+  };
+  place();
+  window.addEventListener('resize',place);
+  window.addEventListener('scroll',place,true);
+  return()=>{
+   window.removeEventListener('resize',place);
+   window.removeEventListener('scroll',place,true);
+  };
+ },[open]);
+ useEffect(()=>{
+  if(!open)return;
+  panel.current?.querySelector<HTMLButtonElement>('.onece-multi-destination-option:not(:disabled)')?.focus();
+  const outside=(event:PointerEvent)=>{
+   if(!panel.current?.contains(event.target as Node)&&!trigger.current?.contains(event.target as Node))setOpen(false);
+  };
+  const onEscape=(event:KeyboardEvent)=>{
+   if(event.key==='Escape'){event.preventDefault();setOpen(false);trigger.current?.focus();}
+  };
+  document.addEventListener('pointerdown',outside);
+  document.addEventListener('keydown',onEscape);
+  return()=>{document.removeEventListener('pointerdown',outside);document.removeEventListener('keydown',onEscape);};
+ },[open]);
+ return <div className="onece-multi-destination-picker">
+  <button ref={trigger} type="button" className="onece-multi-destination-trigger"
+   disabled={disabled} aria-expanded={open} aria-controls={panelId}
+   aria-label={'Destinations, '+selected.length+' selected'}
+   onClick={()=>setOpen(value=>!value)}>
+   <span>Destinations</span>
+   <span className="onece-multi-destination-summary" aria-hidden="true">
+    {platforms.filter(platform=>selected.includes(platform)).map(platform=>
+     <span key={platform} title={platform}><DestinationSymbol platform={platform}/></span>)}
+    {!selected.length&&<small>Choose platforms</small>}
+   </span>
+   {open?<ChevronUp size={16}/>:<ChevronDown size={16}/>}
+  </button>
+  {open&&createPortal(
+   <div ref={panel} id={panelId} className="onece-multi-destination-popover" style={position}
+    role="region" aria-label="Destinations">
+    <div className="onece-multi-destination-popover-heading"><strong>Destinations</strong>
+     <span>{selected.length} selected</span>
+    </div>
+    <div className="onece-multi-destination-list" role="group" aria-label="Destination platforms">
+     {platforms.map(platform=>{
+      const youtube=platform==='YouTube',instagram=platform==='Instagram';
+      const connected=youtube?!!status?.connected:instagram?!!status?.instagram?.connected:false;
+      return <div className="onece-multi-destination-row" key={platform}>
+       <button type="button" className="onece-multi-destination-option"
+        disabled={disabled} aria-pressed={selected.includes(platform)}
+        onClick={()=>onToggle(platform)}>
+        <span className="onece-multi-checkbox">{selected.includes(platform)&&<Check size={13}/>}</span>
+        <DestinationSymbol platform={platform}/>
+        <span className="onece-multi-destination-label"><strong>{platform}</strong>
+         <small>{youtube||instagram?(connected?'Connected':'Not connected'):'Coming soon'}</small>
+        </span>
+       </button>
+       {(youtube||instagram)&&<button type="button" className="onece-multi-destination-account"
+        disabled={disabled||!status||(instagram&&!status.instagram?.available)}
+        onClick={()=>onConnection(platform)}>
+        {connected?'Disconnect':'Connect'}
+       </button>}
+      </div>;
+     })}
+    </div>
+    <p className="onece-multi-destination-footnote">Instagram Reels publish publicly. YouTube visibility is separate.</p>
+   </div>,document.body)}
+ </div>;
+}
+
 const publicationState=(state:string)=>({draft:'Draft',queued:'Queued',running:'Rendering or uploading',retryable:'Waiting to retry',succeeded:'Uploaded',failed:'Failed',needs_review:'Needs review',cancelled:'Cancelled'}[state]||'Updating');
 
 type Props={
