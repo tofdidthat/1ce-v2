@@ -8,11 +8,14 @@ export class InstagramReelError extends Error {
  constructor(public readonly code:string,public readonly retryable=false){super(code);}
 }
 function exactId(body:string):string{
- // Never round decimal Meta IDs through JSON.parse/Number. The ID must be a
- // top-level response member, not a nested provider error or debug field.
- const found=/^\s*\{\s*"id"\s*:\s*(?:"([0-9]{1,32})"|([0-9]{1,32}))\s*(?:,|\})/.exec(body);
- if(!found)throw new InstagramReelError('instagram_invalid_provider_id');
- return found[1]||found[2];
+ // Replace decimal IDs before JSON.parse, so all digits survive. Read only
+ // the top-level response ID, never a nested error/debug field.
+ let parsed:unknown;
+ try{parsed=JSON.parse(body.replace(/("(?:id|user_id)"\s*:\s*)(\d+)(?=\s*[,}])/g,'$1"$2"'));}
+ catch{throw new InstagramReelError('instagram_invalid_provider_id');}
+ if(!record(parsed)||typeof parsed.id!=='string'||!digits.test(parsed.id))
+  throw new InstagramReelError('instagram_invalid_provider_id');
+ return parsed.id;
 }
 async function request(url:string,token:string,method:'GET'|'POST',payload:Record<string,string>|null,
  http:typeof fetch,timeoutMs=20000):Promise<string>{
@@ -37,10 +40,11 @@ export function trustedInstagramDeliveryUrl(value:string,apiOrigin:string):strin
  return url.href;
 }
 export async function createInstagramReel({accountId,token,videoUrl,caption,http=fetch}:{
- accountId:string;token:string;videoUrl:string;caption:string;http?:typeof fetch
+ accountId:string;token:string;videoUrl:string;caption:string;apiOrigin:string;http?:typeof fetch
 }):Promise<string>{
- if(!digits.test(accountId)||caption.length>2200||!videoUrl.startsWith('https://'))
+ if(!digits.test(accountId)||caption.length>2200)
   throw new InstagramReelError('instagram_publication_invalid');
+ videoUrl=trustedInstagramDeliveryUrl(videoUrl,apiOrigin);
  const url=graph+'/'+accountId+'/media';
  const body=await request(url,token,'POST',{media_type:'REELS',video_url:videoUrl,caption},http);
  return exactId(body);
