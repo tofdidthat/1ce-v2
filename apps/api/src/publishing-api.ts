@@ -95,11 +95,13 @@ export async function handlePublishing(req:IncomingMessage,res:ServerResponse,pa
   }
   await ensurePublishingSchema(db);
   if(req.method==='POST'&&pathname==='/api/publishing/youtube/connect'){
+   if(!config)throw new PublishingError('youtube_not_configured',503);
    await body(req);
    const result=await beginYouTubeConnection(db,user.id,config);
    send(res,200,{url:result.url});return true;
   }
   if(req.method==='POST'&&pathname==='/api/publishing/youtube/disconnect'){
+   if(!config)throw new PublishingError('youtube_not_configured',503);
    await body(req);await disconnectYouTube(db,user.id,config,http);send(res,200,{ok:true});return true;
   }
   if(req.method==='POST'&&pathname==='/api/publishing/jobs'){
