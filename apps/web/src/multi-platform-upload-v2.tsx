@@ -32,6 +32,7 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
  const [hashtags,setHashtags]=useState('#shorts #music');
  const [selectedPlatforms,setSelectedPlatforms]=useState<Platform[]>([]);
  const [selectedYouTubeFormats,setSelectedYouTubeFormats]=useState<Format[]>(['vertical']);
+ const [instagramPublicConsent,setInstagramPublicConsent]=useState(false);
  const visualInput=useRef<HTMLInputElement|null>(null);
  const audioInput=useRef<HTMLInputElement|null>(null);
  useEffect(()=>{if(initialTitle)setTitle(current=>current||initialTitle)},[initialTitle]);
@@ -49,18 +50,18 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
  const operation=useRef<AbortController|null>(null);
  const pending=useRef<PublishingPayload|null>(null);
  const viewer=useRef(userId);viewer.current=userId;
- useEffect(()=>{pending.current=null;setAccepted(false);},[title,description,hashtags,privacy,audioFile,image,video,selectedPlatforms,selectedYouTubeFormats]);
+ useEffect(()=>{pending.current=null;setAccepted(false);},[title,description,hashtags,privacy,audioFile,image,video,selectedPlatforms,selectedYouTubeFormats,instagramPublicConsent]);
  useEffect(()=>{
   operation.current?.abort();operation.current=null;pending.current=null;
   setStatus(null);setBusy(false);setNotice('');setFailure('');
-  setAudio(null);setVisual(null);setVideo(null);setTitle(initialTitle);setDescription('');setHashtags('#shorts #music');setPrivacy('private');setSelectedPlatforms([]);setSelectedYouTubeFormats(['vertical']);
+  setAudio(null);setVisual(null);setVideo(null);setTitle(initialTitle);setDescription('');setHashtags('#shorts #music');setPrivacy('private');setSelectedPlatforms([]);setSelectedYouTubeFormats(['vertical']);setInstagramPublicConsent(false);
   return()=>{operation.current?.abort();};
  },[userId]);
  useEffect(()=>{
   const result=new URLSearchParams(window.location.search).get('publishing');
   if(result==='youtube-connected')setNotice('YouTube connected. Choose media and confirm a submission.');
   if(result==='youtube-error')setFailure('YouTube connection was not completed. Grant both requested permissions and confirm that the YouTube API is enabled for the app.');
-  if(result==='instagram-connected')setNotice('Instagram connected. Reels publishing requires separate Meta approval and safety checks.');
+  if(result==='instagram-connected')setNotice('Instagram account connected successfully.');
   if(result==='instagram-error'){
    const reason=new URLSearchParams(window.location.search).get('reason');
    setFailure(publishingErrorMessage(reason||'instagram_authorization_failed'));
@@ -87,12 +88,22 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
   finally{if(operation.current===controller){operation.current=null;setBusy(false);}}
  };
  const submit=()=>void act(async signal=>{
-  if(accepted||!currentStatus?.available||!currentStatus.connected||video||!audioFile||!image||!title.trim()||selectedPlatforms.length!==1||selectedPlatforms[0]!=='YouTube')return;
+  const selectedYoutube=selectedPlatforms.includes('YouTube'),selectedInstagram=selectedPlatforms.includes('Instagram');
+  if(accepted||video||!audioFile||!image||!title.trim()||!selectedPlatforms.length||
+   selectedPlatforms.some(p=>p!=='YouTube'&&p!=='Instagram')||
+   (selectedYoutube&&(!currentStatus?.available||!currentStatus.connected))||
+   (selectedInstagram&&(!currentStatus?.instagram?.publishingEnabled||
+     !currentStatus.instagram.connected||!instagramPublicConsent)))return;
   if(!pending.current){
    setNotice('Uploading audio…');const audioFileId=await uploadPublishingFile(api,audioFile,'audio',signal);
    signal.throwIfAborted();setNotice('Uploading image…');const coverFileId=await uploadPublishingFile(api,image,'cover',signal);
    signal.throwIfAborted();
-   pending.current={requestId:crypto.randomUUID(),title:title.trim(),description,hashtags,privacy,audioFileId,coverFileId,targets:selectedYouTubeFormats.map(format=>({platform:'youtube',variant:format==='vertical'?'shorts':'standard'}))};
+   const targets:PublishingPayload['targets']=[];
+   if(selectedYoutube)for(const format of selectedYouTubeFormats)
+    targets.push({platform:'youtube',variant:format==='vertical'?'shorts':'standard'});
+   if(selectedInstagram)targets.push({platform:'instagram',variant:'default'});
+   pending.current={requestId:crypto.randomUUID(),title:title.trim(),description,hashtags,privacy,
+    audioFileId,coverFileId,targets,...(selectedInstagram?{instagramPublicConsent:true}:{})};
   }
   setNotice('Submitting to queue…');
   await publishingRequest<{id:string;state:string}>(api,'/jobs',signal,pending.current);
@@ -112,6 +123,7 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
   }
  };
  const togglePlatform=(platform:Platform)=>{
+  if(platform==='Instagram')setInstagramPublicConsent(false);
   setSelectedPlatforms(current=>current.includes(platform)?current.filter(item=>item!==platform):[...current,platform]);
  };
  const toggleYouTubeFormat=(format:Format)=>{
@@ -120,6 +132,10 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
    :[...current,format]);
  };
  const youtubeSelected=selectedPlatforms.includes('YouTube');
+ const instagramSelected=selectedPlatforms.includes('Instagram');
+ const youtubeReady=!youtubeSelected||!!(currentStatus?.available&&currentStatus.connected);
+ const instagramReady=!instagramSelected||!!(currentStatus?.instagram?.connected&&currentStatus.instagram.publishingEnabled&&instagramPublicConsent);
+ const destinationsValid=selectedPlatforms.length>0&&selectedPlatforms.every(p=>p==='YouTube'||p==='Instagram');
  const previewFormats=youtubeSelected
   ? formats.filter(format=>selectedYouTubeFormats.includes(format.id))
   : formats.filter(format=>format.id==='vertical');
@@ -171,7 +187,7 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
       <label>Title<input maxLength={100} value={title} onChange={event=>setTitle(event.target.value)} placeholder="Title"/></label>
       <label>Description<textarea rows={3} maxLength={2000} value={description} onChange={event=>setDescription(event.target.value)} placeholder="Description shown on platforms"/></label>
       <label>Hashtags<input maxLength={500} value={hashtags} onChange={event=>setHashtags(event.target.value)} placeholder="#music #beats"/></label>
-      <label>Visibility<select value={privacy} onChange={event=>setPrivacy(event.target.value as PublishingPayload['privacy'])}><option value="private">Private</option><option value="unlisted">Unlisted</option><option value="public">Public</option></select></label>
+      {youtubeSelected&&<label>YouTube visibility<select value={privacy} onChange={event=>setPrivacy(event.target.value as PublishingPayload['privacy'])}><option value="private">Private</option><option value="unlisted">Unlisted</option><option value="public">Public</option></select></label>}
      </div>
 
      <div className="onece-multi-panel">
@@ -195,7 +211,7 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
         </button>)}
        </div>
       </div>}
-      <p className="onece-multi-hint">YouTube supports image + MP3/WAV, Shorts up to 3 minutes or standard video up to 20 minutes. Audio: 150 MiB; image: 15 MiB, 32 megapixels, 8192 pixels per side. Instagram account connection is supported when configured; Reel publishing and other destinations are preview only.</p>
+      <p className="onece-multi-hint">YouTube supports image + MP3/WAV, Shorts up to 3 minutes or standard video up to 20 minutes. Audio: 150 MiB; image: 15 MiB, 32 megapixels, 8192 pixels per side. Instagram Reels use a vertical video from the selected image and audio (up to 3 minutes in 1CE). Other destinations remain previews.</p>
       <p>{!userId?'Sign in to publish.':!currentStatus?'Checking publishing availability…':!currentStatus.available?'Publishing is unavailable on this server.':currentStatus.connected?'YouTube connected':'Connect YouTube to publish.'}</p>
       <button type="button" disabled={!currentStatus} onClick={()=>void act(async signal=>{
        if(currentStatus?.connected){await publishingRequest(api,'/youtube/disconnect',signal,{});signal.throwIfAborted();setStatus(null);}
@@ -215,20 +231,27 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
          signal.throwIfAborted();window.location.assign(publishingAuthorizationUrl(api,result.url));
         }
        })}>{currentStatus?.instagram?.connected?'Disconnect Instagram':'Connect Instagram'}</button>
-       <p className="onece-multi-hint">Reels are public posts. Connecting an account never publishes media; public publishing will require separate confirmation.</p>
+       <p className="onece-multi-hint">Reels publish publicly to the connected account. Simply connecting does not post anything.</p>
+       {instagramSelected&&currentStatus?.instagram?.publishingEnabled&&<label className="onece-multi-public-confirmation">
+        <input type="checkbox" checked={instagramPublicConsent} onChange={event=>setInstagramPublicConsent(event.target.checked)}/>
+        <span>I understand that this Reel will be <strong>publicly posted</strong> on Instagram
+         {currentStatus.instagram.username?' (@'+currentStatus.instagram.username+')':''}. YouTube visibility is independent.</span>
+       </label>}
       </div>
      </div>
      </fieldset>
      <div className="onece-multi-publish">
-      <button type="button" onClick={submit} disabled={accepted||busy||!active||!userId||!currentStatus?.available||!currentStatus.connected||!audioFile||!image||!!video||!title.trim()||selectedPlatforms.length!==1||!youtubeSelected}>{accepted?'Submitted — see history':'Publish to YouTube'}</button>
+      <button type="button" onClick={submit} disabled={accepted||busy||!active||!userId||!audioFile||!image||!!video||!title.trim()||!destinationsValid||!youtubeReady||!instagramReady}>{accepted?'Submitted — see history':
+       youtubeSelected&&instagramSelected?'Publish to YouTube + Instagram':instagramSelected?'Publish public Instagram Reel':'Publish to YouTube'}</button>
       {notice&&<p role="status">{notice}</p>}{failure&&<p role="alert">{failure}</p>}
       {video&&<p>Original video publishing is unavailable. Choose an image and MP3/WAV audio.</p>}
-      {selectedPlatforms.includes('Instagram')&&<p>Instagram is connected for authorization only. Reel publishing is not enabled yet; remove Instagram for a YouTube-only job.</p>}
+      {instagramSelected&&!currentStatus?.instagram?.publishingEnabled&&<p>Instagram account connected, but public Reels publishing is not enabled on this server yet. You can submit YouTube-only jobs.</p>}
+      {instagramSelected&&currentStatus?.instagram?.publishingEnabled&&!instagramPublicConsent&&<p>Public Instagram posting requires your explicit confirmation above.</p>}}
       {selectedPlatforms.some(platform=>platform!=='YouTube'&&platform!=='Instagram')&&<p>Other destinations are previews only. Remove them before publishing.</p>}
       <p>After an uncertain submit error, retry without editing to reuse the same request. An accepted job is not yet a published video.</p>
      </div>
      <section className="onece-multi-panel" aria-label="Publishing history"><h2>Publishing history</h2>
-      {currentStatus?.jobs.map(job=><article key={job.id}><h3>{job.title}</h3><p>{publicationState(job.state)}</p>{job.targets.map(target=><div key={target.id}><span>{target.platform} · {target.variant==='shorts'?'Shorts 9:16':target.variant==='standard'?'Standard 16:9':target.variant} · {publicationState(target.state)}{target.errorCode?' · '+publishingErrorMessage(target.errorCode):''}</span>{target.remoteId&&target.platform==='youtube'&&<a href={'https://www.youtube.com/watch?v='+encodeURIComponent(target.remoteId)} target="_blank" rel="noopener noreferrer">Review on YouTube</a>}{canRetryPublishingTarget(target)&&<button type="button" disabled={busy||!currentStatus.connected} onClick={()=>void act(async signal=>{await publishingRequest(api,'/targets/'+encodeURIComponent(target.id)+'/retry',signal,{});})}>Retry destination</button>}</div>)}</article>)}
+      {currentStatus?.jobs.map(job=><article key={job.id}><h3>{job.title}</h3><p>{publicationState(job.state)}</p>{job.targets.map(target=><div key={target.id}><span>{target.platform} · {target.variant==='shorts'?'Shorts 9:16':target.variant==='standard'?'Standard 16:9':target.variant} · {publicationState(target.state)}{target.errorCode?' · '+publishingErrorMessage(target.errorCode):''}</span>{target.remoteId&&target.platform==='youtube'&&<a href={'https://www.youtube.com/watch?v='+encodeURIComponent(target.remoteId)} target="_blank" rel="noopener noreferrer">Review on YouTube</a>}{canRetryPublishingTarget(target)&&<button type="button" disabled={busy||(target.platform==='instagram'?!currentStatus.instagram?.publishingEnabled:!currentStatus.connected)} onClick={()=>void act(async signal=>{await publishingRequest(api,'/targets/'+encodeURIComponent(target.id)+'/retry',signal,{});})}>Retry destination</button>}</div>)}</article>)}
       {currentStatus&&!currentStatus.jobs.length&&<p>No publishing jobs yet.</p>}
      </section>
     </div>
