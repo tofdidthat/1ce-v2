@@ -107,3 +107,13 @@ test('YouTube formats ellipsis is before Disconnect and list retains balanced sp
  assert.match(css,/padding: 11px;/);
  assert.doesNotMatch(multi,/onece-multi-youtube-options/);
 });
+
+test('Media preview keeps v1 width and shows 16:9 above 9:16 at equal width',()=>{
+ assert.match(multi,/const previewFormats=youtubeSelected\s*\? formats\.filter\(format=>selectedYouTubeFormats\.includes\(format\.id\)\)\.reverse\(\)/);
+ assert.match(multi,/previewFormats\.map\(format=>/);
+ assert.match(css,/\.onece-multi-preview-items \{ display: flex; flex-direction: column; align-items: center; gap: 16px; \}/);
+ assert.match(css,/\.onece-multi-preview-item \{ width: min\(100%, 342\.2px\);/);
+ assert.match(css,/\.onece-multi-preview-frame \{[^\n]*width: 100%;/);
+ assert.match(css,/\.onece-multi-preview-frame\.vertical \{ aspect-ratio: 9 \/ 16; \}/);
+ assert.match(css,/\.onece-multi-preview-frame\.horizontal \{ aspect-ratio: 16 \/ 9; \}/);
+});
