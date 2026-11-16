@@ -39,7 +39,7 @@ export function trustedInstagramDeliveryUrl(value:string,apiOrigin:string):strin
   throw new InstagramReelError('instagram_media_url_invalid');
  return url.href;
 }
-export async function createInstagramReel({accountId,token,videoUrl,caption,http=fetch}:{
+export async function createInstagramReel({accountId,token,videoUrl,caption,apiOrigin,http=fetch}:{
  accountId:string;token:string;videoUrl:string;caption:string;apiOrigin:string;http?:typeof fetch
 }):Promise<string>{
  if(!digits.test(accountId)||caption.length>2200)
