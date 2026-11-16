@@ -73,6 +73,7 @@ async function loadInstagramAccess(db:QueryableV2,owner:number,generation:string
    }
   }catch{/* A still-valid token can be used; expired ones cannot. */}
  }
+ if(!row)throw new PublishingError('instagram_reconnect_required',409);
  if(!Number.isFinite(expiry)||expiry<Date.now()+30*60000)
   throw new PublishingError('instagram_reconnect_required',409);
  if(!/^[0-9]{1,32}$/.test(String(row.instagram_user_id)))
