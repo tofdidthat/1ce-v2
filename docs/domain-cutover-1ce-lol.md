@@ -1,6 +1,23 @@
 # 1CE — runbook de migração do domínio 1ce.lol (v1 → v2)
 
-## Atualização operacional — 2026-11-15, pós-corte (estado atual)
+
+## Pós-corte — atualização verificada em 2026-11-16
+
+**O domínio v2 está operacional.** O usuário confirmou login/uso, a publicação de um Reel Instagram real e o histórico de publicações; o alias `1ce.lol` foi consultado e aponta para o deployment Vercel READY `dpl_FbmUpKoxtFkc4UJ96WGKaeB7FTgM` (main `37c9d6a`, PR #103). Railway API e Postgres estavam online com deployments SUCCESS. Esse é um novo checkpoint; a lista G1–G8 de **NO-GO** abaixo é o inventário histórico **pré-corte**, não a situação de 2026-11-16.
+
+- **OAuth Meta:** aplicativo Business Login da **v1 foi reaproveitado** no backend v2 (IDs/secret por variáveis privadas, sem copiar tokens nem dados da v1). A nova callback Railway foi cadastrada pelo proprietário; conexão real e postagem foram relatadas como bem-sucedidas. **Não foi validado o painel Meta de callbacks de desautorização/exclusão**; prioridade P0 no guia [Instagram](instagram-integration.md).
+- **R2 CORS:** uma tentativa de upload do áudio falhou após `init`, antes do `PUT` direto ao R2. A instrumentação da PR #99 isolou esse passo; o proprietário corrigiu a política de CORS e confirmou a publicação. A regra deve permitir `Origin: https://1ce.lol`, `PUT`, `Content-Type`, sem tornar o bucket público. **Não foi lido o JSON da política diretamente no Cloudflare**, logo não registrar as demais origens/métodos como comprovados.
+- **YouTube:** publicações 9:16 e 16:9 apareceram como `Uploaded` em captura de histórico. Isso não comprova E2E de privacidade `private`, cenários de desconexão, crash ou dois usuários. A v2 continua escolhendo privacidade do YouTube separadamente do post público Instagram.
+- **Frontend:** seleção Destinations em botão único; formato 9:16/16:9 sob `⋯` no YouTube, à esquerda de Disconnect; preview direito até 342.2px, 16:9 acima de 9:16 se ambos marcados. PRs #100–#103 integradas, última 7/7 checks.
+- **Dívidas operacionais não encerradas:** backup PostgreSQL de 2026-11-15 teve integridade/listagem verificada mas **não restauração isolada**; fazer ensaio independente. A credencial PostgreSQL mostrada anteriormente requer rotação coordenada, sem imprimir valor e sem quebrar a API. Verificar `www.1ce.lol`, privacidade owner/anônimo, recuperação do worker e tratamento de logs com tokens/capability URLs.
+- **V1 preservada:** fallback `autoshorts-nine.vercel.app` foi mantido no corte, mas não revalidado nesta auditoria. Não migrar automaticamente contas, mídia ou banco da v1 por causa do domínio compartilhado; não desativar callbacks de dados do app Meta sem substituição correta.
+
+**Próximos passos seguros:** [revisão técnica e prioridades na arquitetura](architecture.md) e [runbook Instagram atualizado](instagram-integration.md). Não refazer o cutover nem aplicar passos antigos de “preparação NO-GO”. Rollback requer nova autorização, inventário atual de domínio/OAuth, verificação de dados e plano específico; os comandos antigos abaixo são apenas referência histórica.
+
+---
+
+
+## Registro histórico — 2026-11-15, pós-corte imediato (substituído pelo checkpoint acima)
 
 **CORTE DO DOMÍNIO EXECUTADO; AVALIAÇÃO FUNCIONAL AINDA PENDENTE.** O bloco de preparação e gates G1–G8 abaixo constitui o checkpoint histórico anterior ao corte; não é o estado operacional atual.
 

@@ -1,82 +1,80 @@
-# 1CE v2 — Instagram connection and future Reel publishing (2026-11-15)
+# 1CE v2 — Instagram Business Login e publicação de Reels
 
-## Scope of this change: authorization only
+**Estado operacional em 2026-11-16:** **OAuth conectado e publicação de Reels implementada/ativada na v2.** O proprietário publicou um Reel real em `1ce.lol` e o histórico marcou `Uploaded`. [PR #96](https://github.com/tofdidthat/1ce-v2/pull/96) criou a conexão; [#97](https://github.com/tofdidthat/1ce-v2/pull/97) diagnosticou OAuth; [#98](https://github.com/tofdidthat/1ce-v2/pull/98) adicionou a publicação; [#99](https://github.com/tofdidthat/1ce-v2/pull/99) detalhou falhas de rede/R2; [#100–#103](https://github.com/tofdidthat/1ce-v2/pulls?q=is%3Apr+is%3Amerged) refinaram Destinations e preview. A API/DB Railway e o domínio Vercel foram consultados e estavam online; credenciais permaneceram ocultas. **Este marco não prova App Review para todos os usuários, segurança operacional dos logs ou recuperação de falhas.**
 
-This branch adds **Instagram Business Login** account linking to the existing Upload panel, without running a Reel publisher. YouTube and its private-by-default jobs remain unchanged. **Do not call this production Instagram publishing.** Selecting Instagram still cannot enqueue or upload media; this is intentional until the Meta app is configured and provider/video safety is tested.
+> **Nota histórica:** em 2026-11-15, a R1 autorizava apenas a conta e `publishingEnabled` era `false`. Na versão atual isso **não descreve a produção**. Também **não existe mais checkbox extra** de aprovação pública: o usuário seleciona Instagram e clica no botão explícito **Publish public Instagram Reel** (ou **Publish to YouTube + public Instagram Reel**); o frontend só então envia `instagramPublicConsent:true` e o backend exige esse valor booleano. A opção YouTube `Private` é independente; **Instagram é público**.
 
-### Why this provider
-- Use **Instagram API with Instagram Login** for Instagram professional accounts (Business or Creator); Facebook Page linking is not required for this route.
-- Scopes: `instagram_business_basic` and `instagram_business_content_publish`.
-- Meta code exchange: `https://api.instagram.com/oauth/access_token`; long-lived Instagram access token: `https://graph.instagram.com/access_token`; professional identity: `https://graph.instagram.com/me`.
-- OAuth authorization is account- and browser-bound, one-time, 10-minute state. The access token is encrypted at rest with existing publishing secret and never delivered to frontend JS.
-- Token lifecycle: long-lived credentials expire (~60 days). A dedicated refresh and reconnect policy is required before production Reel publishing. Disconnect deletes local credentials; user may also revoke access via Instagram settings.
-- Config and media publishing are disabled when required settings are missing.
+## 1. Arquitetura vigente
 
-### Reuse the existing v1 Meta developer app — verified in the v1 repository
+| Componente | Comportamento atual / contrato |
+| --- | --- |
+| Meta developer app | Reutiliza **o app Instagram Business Login cadastrado na v1**, não o banco, sessões ou tokens dos usuários da v1. Suporta contas profissionais (Business/Creator). |
+| OAuth | `POST /api/publishing/instagram/connect` → `GET /auth/instagram/start` → Instagram `oauth/authorize` → `GET /auth/instagram/callback`. State 256-bit, uso único e 10 min, cookie HttpOnly/Secure/SameSite=Lax, usuário da 1CE validado na volta. |
+| Callback oficial | `https://1ce-v2-production.up.railway.app/auth/instagram/callback`; origem do frontend `https://1ce.lol`. Não alterar v1 sem inventário e plano de rollback. |
+| Escopos | `instagram_business_basic`, `instagram_business_content_publish`. Instagram Login (não confundir com o App ID/Secret geral do Facebook). |
+| Tokens | Token de longa duração criptografado por conta no PostgreSQL, geração de conexão usada para isolar jobs após reconexão/desconexão. O worker tenta refresh quando se aproxima do vencimento; se não for utilizável, exige reconexão. |
+| Dados | Migration 018: `v2_instagram_oauth` e `v2_instagram_connections`. Migration 019: `v2_instagram_checkpoints`, `v2_instagram_media_grants` e campos do job para geração e aprovação pública. |
+| API e fila | `POST /api/publishing/jobs` verifica o dono, arquivos READY, conexão de mesma geração e `instagramPublicConsent:true`. Destinos podem incluir YouTube e Instagram no mesmo job, com targets isolados. |
+| Worker | Gera MP4 9:16 H.264/AAC 48 kHz a partir de áudio+capa, cria contêiner `REELS`, consulta processamento `FINISHED` e publica usando `media_publish`. Antes da chamada irreversível salva `publish_started_at`. Não retentar automaticamente publicação incerta. |
+| Mídia | Originais ficam privados no R2. Meta recebe uma URL HTTPS de capacidade com token aleatório de 256 bits, hash no banco e validade máxima de 60 min; serve apenas o MP4 renderizado pelo endpoint `/api/publishing/meta-media?token=…`, com GET/HEAD/Range, em job running/autorizado. Quem possuir a URL durante a validade **pode ler o render temporário**. Nunca compartilhar ou registrar sua query string. |
+| Feature flag | `INSTAGRAM_REELS_ENABLED=true` foi aplicado em produção na etapa operacional que permitiu o primeiro Reel, e a variável continua presente por nome em 2026-11-16. O código mantém default OFF se ela não estiver definida. Se houve alteração de valor depois, confirmar em variável privada do Railway, não inferir pelo nome. |
+| UI | Destinations abre lista compacta; YouTube formatos 9:16/16:9 sob `⋯` à esquerda de Disconnect. Preview direito tem até 342.2 px; quando os dois formatos estão selecionados, 16:9 fica acima do 9:16 na mesma largura. TikTok/Telegram/Discord são previews não publicáveis; arquivo de vídeo original ainda não é suportado. |
+| Estado/histórico | `GET /api/publishing/status` mostra jobs/targets; a UI usa `Uploaded` para `succeeded` e link direto apenas para YouTube. Link Instagram/permalink e estados mais claros estão no backlog, não implementados. |
 
-**Do not create a second Meta app.** Repository `tofdidthat/1ce` has a functional Instagram Business Login implementation under `api/instagram/auth.js`, `api/instagram/callback.js`, `api/instagram/publish.js` and `lib/instagram-token.js`. Its production Vercel project already holds `INSTAGRAM_CLIENT_ID`, `INSTAGRAM_CLIENT_SECRET`, and `INSTAGRAM_REDIRECT_URI` as **sensitive** environment variables (existence verified; values not read or transferred).
+**Serviços relevantes:** `apps/web/src/multi-platform-upload-v2.tsx`, `apps/web/src/upload-file-v2.ts`, `apps/web/src/publishing-api-v2.ts`, `apps/api/src/publishing-api.ts`, `apps/api/src/publishing-jobs.ts`, `apps/api/src/instagram-connection.ts`, `apps/api/src/instagram-reels-api.ts`, `apps/api/src/instagram-reels-worker.ts`, `apps/api/src/instagram-reel-media.ts`, `apps/api/src/publication-queue.ts`, `apps/api/src/publication-worker.ts`. O guia [architecture.md](architecture.md) é o inventário canônico de riscos e prioridades.
 
-- v1 uses the `instagram.com/oauth/authorize` endpoint and permissions `instagram_business_basic,instagram_business_content_publish`, with `enable_fb_login=0` and `force_authentication=1`. v2 matches those login parameters.
-- v1 receives OAuth `user_id` and Graph `/me` `id`/`user_id`; **these IDs can differ for the same account**. v2 accepts a successful match against *either* returned Graph ID, while rejecting an unknown identity and preserving long decimal IDs beyond JS's integer-safe range.
-- v1 backend and identity data, token sessions, and refresh leases are **not** copied to v2; each person must reconnect using their v2 account. Reuse the Meta application registration and approved permissions, not old user tokens or old internal API secret.
-- During migration, **add** the new Railway callback to the existing Meta app's allowed Instagram Login redirect URIs. **Preserve** the old registered URI for rollback until tested; do not overwrite the only valid URI without checking the Meta dashboard.
-- v1 also has separate **Meta deauthorization and data-deletion signed_request endpoints** at `api/instagram/auth.js`, which relay to the legacy backend using `ONECE_INTERNAL_SECRET`. Since `1ce.lol` is now hosted by v2, any Meta settings still pointing at `https://1ce.lol/api/instagram/auth` may no longer reach v1's handler. **Before exposing v2 Instagram connection beyond a test account**, inspect the exact configured Deauthorize Callback URL and Data Deletion Request URL in Meta. Preserve handling of existing v1 user data through a verified legacy-compatible endpoint (e.g. the running v1 fallback hostname with its original handler, after testing), or implement a reviewed migration-aware endpoint. **Do not route data-deletion requests to a v2-only handler and claim v1 data were deleted.** Do not disable the callbacks, invent new URLs or change them without verification.
+## 2. Configuração privada e herança da v1
 
-### Meta dashboard — operator setup (never put values in GitHub)
-1. Open the **same existing Meta app used by the 1CE v1** in Meta for Developers. Its code already uses Instagram Business Login; verify the product and permissions are present. Do not create another app or change to Facebook Login.
-2. Configure the exact Instagram Login redirect URI:
-   `https://1ce-v2-production.up.railway.app/auth/instagram/callback`
-   **Add** this exact URL to the existing Meta app's Instagram Login redirect allowlist, retaining the existing v1 callback for rollback. Use the live Railway API callback, not the frontend `1ce.lol` origin. Audit the app domain, privacy URL, deauthorize callback and data-deletion URL separately before broader rollout.
-3. Request `instagram_business_basic` and `instagram_business_content_publish` and use a professional Instagram test account with app role in development. Users outside tester/developer roles may need Meta Advanced Access, App Review, and Business Verification before the flow works.
-4. Set in **Railway > 1ce-v2 > Variables** (do not share secrets in chat):
-   - `INSTAGRAM_CLIENT_ID` = the **same Instagram Login client ID as v1** (`INSTAGRAM_APP_ID` still accepted as optional legacy v2 alias)
-   - `INSTAGRAM_CLIENT_SECRET` = the **same Instagram Login client secret as v1** (`INSTAGRAM_APP_SECRET` still accepted as optional legacy v2 alias)
-   - Never copy secret values into PRs, chats, shell history, screenshots or the browser frontend. Transfer via authenticated provider settings.
-   - `INSTAGRAM_REDIRECT_URI=https://1ce-v2-production.up.railway.app/auth/instagram/callback`
-   - `WEB_ORIGIN=https://1ce.lol` **already configured; preserve it**
-   - `PUBLISH_TOKEN_KEY` optional for *new installations only*. **Do not add or rotate it on this production instance without a migration plan:** existing YouTube token encryption derives from its configured OAuth secret when unset. This Instagram feature reuses the same stable publishing encryption key hierarchy, without rotating the Google, YouTube or Instagram secrets.
-5. After reviewed release and deployment, open `https://1ce.lol/app/upload`, select the publishing upload mode, click **Connect Instagram**, consent through Meta, and check the @username. Confirm disconnect, expired/denied callback, cross-account and state replay tests. Do not assume consent success merely because the Meta login page opened.
+O aplicativo da Meta vem do repositório v1 `tofdidthat/1ce` (fluxo antigo em `api/instagram/auth.js`, `api/instagram/callback.js`, `api/instagram/publish.js` e `lib/instagram-token.js`). Seu App ID/Secret foram reutilizados como **cadastro do provedor**, mas **não houve cópia** de contas, tokens de terceiros ou mídia da v1. A migração do domínio não transfere dados.
 
-### Data and API
-- `history/database/018_instagram_connections.sql`: additive `v2_instagram_oauth` and `v2_instagram_connections`, keyed by 1CE account, with encrypted access token and expiration.
-- `POST /api/publishing/instagram/connect` -> trusted backend `/auth/instagram/start?state=...` URL.
-- `GET /auth/instagram/start` -> Instagram authorization, Secure/HttpOnly/Lax browser binding cookie.
-- `GET /auth/instagram/callback` -> validates logged-in account, state, cookie and Meta identity; stores encrypted long-lived token.
-- `POST /api/publishing/instagram/disconnect` -> remove local link.
-- `GET /api/publishing/status` -> `instagram: {available,connected,username,publishingEnabled:false}`. No raw Meta tokens exposed.
-- No public R2 media URLs, no Meta publish requests, no new background tasks.
+Configuração de produção no Railway, somente por painel seguro:
 
-### Follow-up: actual Instagram Reels
+- `INSTAGRAM_CLIENT_ID` — ID do produto Instagram Login da Meta (`INSTAGRAM_APP_ID` é alias opcional de compatibilidade no código).
+- `INSTAGRAM_CLIENT_SECRET` — segredo correspondente (`INSTAGRAM_APP_SECRET` como alias opcional). IDs/segredos conflitantes fazem a configuração falhar fechada.
+- `INSTAGRAM_REDIRECT_URI=https://1ce-v2-production.up.railway.app/auth/instagram/callback`
+- `WEB_ORIGIN=https://1ce.lol` — origem exata; não apontar a callback para o frontend.
+- `INSTAGRAM_REELS_ENABLED=true` — gate explícito de publicação; desligar não apaga os jobs já gravados.
+- `PUBLISH_TOKEN_KEY` pode existir; o fallback de criptografia usa segredo OAuth estabelecido. **Não introduzir ou rotacionar** essa chave ou os segredos Google/YouTube/Meta sem plano de migração dos ciphertexts e reconexões.
 
-1. Verify exact Meta publishing API variant/permissions for the app and approved professional-account access.
-2. Integrate per-user token refresh/reconnection and credential generation checks in the durable queue; **never** reuse a connection after account switch/disconnect.
-3. Render vertical MP4 with compliant H.264/AAC, size, duration, aspect and cover specifications; verify official current Meta limits.
-4. Upload video to Meta **without permanently exposing private R2 objects**. A documented, short-lived authenticated media-transfer strategy is required. If Meta must pull from URL, design a bounded signed delivery endpoint whose bearer token is not logged and whose lifetime is revoked/expired; do not make buckets public.
-5. Container creation -> processing status polling -> `media_publish` -> confirm remote ID/permalink and write durable checkpoint with safe idempotency. After any ambiguous network timeout, quarantine `needs_review` rather than re-publish and risk duplicates.
-6. Instagram has no YouTube-style `private` or `unlisted` post visibility. Require **explicit public-post confirmation** per job/destination. A YouTube private job must never silently become a public Instagram Reel.
-7. Run isolated contract tests, disposable DB tests, a Meta-test-account published Reel with explicit user consent, and multi-account permission checks before enabling `publishingEnabled:true`.
+**Nunca** imprimir secrets, OAuth codes, refresh tokens, URLs assinadas ou `/meta-media?token=…` em Markdown, issue, print, query de observabilidade ou frontend. Os nomes das variáveis podem ser documentados; os valores não.
 
-Official docs: https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/business-login and https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/content-publishing .
+### CORS do R2 após o cutover
 
-## R02 — gated Instagram Reels publisher (PR candidate, not enabled)
+Houve falha `Failed to fetch` no PUT do browser para R2 após a mudança de hostname. A API recebia status mas não a publicação; a nova interface delimitou o erro ao envio direto do áudio, e o proprietário corrigiu a política de CORS do bucket. Em seguida relatou um Reel publicado. Essa é **validação manual do caminho feliz**, não inspeção do JSON efetivamente salvo na Cloudflare.
 
-**R02 is OFF by default.** Code, tests and schema can be reviewed/merged without sending any video to Meta. Publishing requires an explicit operator change to `INSTAGRAM_REELS_ENABLED=true` **after** validation and a controlled test Reel authorized by the account owner. Never set this flag just to check connection status.
+A política deve permitir a origem **exata** `https://1ce.lol`, método `PUT` e cabeçalho `Content-Type` na rota de URL assinada. Preservar outras origens necessárias e a restrição de bucket privado; não abrir permissões públicas indiscriminadas. Envio válido: init autenticado → signed PUT → complete → enqueue. `GET /api/publishing/status` 200, isoladamente, não valida o PUT ao R2.
 
-- Instagram-only or simultaneous YouTube + Instagram jobs use the same verified audio/cover upload. YouTube keeps its independent `private|unlisted|public` choice. Each Instagram job must carry `instagramPublicConsent: true` from a visibly checked per-job checkbox. The server revalidates the consent, owner, selected destinations, connection generation, media ownership and feature flag before queueing.
-- The worker renders an H.264/AAC 9:16 MP4 (initially up to 3 minutes), verifies source ownership and keeps original library files private in R2. It writes a separate checkpoint and temporary rendered artifact.
-- For Instagram Login, Meta cURLs `video_url` from a publicly reachable HTTPS endpoint. 1CE's `/api/publishing/meta-media?token=...` is **not a public bucket**: it validates a cryptographically random, SHA-256-hashed, expiring media grant for one in-flight, owner-approved job and streams only the rendered MP4. No original audio/cover, full R2 listing or permanent anonymous access is exposed. The link can be fetched by anyone holding it until its expiration; do not log or share capability URLs.
-- The Meta Graph contract uses the account verified live via `/me`, creates `media_type=REELS`, checks container `status_code`, and only then invokes `media_publish`. The attempt ledger sets `publish_started_at` **before** the irreversible network request; timeouts, expired worker claims or unknown acknowledgments must enter `needs_review`, never blindly publish a duplicate.
-- R02 adds **019_instagram_reels.sql** (additive tables and columns, without destructive operations). YouTube publishing paths remain available and do not gain Instagram public visibility.
-- `instagram.publishingEnabled` in `/api/publishing/status` stays false until Meta config, R2/FFmpeg, connected account and the server flag all validate.
+## 3. Segurança Meta compartilhada — NÃO considerar encerrada
 
-### Release gates before setting the flag
+**Prioridade P0: deauthorization e data deletion.** A v1 tinha `signed_request` endpoints em `api/instagram/auth.js`, associados ao backend legado. Se as URLs configuradas no Meta ainda apontam para `https://1ce.lol/api/instagram/auth`, essa rota pode não chegar à v1 depois do cutover. **Não foi conferido o painel Meta.** Auditar os endereços reais de **Deauthorize Callback** e **Data Deletion Request URL**; implementar/validar atendimento correto para dados da v1 e da v2. Não devolver sucesso de exclusão se apenas uma das bases foi tratada, nem remover a URL antiga sem substituição válida e teste.
 
-1. Confirm the existing v1 Meta app has the necessary permission for the professional Instagram test account; for external accounts, check Meta Advanced Access and app review requirements.
-2. Audit live Meta deauthorization and data deletion URLs. These may still point at the old v1 backend; preserve legal handling of v1 data separately, as documented above.
-3. Verify 7/7 CI checks, isolated PostgreSQL migration 019, queue ownership/consent tests, credential refresh/expiry test, and temporary media grant GET/HEAD/Range, expiration and owner isolation. Check Cloudflare R2 remains private.
-4. Review media delivery URL query token exposure in Railway access logs, CDN, observability and Meta's request logs. Scrub query strings. Test Meta's actual fetch behavior, headers and long-processing retry conditions.
-5. Run exactly one approved public test Reel on a dedicated professional test account. Verify the real Instagram media ID, presence/visibility, per-platform result in 1CE and strict no-duplicate behavior under uncertain acknowledgments.
-6. Confirm disconnect/reconnect while queued or running fences old generation. Verify YouTube private video remains private in a combined job.
-7. Enable gradually, monitor Meta errors/rate limits, then consider app-wide rollout. No automatic background publication from simply connecting an account.
+**Prioridade P0: URLs que carregam capacidades.** O worker utiliza URL temporária `/api/publishing/meta-media?token=…` para o fetch da Meta e `GET https://graph.instagram.com/refresh_access_token?access_token=…` para refresh do token de longa duração. Esse último contém credencial em query; a troca é exigida pelo formato atual usado no código, mas não torna seu registro seguro. **Verificar se Railway, ingress, traces, CDN e ferramentas de erro omitem queries sensíveis**. Preferir transporte alternativo sem segredo no URL se o endpoint Meta permitir, e usar testes sintéticos para garantir que não aparecem em logs. A flag e a criptografia não resolvem logs automaticamente.
 
-Reference: [Meta Content Publishing](https://developers.facebook.com/documentation/instagram-platform/content-publishing). Meta documents a 100 API-published-posts per 24-hour moving limit; provider limits and policies may change.
+## 4. Fila, recuperação e testes pendentes
+
+- **Reenvio após refresh:** `pending.current.requestId` no browser é só memória; um reload após timeout ambíguo cria outro ID. O backend só deduplica pedidos com o **mesmo** ID. Precisamos reconciliar histórico antes de reenvio, testar abas e F5 e considerar persistência de intenção por conta sem tokens.
+- **Transações/lease:** testar sucesso no provedor seguido de falha ao gravar `remote_id` ou `settlePublicationTarget`, perda de heartbeat, crash antes/depois de `publish_started_at`, desconexão, troca de geração e `needs_review`. Nunca usar retry cego após chamada possivelmente irreversível. A resposta boolean de `settlePublicationTarget` não é verificada no worker Instagram.
+- **Cobertura:** a API Graph e entrega `GET/HEAD/Range` possuem testes de contrato com mocks; CI 7/7 não substitui simulação transacional do worker inteiro com DB descartável e falha de rede real. Reels API em conta profissional de teste somente com consentimento para que a publicação seja pública.
+- **Resultado:** após publicação confirmada, salvar e conferir ID remoto, consultar permalink Meta por endpoint autorizado e mostrar `Published`/link no histórico. Não inventar URL Instagram a partir do ID do target.
+- **App Review:** primeira publicação da conta conectada não prova que o app tem permissões avançadas para outros produtores. Conferir em Meta for Developers antes de oferecer a externos.
+- **Runbook operacional:** revisar erros de `instagram_reconnect_required`, `instagram_reel_processing_timeout`, `instagram_claim_expired`, `instagram_publish_needs_review` e `needs_review`; dar opção de reconciliação manual, não republique automaticamente.
+
+Os itens em P0/P1 aparecem detalhados na [revisão da arquitetura de 2026-11-16](architecture.md). Não foram corrigidos nesta atualização documental.
+
+## 5. Como verificar sem causar posts involuntários
+
+1. Confirmar ambiente (domínio v2, origem, credenciais e flag) **sem expor valores secretos**; ver status do Instagram autenticado. Não trocar callback ou segredo na v1.
+2. Testar em conta profissional de teste (para um post real, obter consentimento do proprietário antes de clicar Publish). Conexão e seleção da plataforma **não** enviam Reel.
+3. Verificar MP3/WAV+capa, SHA, PUT ao R2, fila, geração de MP4, contêiner e `media_publish`. Conferir target `succeeded`, ID e presença pública **uma vez só**.
+4. Testar YouTube `Private` com Instagram público no mesmo job, sem cruzar as visibilidades.
+5. Com mídia descartável e DB isolado, injetar timeout, restart, expiração de lease e respostas Meta ambíguas. Estado `needs_review` exige revisão humana. Não usar a conta real para simular falhas.
+6. Auditar compliance Meta, logs e operação `/meta-media` antes de liberar usuários externos.
+
+## 6. Histórico de marcos (não executar novamente)
+
+- **R1 — 2026-11-15:** conexão OAuth e armazenamento criptografado; inicialmente sem publisher. PR #96; PR #97 corrigiu diagnóstico após consentimento.
+- **R2 — 2026-11-15/16:** migration 019, worker Reels e entrega temporária de render, flag de servidor; PR #98 passou CI e foi integrada; posteriormente a publicação foi habilitada no Railway.
+- **Validação do proprietário:** um Reel publicado com sucesso após ajuste de CORS; histórico mostrou `Uploaded` (e YouTube 9:16/16:9 também apareceu `Uploaded` em captura). Isso não é validação de toda a matriz de falhas.
+- **UI:** PRs #100–#103 alteraram exclusivamente seleção Destinations, `⋯` dos formatos e preview maior. Confirmados merges e Vercel READY da #103.
+
+**Referência externa do provedor:** [Instagram API with Instagram Login — Business Login](https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/business-login) e [Content Publishing](https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/content-publishing). Limites e versão Graph API precisam ser reconfirmados em atualizações futuras; não assumir contrato permanente a partir de um Reel.
