@@ -9,3 +9,12 @@ CREATE TABLE IF NOT EXISTS v2_instagram_compliance_subjects (
 );
 CREATE INDEX IF NOT EXISTS v2_instagram_compliance_subject_hash_idx
  ON v2_instagram_compliance_subjects(instagram_user_id_hash);
+
+-- Only a digest and the validated v1 acknowledgement; never raw signed_request,
+-- Instagram IDs, access tokens or payloads. Retain for callback replay safety.
+CREATE TABLE IF NOT EXISTS v2_instagram_compliance_receipts (
+ request_hash CHAR(64) PRIMARY KEY CHECK (request_hash ~ '^[0-9a-f]{64}$'),
+ action TEXT NOT NULL CHECK (action IN ('deauthorize','data-deletion')),
+ legacy_response JSONB,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()
+);

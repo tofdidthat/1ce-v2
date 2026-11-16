@@ -47,11 +47,19 @@ test('Instagram exchange verifies account, encrypts long-lived token and returns
  const queries=[];
  const db={async query(sql,args){queries.push({sql,args});return sql.startsWith('DELETE')?
   {rowCount:1,rows:[{user_id:42}]}:{rowCount:1,rows:[]}}};
- const http=async(url)=>{
+ const http=async(url,init)=>{
   const host=new URL(String(url)).hostname;
-  if(host==='api.instagram.com')return new Response('{"access_token":"short-token-fixture","user_id":17841405309211844}',{headers:{'Content-Type':'application/json'}});
+  if(host==='api.instagram.com'){
+   assert.equal(new URL(String(url)).search,'');assert.equal(init.method,'POST');
+   assert.equal(init.body.get('client_secret'),config.appSecret);assert.equal(init.body.get('code'),'fixture-code');
+   return new Response('{"access_token":"short-token-fixture","user_id":17841405309211844}',{headers:{'Content-Type':'application/json'}});
+  }
   if(host==='graph.instagram.com'&&String(url).includes('/access_token'))return Response.json({access_token:'long-token-fixture',expires_in:5184000});
-  if(host==='graph.instagram.com'&&String(url).includes('/me?'))return new Response('{"id":17841405309211844,"user_id":28621378697485455,"username":"artist.fixture"}',{headers:{'Content-Type':'application/json'}});
+  if(host==='graph.instagram.com'&&String(url).includes('/me?')){
+   assert.equal(new URL(String(url)).searchParams.has('access_token'),false);
+   assert.equal(init.headers.Authorization,'Bearer long-token-fixture');
+   return new Response('{"id":17841405309211844,"user_id":28621378697485455,"username":"artist.fixture"}',{headers:{'Content-Type':'application/json'}});
+  }
   throw Error('Unexpected URL');
  };
  const {req,url}=callback(),res=response();

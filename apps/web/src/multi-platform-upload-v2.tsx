@@ -4,7 +4,7 @@ import {ArrowLeft,Check,ChevronDown,ChevronUp,Globe2,ImagePlus,Instagram,Message
 import './multi-platform-upload-v2.css';
 import {publishingRequest,publishingAuthorizationUrl,canRetryPublishingTarget,publishingErrorMessage,type PublishingStatus,type PublishingPayload} from './publishing-api-v2';
 import {uploadPublishingFile} from './upload-file-v2';
-import {reconcilePublishingRequestIds,requestIdForPublishingIntent} from './publishing-idempotency-v2';
+import {beginAnotherPublishingRequest,reconcilePublishingRequestIds,requestIdForPublishingIntent} from './publishing-idempotency-v2';
 
 type Platform='YouTube'|'TikTok'|'Instagram'|'Telegram'|'Discord';
 type Format='vertical'|'horizontal';
@@ -180,7 +180,7 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
  useEffect(()=>{pending.current=null;setAccepted(false);},[title,description,hashtags,privacy,audioFile,image,video,selectedPlatforms,selectedYouTubeFormats]);
  useEffect(()=>{
   operation.current?.abort();operation.current=null;pending.current=null;
-  setStatus(null);setBusy(false);setNotice('');setFailure('');
+  setStatus(null);setBusy(false);setAccepted(false);setNotice('');setFailure('');
   setAudio(null);setVisual(null);setVideo(null);setTitle(initialTitle);setDescription('');setHashtags('#shorts #music');setPrivacy('private');setSelectedPlatforms([]);setSelectedYouTubeFormats(['vertical']);
   return()=>{operation.current?.abort();};
  },[userId]);
@@ -201,8 +201,7 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
    try{
     const value=await publishingRequest<PublishingStatus>(api,'/status',controller.signal);
     if(!controller.signal.aborted){
-     reconcilePublishingRequestIds(userId,value.jobs.filter(job=>['succeeded','failed','cancelled'].includes(job.state))
-      .flatMap(job=>job.requestId?[job.requestId]:[]));
+     reconcilePublishingRequestIds(userId,value.jobs.flatMap(job=>job.requestId?[job.requestId]:[]));
      setStatus({viewer:userId,value});
     }
    }catch(error){if(!controller.signal.aborted){setStatus(null);setFailure(error instanceof Error?error.message:'Unable to load publishing status');}}
@@ -236,11 +235,14 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
    const intent={title:title.trim(),description,hashtags,privacy,audioFileId,coverFileId,targets,
     ...(selectedInstagram?{instagramPublicConsent:true}:{})};
    const requestId=await requestIdForPublishingIntent(userId,intent);
+   signal.throwIfAborted();
    pending.current={requestId,...intent};
   }
   setNotice('Submitting to queue…');
   await publishingRequest<{id:string;state:string}>(api,'/jobs',signal,pending.current);
-  signal.throwIfAborted();setAccepted(true);setNotice('Accepted by the publishing queue. You can close this page; the server continues. Follow progress below.');
+  signal.throwIfAborted();
+  reconcilePublishingRequestIds(userId,[pending.current.requestId]);
+  setAccepted(true);setNotice('Accepted by the publishing queue. You can close this page; the server continues. Follow progress below.');
  });
  const visualUrl=useMemo(()=>video?URL.createObjectURL(video):image?URL.createObjectURL(image):'',[video,image]);
  useEffect(()=>()=>{if(visualUrl)URL.revokeObjectURL(visualUrl)},[visualUrl]);
@@ -355,7 +357,12 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
       {video&&<p>Original video publishing is unavailable. Choose an image and MP3/WAV audio.</p>}
       {instagramSelected&&!currentStatus?.instagram?.publishingEnabled&&<p>Instagram account connected, but public Reels publishing is not enabled on this server yet. You can submit YouTube-only jobs.</p>}
       {selectedPlatforms.some(platform=>platform!=='YouTube'&&platform!=='Instagram')&&<p>Other destinations are previews only. Remove them before publishing.</p>}
-      <p>After an uncertain submit error, retry without editing to reuse the same request. An accepted job is not yet a published video.</p>
+      {accepted&&<button type="button" disabled={busy} onClick={()=>{
+       if(!userId||!pending.current)return;
+       try{beginAnotherPublishingRequest(userId,pending.current.requestId);pending.current=null;setAccepted(false);setNotice('Ready for another publication. Submitting again creates a new job.');}
+       catch(error){setFailure(error instanceof Error?error.message:'Unable to start another publication');}
+      }}>Start another publication</button>}
+      <p>After an uncertain submit error or reload, submit the same media and details to recover the existing request. An accepted job is not yet a published video.</p>
      </div>
      <section className="onece-multi-panel" aria-label="Publishing history"><h2>Publishing history</h2>
       {currentStatus?.jobs.map(job=><article key={job.id}><h3>{job.title}</h3><p>{publicationState(job.state)}</p>{job.targets.map(target=><div key={target.id}><span>{target.platform} · {target.variant==='shorts'?'Shorts 9:16':target.variant==='standard'?'Standard 16:9':target.variant} · {publicationState(target.state)}{target.errorCode?' · '+publishingErrorMessage(target.errorCode):''}</span>{target.remoteId&&target.platform==='youtube'&&<a href={'https://www.youtube.com/watch?v='+encodeURIComponent(target.remoteId)} target="_blank" rel="noopener noreferrer">Review on YouTube</a>}{canRetryPublishingTarget(target)&&<button type="button" disabled={busy||(target.platform==='instagram'?!currentStatus.instagram?.publishingEnabled:!currentStatus.connected)} onClick={()=>void act(async signal=>{await publishingRequest(api,'/targets/'+encodeURIComponent(target.id)+'/retry',signal,{});})}>Retry destination</button>}</div>)}</article>)}

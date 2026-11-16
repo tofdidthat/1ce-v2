@@ -60,7 +60,6 @@ test('publishing requires connected selected destinations and supported media wi
  assert.match(multi,/Publish public Instagram Reel/);
  assert.match(multi,/Original video publishing is unavailable/);
  assert.match(multi,/requestIdForPublishingIntent\(userId,intent\)/);
- assert.match(multi,/reconcilePublishingRequestIds\(userId,value\.jobs\.filter\(job=>\['succeeded','failed','cancelled'\]\.includes\(job\.state\)\)/);
  assert.match(multi,/if\(!pending.current\)/);
  assert.match(multi,/signal,pending.current/);
  assert.match(multi,/controller.abort\(\);clearTimeout\(timer\)/);

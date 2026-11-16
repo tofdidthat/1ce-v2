@@ -1,5 +1,6 @@
 // Private Cloudflare R2 uploads for 1CE v2 only. No v1 resources.
 import { randomUUID, createHash } from 'node:crypto';
+import {redactSensitiveLogText} from './safe-logs.js';
 import { S3Client, PutObjectCommand, HeadObjectCommand, DeleteObjectCommand, CopyObjectCommand } from '@aws-sdk/client-s3';
 import {verifyUploadedObject,InvalidMedia,VerificationUnavailable} from './upload-security.js';
 import {rateLimitExceeded,uploadLimits} from './api-rate-limits.js';
@@ -229,7 +230,7 @@ export async function handleLibraryFiles(
   const finalKey='users/'+user.id+'/assets/'+file.kind+'/verified/'+randomUUID()+'.'+extension;
   const deleteObject=async (key:string):Promise<void>=>{
    try{await s3.send(new DeleteObjectCommand({Bucket:cfg.bucket,Key:key}),{abortSignal:AbortSignal.timeout(15000)});}
-   catch(err){console.error('R2 cleanup deferred',(err as {message?:string}|null)?.message);}
+   catch(err){console.error('R2 cleanup deferred',redactSensitiveLogText(String((err as {message?:string}|null)?.message||'')));}
   };
   const lostLease=async()=>{
    const current=await pool.query('SELECT status FROM library_files WHERE id=$1 AND user_id=$2',[id,user.id]);

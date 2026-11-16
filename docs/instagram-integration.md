@@ -80,3 +80,52 @@ Official docs: https://developers.facebook.com/docs/instagram-platform/instagram
 7. Enable gradually, monitor Meta errors/rate limits, then consider app-wide rollout. No automatic background publication from simply connecting an account.
 
 Reference: [Meta Content Publishing](https://developers.facebook.com/documentation/instagram-platform/content-publishing). Meta documents a 100 API-published-posts per 24-hour moving limit; provider limits and policies may change.
+
+## T030 — security and recovery candidate (not a production attestation)
+
+The candidate adds signed, migration-aware Meta callbacks at
+`POST /api/instagram/meta-compliance?action=deauthorize|data-deletion`.
+The frontend rewrite preserves `/api/instagram/auth` and its `action` query;
+the API forwards validated signed requests to the fixed v1 fallback host.
+The existing Meta dashboard is not modified by this change.
+
+- HMAC-SHA256, exact decimal user IDs, bounded bodies and no-store responses
+  protect the callback. Migration 020 stores pseudonymous V2 identity links and
+  hashed callback receipts. A PostgreSQL advisory lock serializes duplicate
+  deliveries, and the receipt prevents a replay from revoking a later connection.
+  Receipts contain only a digest, action, time and validated v1 acknowledgement.
+- V1-only deletion responses pass through. For a known V2 identity, V1 is called
+  once after a confirmed receipt and V2 returns HTTP 503
+  `v2_data_deletion_contract_required`. **V2 deletion is incomplete** until the
+  owner defines the records to erase and their retention requirements. The
+  callback must not delete library media or account data on an assumed scope.
+  A lost database commit after a successful v1 call may cause another v1
+  delivery; the legacy deletion operation must remain idempotent.
+- Graph resource requests use Bearer headers; code exchange and YouTube refresh
+  use POST bodies. Meta's current [Business Login documentation](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/business-login)
+  still specifies GET parameters for Instagram long-token exchange and refresh.
+  No unsupported POST/header replacement is introduced for those endpoints.
+  Meta also fetches a public HTTPS `video_url`; its scoped, expiring capability
+  cannot be replaced with a custom request header controlled by 1CE.
+- Application diagnostics strip complete URL queries, including encoded
+  redirects, and credential/header fields. Synthetic tests cover OAuth,
+  media capabilities, R2 signatures and YouTube upload session IDs. **This does
+  not configure provider/proxy logging.** Before release, verify query omission
+  in Railway/Vercel access logs and any HTTP tracing; never copy raw callback,
+  refresh, media delivery or resumable URLs into logs.
+- The browser retains an account-scoped request UUID and hashed intent across
+  reloads, including terminal history results. It blocks a submission if it
+  cannot persist the recovery record. Same media/details recover the old job;
+  an explicit “Start another publication” after acknowledgement permits a new
+  identical publication. Editing details is a different intent. Clearing site
+  data or changing browser/device loses this local recovery record; the server
+  still enforces idempotency for any request UUID it receives.
+- A provider-confirmed Reel whose settle loses its lease is reconciled to
+  `needs_review` with its media ID, using the original attempt and persisted
+  checkpoint. No provider request occurs in reconciliation. Process/database
+  interruption after `publish_started_at` is quarantined on lease expiry.
+- The existing disposable PostgreSQL CI runner includes Instagram lease expiry,
+  late confirmation, checkpoint failure, crash recovery, reconnect and concurrent
+  callback delivery scenarios. Meta/R2 are simulated. Local unit tests do not
+  establish that live Meta callback URLs, legacy hosting, edge query logging or
+  production deletion behavior are configured correctly.

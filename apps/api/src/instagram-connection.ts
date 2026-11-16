@@ -93,6 +93,10 @@ export async function finishInstagramConnection(req:IncomingMessage,res:ServerRe
   const instagramId=instagramIds(shortText)[0]||'';
   if(!/^[0-9]{1,32}$/.test(instagramId))throw new PublishingError('instagram_code_exchange_failed');
   stage='long_token';
+  // Meta documents this exchange as GET with client_secret/access_token query
+  // parameters. Do not switch methods on an assumption: keep it server-only,
+  // never log this URL, and suppress queries in external HTTP instrumentation.
+  // https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/business-login
   const longUrl=new URL('https://graph.instagram.com/access_token');
   longUrl.search=new URLSearchParams({grant_type:'ig_exchange_token',client_secret:config.appSecret,
    access_token:shortToken.access_token}).toString();

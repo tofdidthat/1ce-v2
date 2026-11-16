@@ -53,7 +53,7 @@ async function signedRequestBody(req:IncomingMessage):Promise<string>{
   return signed;
  }
  const params=new URLSearchParams(raw),signed=params.get('signed_request');
- if(!signed||[...params.keys()].some(key=>key!=='signed_request'))throw Error('Missing Meta signed request');
+ if(!signed||params.getAll('signed_request').length!==1||[...params.keys()].some(key=>key!=='signed_request'))throw Error('Missing Meta signed request');
  return signed;
 }
 async function forwardLegacy(action:MetaAction,signedRequest:string,http:typeof fetch):Promise<{ok:boolean;body:unknown}>{
@@ -63,22 +63,20 @@ async function forwardLegacy(action:MetaAction,signedRequest:string,http:typeof 
    body:new URLSearchParams({signed_request:signedRequest}),signal:AbortSignal.timeout(12000)});
   const body:unknown=await response.json().catch(()=>null);
   if(!response.ok||!body||typeof body!=='object'||Array.isArray(body))return {ok:false,body:null};
-  if(action==='deauthorize')return {ok:(body as Record<string,unknown>).success===true,body};
+  if(action==='deauthorize')return {ok:(body as Record<string,unknown>).success===true,body:{success:true}};
   const data=body as Record<string,unknown>;
   if(typeof data.confirmation_code!=='string'||!/^[a-f0-9]{32}$/.test(data.confirmation_code)||typeof data.url!=='string')return {ok:false,body:null};
   const result=new URL(data.url);
-  if(result.origin!=='https://1ce.lol'||result.pathname!=='/privacy'||result.searchParams.get('deletion')!==data.confirmation_code)
+  if(result.origin!=='https://1ce.lol'||result.pathname!=='/privacy'||result.username||result.password||result.hash||
+   [...result.searchParams.keys()].length!==1||result.searchParams.get('deletion')!==data.confirmation_code)
    return {ok:false,body:null};
   return {ok:true,body:{url:result.href,confirmation_code:data.confirmation_code}};
  }catch{return {ok:false,body:null};}
 }
-async function revokeV2Connection(db:CompliancePool,metaUserId:string):Promise<boolean>{
- const client=await db.connect();
- try{
-  await client.query('BEGIN');
+async function revokeV2Connection(client:QueryableV2,metaUserId:string):Promise<boolean>{
   const found=await client.query(`SELECT user_id,generation FROM v2_instagram_connections
    WHERE instagram_user_id=$1 FOR UPDATE`,[metaUserId]);
-  if(!found.rowCount){await client.query('ROLLBACK');return false;}
+  if(!found.rowCount)return false;
   const owners=found.rows.map(row=>Number(row.user_id)).filter(Number.isSafeInteger);
   for(const owner of owners){
    await client.query(`INSERT INTO v2_instagram_compliance_subjects(user_id,instagram_user_id_hash)
@@ -91,10 +89,9 @@ async function revokeV2Connection(db:CompliancePool,metaUserId:string):Promise<b
      AND t.platform='instagram' AND t.state IN ('queued','retryable','running')`,[owner]);
    await client.query('DELETE FROM v2_instagram_connections WHERE user_id=$1 AND instagram_user_id=$2',[owner,metaUserId]);
   }
-  await client.query('COMMIT');return true;
- }catch(error){try{await client.query('ROLLBACK')}catch{}throw error;}finally{client.release();}
+  return true;
 }
-async function hasV2Connection(db:CompliancePool,metaUserId:string):Promise<boolean>{
+async function hasV2Connection(db:QueryableV2,metaUserId:string):Promise<boolean>{
  const result=await db.query(`SELECT 1 FROM v2_instagram_connections WHERE instagram_user_id=$1
   UNION ALL SELECT 1 FROM v2_instagram_compliance_subjects WHERE instagram_user_id_hash=$2 LIMIT 1`,
  [metaUserId,subjectHash(metaUserId)]);
@@ -122,18 +119,32 @@ export async function handleInstagramMetaCompliance(req:IncomingMessage,res:Serv
  let userId:string;
  try{userId=parseMetaSignedRequest(signedRequest,config.appSecret).userId;}
  catch{json(res,400,{error:'invalid_meta_callback'});return;}
- let v2Matched=false;
+ let client:Awaited<ReturnType<CompliancePool['connect']>>|undefined;
  try{
-  v2Matched=action==='deauthorize'?await revokeV2Connection(db,userId):await hasV2Connection(db,userId);
+  client=await db.connect();await client.query('BEGIN');
+  // Serialize re-deliveries without storing the signed request or user ID.
+  // A receipt also stops a delayed retry from revoking a later reconnection.
+  const requestHash=createHash('sha256').update(action+':'+signedRequest).digest('hex');
+  await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[requestHash]);
+  const receipt=(await client.query('SELECT legacy_response FROM v2_instagram_compliance_receipts WHERE request_hash=$1',[requestHash])).rows[0];
+  if(!receipt){
+   if(action==='deauthorize')await revokeV2Connection(client,userId);
+   await client.query('INSERT INTO v2_instagram_compliance_receipts(request_hash,action) VALUES($1,$2)',[requestHash,action]);
+  }
+  const v2Matched=action==='data-deletion'&&await hasV2Connection(client,userId);
+  const legacy=receipt?.legacy_response?{ok:true,body:receipt.legacy_response}:await forwardLegacy(action,signedRequest,http);
+  if(legacy.ok&&!receipt?.legacy_response)
+   await client.query('UPDATE v2_instagram_compliance_receipts SET legacy_response=$2::jsonb WHERE request_hash=$1',
+    [requestHash,JSON.stringify(legacy.body)]);
+  await client.query('COMMIT');
+  if(!legacy.ok){json(res,503,{error:'legacy_compliance_unavailable'});return;}
+  if(v2Matched){
+   // The v1 handler has run, but V2 deletion needs an explicit data contract.
+   json(res,503,{error:'v2_data_deletion_contract_required'});return;
+  }
+  json(res,200,legacy.body);
  }catch{
+  if(client)try{await client.query('ROLLBACK')}catch{}
   json(res,503,{error:'v2_compliance_unavailable'});return;
- }
- const legacy=await forwardLegacy(action,signedRequest,http);
- if(!legacy.ok){json(res,503,{error:'legacy_compliance_unavailable'});return;}
- if(action==='data-deletion'&&v2Matched){
-  // Do not tell Meta deletion completed until 1CE defines which user/job/media
-  // records this callback is authorized to remove. The v1 handler still runs.
-  json(res,503,{error:'v2_data_deletion_contract_required'});return;
- }
- json(res,200,legacy.body);
+ }finally{client?.release();}
 }

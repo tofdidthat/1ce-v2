@@ -9,7 +9,7 @@ const claim='7f5f2ac1-b96a-48ef-a0ab-0c22e6e42313';
 test('a lost fenced settle after a provider-confirmed Reel becomes manual review, never success',async()=>{
  const calls=[],db={async query(sql,args){calls.push({sql,args});return{rowCount:0,rows:[]}}};
  await assert.rejects(settleConfirmedInstagramReel(db,'19',claim,'17841405309211844'),{code:'instagram_publish_needs_review'});
- assert.equal(calls.length,1);assert.equal(calls[0].args[0],'19');
+ assert.equal(calls.length,2);assert.equal(calls[0].args[0],'19');
  assert.equal(calls[0].args[3],'17841405309211844');
 });
 
@@ -28,7 +28,7 @@ const config={appId:'fixture-meta-app',appSecret:'fixture-meta-secret',redirectU
  webOrigin:'https://1ce.lol',encryptionSecret:'fixture-publishing-encryption-secret'};
 const artifact=Buffer.from('fixture rendered reel'),artifactSha=createHash('sha256').update(artifact).digest('hex');
 
-function workerFixture({connection=true,checkpointWriteFails=false,leaseExpiresAfterPublish=false,publishThrows=false}={}){
+function workerFixture({connection=true,checkpointWriteFails=false,leaseExpiresAfterPublish=false,publishThrows=false,quarantinedBeforeResponse=false}={}){
  const calls=[],providerCalls={publish:0},state={target:'queued',leaseExpired:false,publishedMediaId:null,targetRemoteId:null};
  const checkpoint={target_id:'19',connection_generation:generation,
   artifact_key:`publishing/users/${owner}/${jobId}/19/${artifactSha}.mp4`,artifact_sha:artifactSha,
@@ -56,8 +56,12 @@ function workerFixture({connection=true,checkpointWriteFails=false,leaseExpiresA
    if(leaseExpiresAfterPublish)state.leaseExpired=true;
    return{rowCount:1,rows:[]};
   }
+  if(sql.includes('WITH confirmation AS')){
+   state.publishedMediaId=args[2];state.targetRemoteId=args[2];state.target='needs_review';
+   return{rowCount:1,rows:[]};
+  }
   if(sql.includes('WITH finished AS')){
-   if(state.leaseExpired)return{rowCount:0,rows:[]};
+   if(state.leaseExpired||state.target!=='running')return{rowCount:0,rows:[]};
    state.target=args[2];state.targetRemoteId=args[3]||null;return{rowCount:1,rows:[]};
   }
   if(sql.includes('WITH stale AS')){
@@ -74,6 +78,7 @@ function workerFixture({connection=true,checkpointWriteFails=false,leaseExpiresA
   if(parsed.pathname.endsWith('/222'))return Response.json({status_code:'FINISHED'});
   if(parsed.pathname.endsWith('/media_publish')){
    providerCalls.publish++;
+   if(quarantinedBeforeResponse)state.target='needs_review';
    if(publishThrows)throw Error('synthetic response lost after provider may have accepted');
    return Response.json({id:'333'});
   }
@@ -107,11 +112,18 @@ test('provider confirmation followed by database checkpoint failure becomes need
 test('expired fenced lease after provider confirmation is quarantined before another claim',async()=>{
  const fixture=workerFixture({leaseExpiresAfterPublish:true});
  await once(fixture);
- assert.equal(fixture.providerCalls.publish,1);assert.equal(fixture.state.target,'running');
+ assert.equal(fixture.providerCalls.publish,1);assert.equal(fixture.state.target,'needs_review');
  assert.equal(fixture.state.publishedMediaId,'333');
  await quarantineExpiredInstagramClaims(fixture.db);
  assert.equal(fixture.state.target,'needs_review');
  assert.equal(fixture.state.targetRemoteId,'333');
+ assert.equal(await once(fixture),false);assert.equal(fixture.providerCalls.publish,1);
+});
+
+test('late confirmation after deauth quarantine keeps the media id for review, never republishing',async()=>{
+ const fixture=workerFixture({quarantinedBeforeResponse:true});
+ await once(fixture);
+ assert.equal(fixture.state.target,'needs_review');assert.equal(fixture.state.targetRemoteId,'333');
  assert.equal(await once(fixture),false);assert.equal(fixture.providerCalls.publish,1);
 });
 
