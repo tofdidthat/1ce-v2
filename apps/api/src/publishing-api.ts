@@ -90,7 +90,7 @@ export async function handlePublishing(req:IncomingMessage,res:ServerResponse,pa
   }
 
   if(pathname==='/api/publishing/status'&&req.method==='GET'){
-   if(!config&&!instagram&&!tiktok){send(res,200,{available:false,connected:false,tiktok:{available:false,connected:false,publishingEnabled:false},jobs:[]});return true;}
+   if(!config&&!instagram&&!tiktok){send(res,200,{available:false,connected:false,jobs:[]});return true;}
    await ensurePublishingSchema(db);
    let connection:Record<string,unknown>|undefined;
    if(config){
