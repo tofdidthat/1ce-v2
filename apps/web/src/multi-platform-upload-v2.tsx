@@ -20,7 +20,7 @@ type DestinationPickerProps={
  selectedYouTubeFormats:Format[];
  onToggleYouTubeFormat:(format:Format)=>void;
  onToggle:(platform:Platform)=>void;
- onConnection:(platform:'YouTube'|'Instagram')=>void;
+ onConnection:(platform:'YouTube'|'Instagram'|'TikTok')=>void;
 };
 // Same compact, anchored destination list used by the original 1CE upload.
 // The popover lives outside the card overflow, with viewport-aware placement.
@@ -99,8 +99,9 @@ function DestinationPicker({selected,disabled,status,selectedYouTubeFormats,onTo
     </div>
     <div className="onece-multi-destination-list" role="group" aria-label="Destination platforms">
      {platforms.map(platform=>{
-      const youtube=platform==='YouTube',instagram=platform==='Instagram';
-      const connected=youtube?!!status?.connected:instagram?!!status?.instagram?.connected:false;
+      const youtube=platform==='YouTube',instagram=platform==='Instagram',tiktok=platform==='TikTok';
+      const connected=youtube?!!status?.connected:instagram?!!status?.instagram?.connected:
+       tiktok?!!status?.tiktok?.connected:false;
       return <div className="onece-multi-destination-group" key={platform}>
        <div className="onece-multi-destination-row">
         <button type="button" className="onece-multi-destination-option"
@@ -108,7 +109,8 @@ function DestinationPicker({selected,disabled,status,selectedYouTubeFormats,onTo
          <span className="onece-multi-checkbox">{selected.includes(platform)&&<Check size={13}/>}</span>
          <DestinationSymbol platform={platform}/>
          <span className="onece-multi-destination-label"><strong>{platform}</strong>
-          {(youtube||instagram)&&<small>{connected?'Connected':'Not connected'}</small>}
+          {(youtube||instagram||tiktok)&&<small>{tiktok&&!status?.tiktok?.available?'Not configured':
+             connected?'Connected':'Not connected'}</small>}
          </span>
         </button>
         {youtube&&<button type="button" className="onece-multi-destination-more"
@@ -117,8 +119,9 @@ function DestinationPicker({selected,disabled,status,selectedYouTubeFormats,onTo
          onClick={()=>setYoutubeFormatsOpen(value=>!value)}>
          <MoreHorizontal size={18}/>
         </button>}
-        {(youtube||instagram)&&<button type="button" className="onece-multi-destination-account"
-         disabled={disabled||!status||(instagram&&!status.instagram?.available)}
+        {(youtube||instagram||tiktok)&&<button type="button" className="onece-multi-destination-account"
+         disabled={disabled||!status||(instagram&&!status.instagram?.available)||
+          (tiktok&&!status.tiktok?.available)}
          onClick={()=>onConnection(platform)}>
          {connected?'Disconnect':'Connect'}
         </button>}
@@ -189,6 +192,8 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
   if(result==='youtube-connected')setNotice('YouTube connected. Choose media and confirm a submission.');
   if(result==='youtube-error')setFailure('YouTube connection was not completed. Grant both requested permissions and confirm that the YouTube API is enabled for the app.');
   if(result==='instagram-connected')setNotice('Instagram account connected successfully.');
+  if(result==='tiktok-connected')setNotice('TikTok connected. Video publishing is not enabled yet.');
+  if(result==='tiktok-error')setFailure(publishingErrorMessage(new URLSearchParams(window.location.search).get('reason')||'tiktok_authorization_failed'));
   if(result==='instagram-error'){
    const reason=new URLSearchParams(window.location.search).get('reason');
    setFailure(publishingErrorMessage(reason||'instagram_authorization_failed'));
@@ -260,7 +265,7 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
  const togglePlatform=(platform:Platform)=>{
   setSelectedPlatforms(current=>current.includes(platform)?current.filter(item=>item!==platform):[...current,platform]);
  };
- const manageDestination=(platform:'YouTube'|'Instagram')=>void act(async signal=>{
+ const manageDestination=(platform:'YouTube'|'Instagram'|'TikTok')=>void act(async signal=>{
   if(platform==='YouTube'){
    if(currentStatus?.connected){
     await publishingRequest(api,'/youtube/disconnect',signal,{});
@@ -269,12 +274,21 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
     const result=await publishingRequest<{url:string}>(api,'/youtube/connect',signal,{});
     signal.throwIfAborted();window.location.assign(publishingAuthorizationUrl(api,result.url));
    }
-  }else{
+  }else if(platform==='Instagram'){
    if(currentStatus?.instagram?.connected){
     await publishingRequest(api,'/instagram/disconnect',signal,{});
     signal.throwIfAborted();setStatus(null);
    }else{
     const result=await publishingRequest<{url:string}>(api,'/instagram/connect',signal,{});
+    signal.throwIfAborted();window.location.assign(publishingAuthorizationUrl(api,result.url));
+   }
+  }else{
+   if(currentStatus?.tiktok?.connected){
+    const result=await publishingRequest<{providerRevoked:boolean}>(api,'/tiktok/disconnect',signal,{});
+    signal.throwIfAborted();setStatus(null);
+    if(!result.providerRevoked)setNotice('Disconnected locally. TikTok did not confirm revocation; also remove 1CE in TikTok connected apps.');
+   }else{
+    const result=await publishingRequest<{url:string}>(api,'/tiktok/connect',signal,{});
     signal.throwIfAborted();window.location.assign(publishingAuthorizationUrl(api,result.url));
    }
   }
