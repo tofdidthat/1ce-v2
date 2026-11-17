@@ -117,3 +117,14 @@ test('Media preview keeps v1 width and shows 16:9 above 9:16 at equal width',()=
  assert.match(css,/\.onece-multi-preview-frame\.vertical \{ aspect-ratio: 9 \/ 16; \}/);
  assert.match(css,/\.onece-multi-preview-frame\.horizontal \{ aspect-ratio: 16 \/ 9; \}/);
 });
+
+test('TikTok Login Kit account is connectable only when configured, but cannot enqueue posts',()=>{
+ assert.match(multi,/tiktok=platform==='TikTok'/);
+ assert.match(multi,/tiktok&&!status.tiktok\?\.available/);
+ assert.match(multi,/onConnection=\{manageDestination\}/);
+ assert.match(multi,/publishingAuthorizationUrl\(api,result.url\)/);
+ assert.match(multi,/tiktok-connected/);
+ assert.match(multi,/selectedPlatforms.some\(p=>p!=='YouTube'&&p!=='Instagram'\)/);
+ assert.match(multi,/Other destinations are previews only/);
+ assert.doesNotMatch(multi,/platform:'tiktok',variant:'default'/);
+});

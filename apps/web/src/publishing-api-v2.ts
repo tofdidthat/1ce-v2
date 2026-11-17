@@ -1,8 +1,16 @@
 export type PublishingTarget={id:string;platform:string;variant:string;state:string;remoteId?:string|null;errorCode?:string|null};
 export type InstagramPublishingStatus={available:boolean;connected:boolean;username:string|null;publishingEnabled:boolean};
-export type PublishingStatus={available:boolean;connected:boolean;channelTitle?:string;instagram?:InstagramPublishingStatus;jobs:{id:string;requestId:string;title:string;state:string;targets:PublishingTarget[]}[]};
+export type TikTokPublishingStatus={available:boolean;connected:boolean;publishingEnabled:boolean};
+export type PublishingStatus={available:boolean;connected:boolean;channelTitle?:string;instagram?:InstagramPublishingStatus;tiktok?:TikTokPublishingStatus;jobs:{id:string;requestId:string;title:string;state:string;targets:PublishingTarget[]}[]};
 export function publishingErrorMessage(code:unknown):string{
  const messages:Record<string,string>={
+  tiktok_not_configured:'TikTok Login Kit is not configured. Add the TikTok developer app credentials before connecting.',
+  tiktok_session_missing:'Sign in to 1CE again before connecting your TikTok account.',
+  tiktok_consent_denied:'TikTok consent was cancelled or denied. Try connecting again.',
+  tiktok_state_expired:'The TikTok authorization expired. Start the connection again.',
+  tiktok_token_exchange_failed:'TikTok did not accept the authorization. Check client key, secret and callback URL.',
+  tiktok_scope_not_approved:'The TikTok app must have the video.publish permission approved before this account can connect.',
+  tiktok_authorization_failed:'TikTok authorization could not be completed. Try again.',
   instagram_data_deletion_pending:'Instagram data deletion is in progress. Reconnect after it completes.',
   youtube_reconnect_required:'Reconnect YouTube and grant both channel and upload permissions.',
   instagram_not_configured:'Instagram Business Login is not configured on this server.',
@@ -68,8 +76,9 @@ export function publishingAuthorizationUrl(api:string,value:unknown):string{
  const url=new URL(value),backend=new URL(api);
  const validYouTube=url.pathname==='/auth/youtube/start'&&/^pub_[A-Za-z0-9_-]{43}$/.test(url.searchParams.get('state')||'');
  const validInstagram=url.pathname==='/auth/instagram/start'&&/^igpub_[A-Za-z0-9_-]{43}$/.test(url.searchParams.get('state')||'');
+ const validTikTok=url.pathname==='/auth/tiktok/start'&&/^ttpub_[A-Za-z0-9_-]{43}$/.test(url.searchParams.get('state')||'');
  if(url.protocol!=='https:'||url.origin!==backend.origin||url.username||url.password||url.hash||
-  [...url.searchParams.keys()].some(key=>key!=='state')||(!validYouTube&&!validInstagram))throw Error('Invalid authorization URL');
+  [...url.searchParams.keys()].some(key=>key!=='state')||(!validYouTube&&!validInstagram&&!validTikTok))throw Error('Invalid authorization URL');
  return url.href;
 }
 export async function publishingRequest<T>(api:string,path:string,signal:AbortSignal,body?:unknown):Promise<T>{
@@ -88,6 +97,12 @@ export async function publishingRequest<T>(api:string,path:string,signal:AbortSi
   if(typeof data.available!=='boolean'||typeof data.connected!=='boolean'||
    !(typeof data.username==='string'||data.username===null)||typeof data.publishingEnabled!=='boolean')
    throw Error('Invalid Instagram publishing status');
+ }
+ if(path==='/status'&&result.tiktok!==undefined){
+  const data=result.tiktok as Record<string,unknown>;
+  if(!data||typeof data!=='object'||Array.isArray(data)||
+   typeof data.available!=='boolean'||typeof data.connected!=='boolean'||
+   typeof data.publishingEnabled!=='boolean')throw Error('Invalid TikTok publishing status');
  }
  if(path==='/jobs'&&(typeof result.id!=='string'||typeof result.state!=='string'))throw Error('Invalid queue response; retry without editing');
  return result as T;
