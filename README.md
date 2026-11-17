@@ -1,5 +1,7 @@
 # 1CE v2
 
+> **Atualização 2026-11-17 (candidata T01 TikTok):** v2 pública em [1ce.lol](https://1ce.lol); atual base `main` inclui [PR #105](https://github.com/tofdidthat/1ce-v2/pull/105) com correções de recuperação de publicações, request IDs e callbacks Meta. YouTube e Instagram publicam; TikTok entra **somente como Login Kit OAuth opcional** nesta branch, sem postagem/worker nem credenciais configuradas em produção. [TikTok — configuração e gates](docs/tiktok-integration.md). O checkpoint antigo de 2026-11-08 abaixo é histórico; [PR #104](https://github.com/tofdidthat/1ce-v2/pull/104) ainda não está integrada e não pode ser considerada fonte da `main`.
+
 1CE v2 is an independent music-project platform. The monorepo contains a React + TypeScript frontend, a Node.js API, a PostgreSQL database model and private Cloudflare R2 storage.
 
 **Documentation:** This README is the quick-start guide. All maintained technical decisions, module maps, operational instructions, release evidence and pending checks live in **[docs/architecture.md](docs/architecture.md)**. Historical documents and per-PR implementation notes remain recoverable in Git history, rather than maintained as separate Markdown files.
