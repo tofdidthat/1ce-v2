@@ -142,7 +142,7 @@ export async function finishTikTokConnection(req:IncomingMessage,res:ServerRespo
   (outcome==='error'?'&reason='+encodeURIComponent(reason):''),
   'Cache-Control':'no-store','Referrer-Policy':'no-referrer','Set-Cookie':clear});res.end();
 }
-export async function tikTokConnectionStatus(db:QueryableV2,owner:number,config:TikTokConfig|null):
+export async function tiktokConnectionStatus(db:QueryableV2,owner:number,config:TikTokConfig|null):
  Promise<{available:boolean;connected:boolean;publishingEnabled:false}>{
  const empty={available:!!config,connected:false,publishingEnabled:false as const};
  if(!config)return empty;
