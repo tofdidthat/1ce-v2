@@ -109,8 +109,7 @@ function DestinationPicker({selected,disabled,status,selectedYouTubeFormats,onTo
          <span className="onece-multi-checkbox">{selected.includes(platform)&&<Check size={13}/>}</span>
          <DestinationSymbol platform={platform}/>
          <span className="onece-multi-destination-label"><strong>{platform}</strong>
-          {(youtube||instagram||tiktok)&&<small>{tiktok&&!status?.tiktok?.available?'Not configured':
-             connected?'Connected':'Not connected'}</small>}
+          {(youtube||instagram||tiktok)&&<small>{connected?'Connected':'Not connected'}</small>}
          </span>
         </button>
         {youtube&&<button type="button" className="onece-multi-destination-more"
