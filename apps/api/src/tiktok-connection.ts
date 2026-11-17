@@ -148,7 +148,7 @@ export async function tiktokConnectionStatus(db:QueryableV2,owner:number,config:
  if(!config)return empty;
  const row=(await db.query(`SELECT refresh_cipher,refresh_expires_at,scope FROM v2_tiktok_connections
   WHERE user_id=$1`,[owner])).rows[0];
- if(!row||new Date(row.refresh_expires_at).getTime()<=Date.now()||
+ if(!row||new Date(String(row.refresh_expires_at)).getTime()<=Date.now()||
   !hasPublishScope(String(row.scope)))return empty;
  try{openPublishing(String(row.refresh_cipher),'tiktok-refresh:'+owner,config.encryptionSecret);}
  catch{return empty;}
