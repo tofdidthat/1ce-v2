@@ -8,7 +8,7 @@ const second='5fd06bbc-c6a7-43f6-9205-bac180ba9273';
 const pack='e2c0e2e6-2e40-4cdf-a207-1ba6cc66cc2a';
 const pack2='36a40238-f0d5-47d5-8193-36b9309c53b7';
 
-function fixture({owner=1,missing=false,badCover=false,members=[],cascadedBeats=[]}={}){
+function fixture({owner=1,missing=false,badCover=false,missingAudio=false,existingAudio=false,trashedAudio=false,members=[],cascadedBeats=[]}={}){
  const calls=[];
  const rows={
   beat:{id:beat,title:'Original',cover_file_id:15},
@@ -23,7 +23,8 @@ function fixture({owner=1,missing=false,badCover=false,members=[],cascadedBeats=
     const correct=Number(args[1])===owner&&(!missing)&&(type==='beat'?args[0]===beat:args[0]===pack||args[0]===pack2);
     return {rowCount:correct?1:0,rows:correct?[rows[type]]:[]};
    }
-   if(sql.startsWith("SELECT id FROM library_files"))return {rowCount:badCover?0:1,rows:badCover?[]:[{id:100}]};
+   if(sql.startsWith("SELECT id FROM library_files"))return {rowCount:badCover||missingAudio?0:1,rows:badCover||missingAudio?[]:[{id:100}]};
+   if(sql.startsWith('SELECT id,deleted_at FROM library_beats'))return {rowCount:existingAudio?1:0,rows:existingAudio?[{id:beat,deleted_at:trashedAudio?'2026-11-18':null}]:[]};
    if(sql.startsWith('SELECT id FROM library_beats'))return {rowCount:missing?0:1,rows:missing?[]:[{id:beat}]};
    if(sql.includes('SELECT b.id FROM library_packs'))return {rowCount:missing?0:2,rows:missing?[]:[{id:beat},{id:second}]};
    if(sql.startsWith('SELECT beat_id,position FROM library_pack_beats'))return {rowCount:members.length,rows:members};
@@ -183,4 +184,51 @@ test('owner can detach stems without deleting original R2 bytes',async()=>{
  const update=db.calls.find(c=>c.sql.startsWith('UPDATE library_beats SET stems_file_id='));
  assert.deepEqual(update.args,[null,beat,1]);
  assert.equal(db.calls.some(c=>c.sql.startsWith('DELETE FROM library_files')),false);
+});
+
+test('pack audio creates a hidden beat and membership atomically using owned verified media',async()=>{
+ const db=fixture();
+ const response=await invoke(db,'POST','pack/'+pack+'/audio',{audioFileId:100,title:'New drop'});
+ assert.equal(response.status,200);
+ assert.equal(response.body.added,1);
+ assert.equal(response.body.reused,false);
+ const insert=db.calls.find(c=>c.sql.startsWith('INSERT INTO library_beats('));
+ assert.ok(insert);
+ assert.match(insert.sql,/library_visible\) VALUES\(\$1,\$2,\$3,\$4,FALSE\)/);
+ assert.equal(insert.args[1],1);
+ assert.equal(insert.args[2],'New drop');
+ assert.equal(db.calls.filter(c=>c.sql.startsWith('INSERT INTO library_pack_beats')).length,1);
+ assert.equal(db.calls.at(-2).sql,'COMMIT');
+});
+test('pack audio reuses an existing beat without hiding its standalone Home card',async()=>{
+ const db=fixture({existingAudio:true});
+ const response=await invoke(db,'POST','pack/'+pack+'/audio',{audioFileId:100,title:'Already in Home'});
+ assert.equal(response.status,200);
+ assert.equal(response.body.beatId,beat);
+ assert.equal(response.body.reused,true);
+ assert.equal(db.calls.some(c=>c.sql.startsWith('INSERT INTO library_beats')),false);
+ assert.equal(db.calls.some(c=>c.sql.includes('UPDATE library_beats SET library_visible')),false);
+ assert.equal(db.calls.filter(c=>c.sql.startsWith('INSERT INTO library_pack_beats')).length,1);
+});
+test('pack audio denies additions to another account pack before any media mutation',async()=>{
+ const db=fixture({owner:1});
+ const response=await invoke(db,'POST','pack/'+pack+'/audio',{audioFileId:100,title:'Illegal'}, {id:2});
+ assert.equal(response.status,404);
+ assert.equal(db.calls.some(c=>c.sql.startsWith('INSERT INTO library_beats')),false);
+ assert.equal(db.calls.some(c=>c.sql.startsWith('INSERT INTO library_pack_beats')),false);
+ assert.equal(db.calls.some(c=>c.sql.startsWith('SELECT id FROM library_files')),false);
+ assert.equal(db.calls.at(-2).sql,'ROLLBACK');
+});
+test('pack audio rejects unverified media, trashed beats and full packs atomically',async()=>{
+ const missing=fixture({missingAudio:true});
+ assert.equal((await invoke(missing,'POST','pack/'+pack+'/audio',{audioFileId:100,title:'A'})).status,400);
+ const trash=fixture({existingAudio:true,trashedAudio:true});
+ assert.equal((await invoke(trash,'POST','pack/'+pack+'/audio',{audioFileId:100,title:'A'})).status,409);
+ const full=fixture({members:Array.from({length:100},(_,position)=>({beat_id:'other-'+position,position}))});
+ assert.equal((await invoke(full,'POST','pack/'+pack+'/audio',{audioFileId:100,title:'A'})).status,400);
+ for(const db of [missing,trash,full]){
+  assert.equal(db.calls.some(c=>c.sql.startsWith('INSERT INTO library_beats')),false);
+  assert.equal(db.calls.some(c=>c.sql.startsWith('INSERT INTO library_pack_beats')),false);
+  assert.equal(db.calls.at(-2).sql,'ROLLBACK');
+ }
 });
