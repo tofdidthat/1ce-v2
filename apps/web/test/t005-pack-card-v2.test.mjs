@@ -33,7 +33,7 @@ test('pack actions and global player are preserved',()=>{
 test('pack drop uses the same Home/Profile detail and only permits the owner to add media',()=>{
  assert.match(details,/const canEditOpenedPack=Boolean\(openedPack&&userId&&openedPack\.owner_id===userId\)/);
  assert.match(details,/onDrop=\{event=>/);
- assert.match(details,/if\(!canEditOpenedPack\|\|!isAudioFileDrag\(event\)\)return/);
+ assert.match(details,/if\(canEditOpenedPack&&!packUploading\)void addPackFiles/);
  assert.match(details,/disabled=\{!canEditOpenedPack\|\|packUploading\}/);
  assert.match(details,/profilePackPage\?\(packDetail\|\|profilePackMessage\)/);
  assert.match(details,/notifyV2DataChanged\(\['library'\],userId\)/);
