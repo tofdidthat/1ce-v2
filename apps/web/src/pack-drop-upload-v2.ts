@@ -1,7 +1,8 @@
+import type {DragEvent} from 'react';
 import {uploadPublishingFile} from './upload-file-v2';
 
 const api=import.meta.env.VITE_API_URL;
-export function isAudioFileDrag(event:React.DragEvent):boolean{
+export function isAudioFileDrag(event:DragEvent):boolean{
  return Array.from(event.dataTransfer.types).includes('Files');
 }
 export async function addFilesToOwnedPack(packId:string,files:File[],signal:AbortSignal,onProgress:(message:string)=>void):Promise<{added:number;errors:string[]}>{
