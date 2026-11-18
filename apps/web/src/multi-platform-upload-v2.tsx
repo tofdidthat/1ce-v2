@@ -3,8 +3,7 @@ import {createPortal} from 'react-dom';
 import {ArrowLeft,Check,ChevronDown,ChevronUp,Globe2,ImagePlus,Instagram,MessageCircle,MoreHorizontal,Music2,Send,UploadCloud,Video,Youtube} from 'lucide-react';
 import './multi-platform-upload-v2.css';
 import {publishingRequest,publishingAuthorizationUrl,canRetryPublishingTarget,publishingErrorMessage,type PublishingStatus,type PublishingPayload} from './publishing-api-v2';
-import TikTokPostOptions from './tiktok-post-options-v2';
-import {emptyTikTokDraft,tiktokPostForSubmission,type TikTokCreatorInfo} from './tiktok-post-v2';
+import {tiktokDraftForSubmission,tikTokMinDuration,tikTokMaxDuration} from './tiktok-draft-v2';
 import {uploadPublishingFile} from './upload-file-v2';
 import {beginAnotherPublishingRequest,reconcilePublishingRequestIds,requestIdForPublishingIntent} from './publishing-idempotency-v2';
 
@@ -112,7 +111,7 @@ function DestinationPicker({selected,disabled,status,selectedYouTubeFormats,onTo
          <DestinationSymbol platform={platform}/>
          <span className="onece-multi-destination-label"><strong>{platform}</strong>
           {(youtube||instagram)&&<small>{connected?'Connected':'Not connected'}</small>}
-          {tiktok&&<small>{connected?(status?.tiktok?.nickname||status?.tiktok?.username||'Connected'):
+          {tiktok&&<small>{connected?(status?.tiktok?.nickname||'Connected'):
            status?.tiktok?.available?'Not connected':'Unavailable'}</small>}
          </span>
         </button>
@@ -181,29 +180,23 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
  const [failure,setFailure]=useState('');
  const [revision,setRevision]=useState(0);
  const tiktokSelected=selectedPlatforms.includes('TikTok');
- const tiktokEnabled=!!(currentStatus?.tiktok?.connected&&currentStatus.tiktok.available&&currentStatus.tiktok.publishingEnabled);
- const [tiktokDraft,setTikTokDraft]=useState(emptyTikTokDraft);
- const [creatorRevision,refreshCreator]=useState(0);
- const [creatorResult,setCreatorResult]=useState<{
-  viewer:number;revision:number;creator?:TikTokCreatorInfo;error?:string;
- }|null>(null);
- const currentCreatorResult=tiktokEnabled&&tiktokSelected&&active&&
-  creatorResult?.viewer===userId&&creatorResult?.revision===creatorRevision?creatorResult:null;
- const creator=currentCreatorResult?.creator||null;
+ const tiktokStatus=currentStatus?.tiktok;
+ const tiktokConnectionId=tiktokStatus?.available&&tiktokStatus.connected&&tiktokStatus.publishingEnabled?
+  tiktokStatus.connectionId:null;
  const [durationByFile,setDurationByFile]=useState<{file:File;seconds:number}|null>(null);
  const duration=durationByFile&&durationByFile.file===audioFile?durationByFile.seconds:null;
- const consentScope=useMemo(()=>({creator,tiktokDraft,audioFile,image}),[creator,tiktokDraft,audioFile,image]);
+ const consentScope=useMemo(()=>({userId,tiktokConnectionId,audioFile,image}),[userId,tiktokConnectionId,audioFile,image]);
  const [consentedScope,setConsentedScope]=useState<typeof consentScope|null>(null);
  const tiktokConsent=consentedScope===consentScope;
- const tiktokPost=tiktokPostForSubmission(creator,tiktokDraft,duration,tiktokConsent);
- const tiktokReady=!tiktokSelected||!!tiktokPost;
+ const tiktokDraft=tiktokDraftForSubmission(tiktokConnectionId,duration,tiktokConsent);
+ const tiktokReady=!tiktokSelected||!!tiktokDraft;
  const operation=useRef<AbortController|null>(null);
  const pending=useRef<PublishingPayload|null>(null);
  const viewer=useRef(userId);viewer.current=userId;
- useEffect(()=>{pending.current=null;setAccepted(false);},[title,description,hashtags,privacy,audioFile,image,video,selectedPlatforms,selectedYouTubeFormats,tiktokDraft]);
+ useEffect(()=>{pending.current=null;setAccepted(false);},[title,description,hashtags,privacy,audioFile,image,video,selectedPlatforms,selectedYouTubeFormats]);
  useEffect(()=>{
   operation.current?.abort();operation.current=null;pending.current=null;
-  setTikTokDraft(emptyTikTokDraft);setCreatorResult(null);setConsentedScope(null);
+  setConsentedScope(null);
   setStatus(null);setBusy(false);setAccepted(false);setNotice('');setFailure('');
   setAudio(null);setVisual(null);setVideo(null);setTitle(initialTitle);setDescription('');setHashtags('#shorts #music');setPrivacy('private');setSelectedPlatforms([]);setSelectedYouTubeFormats(['vertical']);
   return()=>{operation.current?.abort();};
@@ -236,22 +229,6 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
   void poll();return()=>{controller.abort();clearTimeout(timer);};
  },[active,userId,api,revision]);
  useEffect(()=>{if(!active){operation.current?.abort();operation.current=null;setBusy(false);}},[active]);
- useEffect(()=>{
-  if(!active||!userId||!tiktokSelected||!tiktokEnabled){
-   setCreatorResult(null);
-   return;
-  }
-  const controller=new AbortController();
-  void publishingRequest<TikTokCreatorInfo>(api,'/tiktok/creator-info',controller.signal).then(creator=>{
-   if(controller.signal.aborted)return;
-   setCreatorResult({viewer:userId,revision:creatorRevision,creator});
-  }).catch(error=>{
-   if(!controller.signal.aborted)setCreatorResult({viewer:userId,revision:creatorRevision,
-    error:error instanceof Error?error.message:'Unable to load TikTok options'});
-  });
-  return()=>controller.abort();
- },[active,userId,api,tiktokSelected,tiktokEnabled,creatorRevision]);
-
  const youtubeSelected=selectedPlatforms.includes('YouTube');
  const instagramSelected=selectedPlatforms.includes('Instagram');
  const youtubeReady=!youtubeSelected||!!(currentStatus?.available&&currentStatus.connected);
@@ -267,7 +244,7 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
  const submit=()=>void act(async signal=>{
   if(!userId||accepted||video||!audioFile||!image||!title.trim()||
    !destinationsValid||!youtubeReady||!instagramReady||!tiktokReady)return;
-  if(pending.current?.tiktok?.connectionId!==tiktokPost?.connectionId)pending.current=null;
+  if(pending.current?.tiktok?.connectionId!==tiktokDraft?.connectionId)pending.current=null;
   if(!pending.current){
    setNotice('Uploading audio…');const audioFileId=await uploadPublishingFile(api,audioFile,'audio',signal,setNotice);
    signal.throwIfAborted();setNotice('Uploading image…');const coverFileId=await uploadPublishingFile(api,image,'cover',signal,setNotice);
@@ -276,9 +253,9 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
    if(youtubeSelected)for(const format of selectedYouTubeFormats)
     targets.push({platform:'youtube',variant:format==='vertical'?'shorts':'standard'});
    if(instagramSelected)targets.push({platform:'instagram',variant:'default'});
-   if(tiktokSelected&&tiktokPost)targets.push({platform:'tiktok',variant:'default'});
+   if(tiktokSelected&&tiktokDraft)targets.push({platform:'tiktok',variant:'default'});
    const intent={title:title.trim(),description,hashtags,privacy,audioFileId,coverFileId,targets,
-    ...(instagramSelected?{instagramPublicConsent:true}:{}),...(tiktokSelected&&tiktokPost?{tiktok:tiktokPost}:{})};
+    ...(instagramSelected?{instagramPublicConsent:true}:{}),...(tiktokSelected&&tiktokDraft?{tiktok:tiktokDraft}:{})};
    const requestId=await requestIdForPublishingIntent(userId,intent);
    signal.throwIfAborted();
    pending.current={requestId,...intent};
@@ -304,10 +281,7 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
   }
  };
  const togglePlatform=(platform:Platform)=>{
-  if(platform==='TikTok'){
-   setTikTokDraft({...emptyTikTokDraft,title});
-   setConsentedScope(null);
-  }
+  if(platform==='TikTok')setConsentedScope(null);
   setSelectedPlatforms(current=>current.includes(platform)?current.filter(item=>item!==platform):[...current,platform]);
  };
  const manageDestination=(platform:'YouTube'|'Instagram'|'TikTok')=>void act(async signal=>{
@@ -330,9 +304,8 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
   }else{
    if(currentStatus?.tiktok?.connected){
     const result=await publishingRequest<{providerRevoked:boolean}>(api,'/tiktok/disconnect',signal,{});
-    signal.throwIfAborted();setStatus(null);setCreatorResult(null);
+    signal.throwIfAborted();setStatus(null);setConsentedScope(null);
     setSelectedPlatforms(current=>current.filter(item=>item!=='TikTok'));
-    setTikTokDraft(emptyTikTokDraft);
     setNotice(result.providerRevoked?'TikTok disconnected.':
      'Disconnected locally. TikTok did not confirm revocation. Remove 1CE in TikTok connected apps as well.');
    }else{
@@ -411,28 +384,31 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
        onToggleYouTubeFormat={toggleYouTubeFormat}
        onToggle={togglePlatform} onConnection={manageDestination}/>
      </div>
-     {tiktokSelected&&tiktokEnabled&&creator&&creator.privacyLevelOptions.length>0&&
-      <TikTokPostOptions creator={creator} draft={tiktokDraft} duration={duration} hasAudio={!!audioFile}
-       consent={tiktokConsent} onConsent={checked=>setConsentedScope(checked?consentScope:null)} onChange={setTikTokDraft}/>}
+     {tiktokSelected&&tiktokConnectionId&&<div className="onece-multi-panel onece-multi-metadata onece-multi-tiktok">
+      <h2>TikTok draft</h2>
+      {tiktokStatus?.nickname&&<p>Sending to {tiktokStatus.nickname}</p>}
+      <p>Once the draft is sent, open the notification in your TikTok inbox to edit and publish the video.</p>
+      {audioFile&&duration===null&&<p role="status">Checking audio length…</p>}
+      {audioFile&&duration!==null&&!Number.isFinite(duration)&&<p>Unable to read the audio length. Choose a supported MP3 or WAV.</p>}
+      {duration!==null&&Number.isFinite(duration)&&(duration<tikTokMinDuration||duration>tikTokMaxDuration)&&
+       <p>Choose audio between {tikTokMinDuration} and {tikTokMaxDuration} seconds for TikTok.</p>}
+      <label className="onece-multi-tiktok-consent">
+       <input type="checkbox" checked={tiktokConsent} onChange={event=>setConsentedScope(event.target.checked?consentScope:null)}/>
+       I agree to send this video to TikTok as a draft.
+      </label>
+     </div>}
      </fieldset>
      <div className="onece-multi-publish">
       <button type="button" onClick={submit} disabled={accepted||busy||!active||!userId||!audioFile||!image||!!video||!title.trim()||!destinationsValid||!youtubeReady||!instagramReady||!tiktokReady}>{accepted?'Submitted — see history':
-       tiktokSelected?'Publish to '+[
-        ...(youtubeSelected?['YouTube']:[]),...(instagramSelected?['public Instagram Reel']:[]),'TikTok'
-       ].join(' + '):youtubeSelected&&instagramSelected?'Publish to YouTube + public Instagram Reel':instagramSelected?'Publish public Instagram Reel':'Publish to YouTube'}</button>
+       tiktokSelected&&!youtubeSelected&&!instagramSelected?'Send TikTok draft':
+       (youtubeSelected&&instagramSelected?'Publish to YouTube + public Instagram Reel':
+        instagramSelected?'Publish public Instagram Reel':'Publish to YouTube')+(tiktokSelected?' + send TikTok draft':'')}</button>
       {notice&&<p role="status">{notice}</p>}{failure&&<p role="alert">{failure}</p>}
       {video&&<p>Original video publishing is unavailable. Choose an image and MP3/WAV audio.</p>}
       {instagramSelected&&!currentStatus?.instagram?.publishingEnabled&&<p>Instagram account connected, but public Reels publishing is not enabled on this server yet. You can submit YouTube-only jobs.</p>}
-      {tiktokSelected&&!currentStatus?.tiktok?.available&&<p>TikTok connection is unavailable.</p>}
-      {tiktokSelected&&currentStatus?.tiktok?.available&&!currentStatus.tiktok.connected&&<p>Connect TikTok in Destinations before publishing.</p>}
-      {tiktokSelected&&currentStatus?.tiktok?.connected&&!tiktokEnabled&&<p>TikTok Direct Post is currently unavailable.</p>}
-      {tiktokSelected&&tiktokEnabled&&!currentCreatorResult&&<p role="status">Loading TikTok posting options…</p>}
-      {tiktokSelected&&tiktokEnabled&&currentCreatorResult?.error&&<p role="alert">{currentCreatorResult.error}</p>}
-      {creator?.privacyLevelOptions.length===0&&<p>TikTok returned no eligible privacy options.</p>}
-      {tiktokSelected&&tiktokEnabled&&currentCreatorResult&&!accepted&&
-       <button type="button" disabled={busy} onClick={()=>{
-        setTikTokDraft(current=>({...emptyTikTokDraft,title:current.title}));refreshCreator(value=>value+1);
-       }}>Refresh TikTok options</button>}
+      {tiktokSelected&&!tiktokStatus?.available&&<p>TikTok connection is unavailable.</p>}
+      {tiktokSelected&&tiktokStatus?.available&&!tiktokStatus.connected&&<p>Connect TikTok in Destinations before sending a draft.</p>}
+      {tiktokSelected&&tiktokStatus?.available&&tiktokStatus.connected&&!tiktokConnectionId&&<p>TikTok draft uploads are currently unavailable.</p>}
       {selectedPlatforms.some(platform=>platform!=='YouTube'&&platform!=='Instagram'&&platform!=='TikTok')&&<p>Other destinations are previews only. Remove them before publishing.</p>}
       {accepted&&canStartAnother&&<button type="button" disabled={busy} onClick={()=>{
        if(!userId||!pending.current)return;
@@ -443,18 +419,20 @@ export default function MultiPlatformUploadV2({userId,active,initialAudio,initia
      </div>
      <section className="onece-multi-panel" aria-label="Publishing history"><h2>Publishing history</h2>
       {currentStatus?.jobs.map(job=><article key={job.id}>
-       <h3>{job.title}</h3><p>{publicationState(job.state)}</p>
+       <h3>{job.title}</h3><p>{job.state==='succeeded'&&job.targets.some(target=>target.platform==='tiktok')?
+        'Completed':publicationState(job.state)}</p>
        {job.targets.map(target=>{
         const tiktok=target.platform==='tiktok';
         const platform=tiktok?'TikTok':target.platform;
         const format=tiktok?'9:16':target.variant==='shorts'?'Shorts 9:16':
          target.variant==='standard'?'Standard 16:9':target.variant;
-        const state=tiktok&&target.state==='succeeded'?'Published':
+        const state=tiktok&&target.state==='succeeded'?'Draft sent':
          tiktok&&target.errorCode==='tiktok_processing'?'Processing on TikTok':publicationState(target.state);
         return <div key={target.id}>
          <span>{platform} · {format} · {state}
           {target.errorCode&&target.errorCode!=='tiktok_processing'?' · '+publishingErrorMessage(target.errorCode):''}</span>
-         {target.platform==='tiktok'&&target.state==='needs_review'&&<p>Check your TikTok profile before submitting this video again.</p>}
+         {tiktok&&target.state==='succeeded'&&<p>Open the notification in your TikTok inbox to edit and publish the video.</p>}
+         {target.platform==='tiktok'&&target.state==='needs_review'&&<p>Check your TikTok inbox before sending this video again.</p>}
          {target.remoteId&&target.platform==='youtube'&&<a href={'https://www.youtube.com/watch?v='+encodeURIComponent(target.remoteId)}
           target="_blank" rel="noopener noreferrer">Review on YouTube</a>}
          {canRetryPublishingTarget(target)&&<button type="button"

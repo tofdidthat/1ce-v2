@@ -276,9 +276,5 @@
 }
 
 .onece-multi-tiktok p { margin: 4px 0; }
-.onece-multi-tiktok-checks { display: flex; flex-wrap: wrap; gap: 6px 14px; }
-.onece-multi-tiktok .onece-multi-tiktok-checks label,
-.onece-multi-tiktok .onece-multi-tiktok-consent { display: flex; flex-direction: row; align-items: center; gap: 6px; }
+.onece-multi-tiktok .onece-multi-tiktok-consent { flex-direction: row; align-items: center; gap: 6px; }
 .onece-multi-tiktok input[type="checkbox"] { width: auto; margin: 0; }
-.onece-multi-tiktok label:has(input:disabled) { opacity: .65; }
-.onece-multi-tiktok a { color: inherit; text-decoration: underline; }

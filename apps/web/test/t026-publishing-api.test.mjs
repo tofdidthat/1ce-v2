@@ -128,16 +128,23 @@ test('successful upload exposes safe file progress without leaking signed URLs',
  }finally{globalThis.fetch=original;}
 });
 
-test('TikTok connection status distinguishes OAuth from Direct Post availability',async()=>{
+test('TikTok connection status distinguishes OAuth from draft upload availability',async()=>{
  const original=globalThis.fetch;
  try{
   globalThis.fetch=async()=>Response.json({available:true,connected:true,
    tiktok:{available:false,connected:false,publishingEnabled:false},jobs:[]});
   const result=await publishingRequest(api,'/status',new AbortController().signal);
   assert.equal(result.tiktok.available,false);
+  const connected={available:true,connected:true,publishingEnabled:true,nickname:'Artist',connectionId:'generation'};
+  globalThis.fetch=async()=>Response.json({available:true,connected:true,tiktok:connected,jobs:[]});
+  assert.deepEqual((await publishingRequest(api,'/status',new AbortController().signal)).tiktok,connected);
+  for(const connectionId of [42,'','  ']){
+   globalThis.fetch=async()=>Response.json({available:true,connected:true,tiktok:{...connected,connectionId},jobs:[]});
+   await assert.rejects(publishingRequest(api,'/status',new AbortController().signal),/Invalid TikTok publishing status/);
+  }
   globalThis.fetch=async()=>Response.json({available:true,connected:true,
    tiktok:{available:true,connected:true,publishingEnabled:'true'},jobs:[]});
   await assert.rejects(publishingRequest(api,'/status',new AbortController().signal),/Invalid TikTok publishing status/);
-  assert.match(publishingErrorMessage('tiktok_scope_not_approved'),/video.publish/);
+  assert.match(publishingErrorMessage('tiktok_scope_not_approved'),/video\.upload/);
  }finally{globalThis.fetch=original;}
 });

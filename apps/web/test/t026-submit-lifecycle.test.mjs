@@ -5,7 +5,7 @@ import {transformSync} from 'esbuild';
 const source=readFileSync(new URL('../src/multi-platform-upload-v2.tsx',import.meta.url),'utf8');
 const submit=source.slice(source.indexOf(' const submit='),source.indexOf(' const visualUrl='));
 const readiness=source.slice(source.indexOf(' const youtubeSelected='),source.indexOf(' const act='));
-const code=transformSync(`function run(ctx){const {act,accepted,setAccepted,currentStatus,video,audioFile,image,title,selectedPlatforms,pending,setNotice,uploadPublishingFile,api,description,hashtags,privacy,selectedYouTubeFormats,publishingRequest,userId,requestIdForPublishingIntent,reconcilePublishingRequestIds,tiktokPost}=ctx;const tiktokSelected=selectedPlatforms.includes('TikTok'),tiktokReady=!tiktokSelected||!!tiktokPost;${readiness};${submit};submit();}`,{loader:'ts'}).code;
+const code=transformSync(`function run(ctx){const {act,accepted,setAccepted,currentStatus,video,audioFile,image,title,selectedPlatforms,pending,setNotice,uploadPublishingFile,api,description,hashtags,privacy,selectedYouTubeFormats,publishingRequest,userId,requestIdForPublishingIntent,reconcilePublishingRequestIds,tiktokDraft}=ctx;const tiktokSelected=selectedPlatforms.includes('TikTok'),tiktokReady=!tiktokSelected||!!tiktokDraft;${readiness};${submit};submit();}`,{loader:'ts'}).code;
 const run=new Function(code+';return run;')();
 function fixture(){
  let work;const requests=[],uploads=[];
@@ -55,8 +55,7 @@ test('mixed TikTok submission after reload recovers the original request instead
  const setup=()=>{
   const f=fixture();
   f.ctx.selectedPlatforms=['YouTube','TikTok'];
-  f.ctx.tiktokPost={connectionId:'stable-generation',title:'TikTok caption',privacyLevel:'SELF_ONLY',
-   allowComment:false,allowDuet:false,allowStitch:false,ownBrand:false,brandedContent:false,consent:true};
+  f.ctx.tiktokDraft={connectionId:'stable-generation',consent:true};
   f.ctx.requestIdForPublishingIntent=(owner,intent)=>recovery.requestIdForPublishingIntent(owner,intent,store);
   f.ctx.reconcilePublishingRequestIds=(owner,ids)=>recovery.reconcilePublishingRequestIds(owner,ids,store);
   f.ctx.publishingRequest=async(_api,_path,_signal,payload)=>{
@@ -84,16 +83,27 @@ test('TikTok-only and mixed submissions preserve consent and the same request af
   f.ctx.currentStatus.instagram={connected:true,publishingEnabled:true};
   await f.start();
   assert.deepEqual(f.uploads,[],'TikTok without validated consent cannot upload');
-  f.ctx.tiktokPost={connectionId:'current-connection',title:'TikTok caption',privacyLevel:'SELF_ONLY',
-   allowComment:false,allowDuet:false,allowStitch:false,ownBrand:false,brandedContent:false,consent:true};
+  f.ctx.tiktokDraft={connectionId:'current-connection',consent:true};
   await assert.rejects(f.start(),/Transport lost/);
   await f.start();
   assert.equal(f.requests[0],f.requests[1]);
   assert.deepEqual(f.uploads,['audio','cover']);
   const payload=JSON.parse(f.requests[1]);
-  assert.deepEqual(payload.tiktok,f.ctx.tiktokPost);
+  assert.deepEqual(payload.tiktok,{connectionId:'current-connection',consent:true});
   assert.equal(payload.privacy,'private');
   assert.deepEqual(payload.targets.map(target=>target.platform),platforms.length===1?
    ['tiktok']:['youtube','youtube','instagram','tiktok']);
  }
+});
+
+test('a new TikTok connection discards an uncertain request for the previous recipient',async()=>{
+ const f=fixture();
+ f.ctx.selectedPlatforms=['TikTok'];
+ f.ctx.tiktokDraft={connectionId:'old-connection',consent:true};
+ await assert.rejects(f.start(),/Transport lost/);
+ f.ctx.tiktokDraft={connectionId:'new-connection',consent:true};
+ await f.start();
+ const original=JSON.parse(f.requests[0]),current=JSON.parse(f.requests[1]);
+ assert.notEqual(original.requestId,current.requestId);
+ assert.deepEqual(current.tiktok,{connectionId:'new-connection',consent:true});
 });

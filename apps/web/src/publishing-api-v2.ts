@@ -1,22 +1,25 @@
-import {isTikTokCreatorInfo,type TikTokPost} from './tiktok-post-v2.ts';
+import type {TikTokDraftUpload} from './tiktok-draft-v2.ts';
 
 export type PublishingTarget={id:string;platform:string;variant:string;state:string;remoteId?:string|null;errorCode?:string|null};
 export type InstagramPublishingStatus={available:boolean;connected:boolean;username:string|null;publishingEnabled:boolean};
-export type TikTokPublishingStatus={available:boolean;connected:boolean;publishingEnabled:boolean;username?:string|null;nickname?:string|null};
+export type TikTokPublishingStatus={available:boolean;connected:boolean;publishingEnabled:boolean;nickname?:string|null;connectionId?:string|null};
 export type PublishingStatus={available:boolean;connected:boolean;channelTitle?:string;instagram?:InstagramPublishingStatus;tiktok?:TikTokPublishingStatus;jobs:{id:string;requestId:string;title:string;state:string;targets:PublishingTarget[]}[]};
 export function publishingErrorMessage(code:unknown):string{
  const messages:Record<string,string>={
-  tiktok_direct_post_disabled:'TikTok publishing is currently unavailable.',
-  tiktok_privacy_invalid:'TikTok privacy options changed. Refresh the options and choose privacy again.',
-  tiktok_consent_required:'Confirm the TikTok upload before publishing.',
-  tiktok_creator_changed:'The TikTok account changed. Refresh the options and verify the account before publishing.',
-  tiktok_reconnect_required:'Reconnect TikTok and grant permission to publish.',
-  tiktok_rate_limited:'TikTok reached a posting limit. Try again later.',
+  tiktok_draft_upload_disabled:'TikTok draft uploads are currently unavailable.',
+  tiktok_consent_required:'Confirm that you want to send a TikTok draft.',
+  tiktok_connection_changed:'The TikTok account changed. Verify the connected account before sending the draft.',
+  tiktok_reconnect_required:'Reconnect TikTok and grant permission to upload videos.',
+  tiktok_rate_limited:'TikTok reached an upload limit. Try again later.',
   tiktok_init_uncertain:'TikTok did not confirm that it received the video.',
-  tiktok_status_unknown:'TikTok did not confirm the publication outcome.',
-  tiktok_creator_unavailable:'TikTok posting options are unavailable for this account. Try again later.',
+  tiktok_status_unknown:'TikTok did not confirm delivery to your inbox.',
   tiktok_duration_invalid:'The rendered video is outside TikTok?s allowed duration.',
-  tiktok_post_failed:'TikTok reported that this video could not be published.',
+  tiktok_draft_failed:'TikTok could not deliver the draft.',
+  tiktok_draft_rejected:'TikTok rejected the draft. Check the video and account permissions.',
+  tiktok_pending_drafts_limit:'TikTok has too many pending drafts. Open your TikTok inbox to review them.',
+  tiktok_identity_mismatch:'TikTok returned a different account. Reconnect and verify the account.',
+  tiktok_refresh_failed:'Reconnect TikTok to renew upload permission.',
+  tiktok_url_unverified:'TikTok draft delivery is currently unavailable.',
   tiktok_provider_unavailable:'TikTok is temporarily unavailable.',
   tiktok_temporarily_unavailable:'TikTok is temporarily unavailable.',
   tiktok_not_configured:'TikTok Login Kit is not configured. Add the TikTok developer app credentials before connecting.',
@@ -24,7 +27,7 @@ export function publishingErrorMessage(code:unknown):string{
   tiktok_consent_denied:'TikTok consent was cancelled or denied. Try connecting again.',
   tiktok_state_expired:'The TikTok authorization expired. Start the connection again.',
   tiktok_token_exchange_failed:'TikTok did not accept the authorization. Check client key, secret and callback URL.',
-  tiktok_scope_not_approved:'The TikTok app must have the video.publish permission approved before this account can connect.',
+  tiktok_scope_not_approved:'The TikTok app must have the video.upload permission approved before this account can connect.',
   tiktok_authorization_failed:'TikTok authorization could not be completed. Try again.',
   instagram_data_deletion_pending:'Instagram data deletion is in progress. Reconnect after it completes.',
   youtube_reconnect_required:'Reconnect YouTube and grant both channel and upload permissions.',
@@ -84,7 +87,7 @@ export function publishingErrorMessage(code:unknown):string{
  };
  return typeof code==='string'&&Object.hasOwn(messages,code)?messages[code]:'Publishing could not complete. Check the destination connection and permissions, then review the job status.';
 }
-export type PublishingPayload={requestId:string;title:string;description:string;hashtags:string;targets:({platform:'youtube';variant:'shorts'|'standard'}|{platform:'instagram'|'tiktok';variant:'default'})[];audioFileId:number;coverFileId:number;privacy:'private'|'unlisted'|'public';instagramPublicConsent?:boolean;tiktok?:TikTokPost};
+export type PublishingPayload={requestId:string;title:string;description:string;hashtags:string;targets:({platform:'youtube';variant:'shorts'|'standard'}|{platform:'instagram'|'tiktok';variant:'default'})[];audioFileId:number;coverFileId:number;privacy:'private'|'unlisted'|'public';instagramPublicConsent?:boolean;tiktok?:TikTokDraftUpload};
 export const canRetryPublishingTarget=(target:PublishingTarget)=>target.platform!=='tiktok'&&['failed','retryable'].includes(target.state)&&!target.remoteId;
 export function publishingAuthorizationUrl(api:string,value:unknown):string{
  if(typeof value!=='string')throw Error('Invalid authorization URL');
@@ -118,9 +121,9 @@ export async function publishingRequest<T>(api:string,path:string,signal:AbortSi
   if(!data||typeof data!=='object'||Array.isArray(data)||
    typeof data.available!=='boolean'||typeof data.connected!=='boolean'||
    typeof data.publishingEnabled!=='boolean'||
-   [data.username,data.nickname].some(value=>value!=null&&typeof value!=='string'))throw Error('Invalid TikTok publishing status');
+   (data.nickname!=null&&typeof data.nickname!=='string')||
+   (data.connectionId!=null&&(typeof data.connectionId!=='string'||!data.connectionId.trim())))throw Error('Invalid TikTok publishing status');
  }
  if(path==='/jobs'&&(typeof result.id!=='string'||typeof result.state!=='string'))throw Error('Invalid queue response; retry without editing');
- if(path==='/tiktok/creator-info'&&!isTikTokCreatorInfo(result))throw Error('Invalid TikTok creator options');
  return result as T;
 }

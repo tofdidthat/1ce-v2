@@ -122,9 +122,16 @@ test('TikTok uses the shared destination picker, queue and history with its own 
  assert.match(multi,/onConnection=\{manageDestination\}/);
  assert.match(multi,/tiktok\/connect/);
  assert.match(multi,/tiktok\/disconnect/);
- assert.match(multi,/tiktok\/creator-info/);
- assert.match(multi,/const tiktokReady=!tiktokSelected\|\|!!tiktokPost/);
+ assert.doesNotMatch(multi,/tiktok\/creator-info|TikTok privacy|Publish to TikTok|Branded Content/);
+ assert.match(multi,/const tiktokReady=!tiktokSelected\|\|!!tiktokDraft/);
  assert.match(multi,/!youtubeReady\|\|!instagramReady\|\|!tiktokReady/);
  assert.match(multi,/targets.push\(\{platform:'tiktok',variant:'default'\}\)/);
  assert.match(multi,/target.platform==='tiktok'&&target.state==='needs_review'/);
+ assert.match(multi,/\[userId,tiktokConnectionId,audioFile,image\]/);
+ assert.match(multi,/Send TikTok draft/);
+ assert.match(multi,/send TikTok draft/);
+ assert.match(multi,/tiktok&&target.state==='succeeded'\?'Draft sent'/);
+ assert.match(multi,/job.state==='succeeded'&&job.targets.some\(target=>target.platform==='tiktok'\)/);
+ assert.match(multi,/Open the notification in your TikTok inbox to edit and publish the video/);
+ assert.match(multi,/Check your TikTok inbox before sending this video again/);
 });
