@@ -19,6 +19,8 @@ import {downloadOwnedProjectV2} from './owner-download-v2';
 import {appendDistinctQueueV2,upcomingQueueV2,queueTrackKeyV2,tracksFromPlayableProjectV2,type PlaybackQueueTrackV2} from './playback-queue-v2';
 import ProjectActionDialogV2,{type ContextProject,type ProjectAction,type ChangedProject} from './project-action-dialog-v2';
 import {findOwnProjectV2,OwnedPackCacheV2} from './owned-pack-cache-v2';
+import {addFilesToOwnedPack,isAudioFileDrag} from './pack-drop-upload-v2';
+import {notifyV2DataChanged} from './data-refresh-v2';
 const api=import.meta.env.VITE_API_URL;
 type BeatItem = LibraryBeatV2;
 type PackItem = LibraryPackV2;
@@ -54,6 +56,13 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
  const [packLoading,setPackLoading]=useState(false);
  const [packError,setPackError]=useState('');
  const packRequest=useRef<AbortController|null>(null);
+ const [packDragging,setPackDragging]=useState(false);
+ const [packUploading,setPackUploading]=useState(false);
+ const [packUploadProgress,setPackUploadProgress]=useState('');
+ const [packUploadError,setPackUploadError]=useState('');
+ const packUploadRef=useRef<AbortController|null>(null);
+ const packFileInput=useRef<HTMLInputElement|null>(null);
+ useEffect(()=>()=>packUploadRef.current?.abort(),[userId]);
  useEffect(()=>()=>packRequest.current?.abort(),[]);
  const [openedBeat,setOpenedBeat]=useState<BeatItem|null>(null);
  // Home owns one project-detail state, reused for Home, Catalog and Saves.
@@ -368,10 +377,36 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
   setOpenedBeat(null);setOpenedPack(null);setOpenedTracks([]);
   setDetailOrigin(null);setDetailPending(false);setDetailError('');
  };
- const packDetail=openedPack?<div className="library-pack-detail v2-pack-detail">
+ const canEditOpenedPack=Boolean(openedPack&&userId&&openedPack.owner_id===userId);
+ const addPackFiles=async(files:File[])=>{
+  const pack=openedPack;
+  if(!pack||!canEditOpenedPack||packUploading||!files.length)return;
+  const controller=new AbortController();packUploadRef.current=controller;
+  setPackUploading(true);setPackUploadError('');setPackUploadProgress('');
+  try{
+   const result=await addFilesToOwnedPack(pack.id,files,controller.signal,setPackUploadProgress);
+   if(controller.signal.aborted)return;
+   if(result.added){
+    ownPackCache.current.clear();
+    const tracks=await fetchLibraryPackTracksV2(pack,controller.signal,'Unable to refresh pack');
+    if(!controller.signal.aborted){setOpenedTracks(tracks);notifyV2DataChanged(['library'],userId);}
+   }
+   if(result.errors.length)setPackUploadError(result.errors.join(' | '));
+  }catch(error){if(!controller.signal.aborted)setPackUploadError(error instanceof Error?error.message:'Unable to add tracks')}
+  finally{if(packUploadRef.current===controller){packUploadRef.current=null;setPackUploading(false);setPackUploadProgress('')}}
+ };
+ const packDetail=openedPack?<div className={"library-pack-detail v2-pack-detail"+(packDragging?" v2-pack-dragging":"")}
+  onDragEnter={event=>{if(canEditOpenedPack&&!packUploading&&isAudioFileDrag(event)){event.preventDefault();setPackDragging(true)}}}
+  onDragOver={event=>{if(canEditOpenedPack&&!packUploading&&isAudioFileDrag(event)){event.preventDefault();event.dataTransfer.dropEffect='copy'}}}
+  onDragLeave={event=>{if(!event.currentTarget.contains(event.relatedTarget as Node))setPackDragging(false)}}
+  onDrop={event=>{if(!canEditOpenedPack||!isAudioFileDrag(event))return;event.preventDefault();setPackDragging(false);void addPackFiles(Array.from(event.dataTransfer.files))}}>
       <button type="button" className="library-pack-back" aria-label={detailOrigin==='profile'?'Back to Profile':'Back to Home'} onClick={closeProjectDetails}><ChevronLeft size={20}/></button>
        <div className="library-pack-cover beat-art-0"><ProjectCoverV2 ownerId={openedPack.owner_id} fileId={openedPack.cover_file_id} title={openedPack.title} className="v2-item-cover"/></div>
-       <header className="library-pack-info"><div className="library-pack-title-row"><div className="library-pack-title-block"><h2>{openedPack.title}</h2><p>{openedTracks.length} {openedTracks.length===1?'beat':'beats'}</p></div><div className="library-pack-play-controls"><button type="button" className="library-pack-shuffle" aria-label="Shuffle pack" onClick={()=>{if(openedTracks.length){const mixed=[...openedTracks].sort(()=>Math.random()-.5);choose(mixed[0],mixed,openedPack.id)}}}><Shuffle size={19}/></button><button type="button" className="library-pack-play" aria-label={(activePackId===openedPack.id&&playing?'Pause ':'Play ')+openedPack.title} onClick={()=>playPack(openedPack)}>{activePackId===openedPack.id&&playing?<Pause/>:<Play/>}</button></div></div><button type="button" className="library-pack-add" disabled title="Add tracks is not yet available in v2"><span>+</span><span>Add tracks</span></button></header>
+       <header className="library-pack-info"><div className="library-pack-title-row"><div className="library-pack-title-block"><h2>{openedPack.title}</h2><p>{openedTracks.length} {openedTracks.length===1?'beat':'beats'}</p></div><div className="library-pack-play-controls"><button type="button" className="library-pack-shuffle" aria-label="Shuffle pack" onClick={()=>{if(openedTracks.length){const mixed=[...openedTracks].sort(()=>Math.random()-.5);choose(mixed[0],mixed,openedPack.id)}}}><Shuffle size={19}/></button><button type="button" className="library-pack-play" aria-label={(activePackId===openedPack.id&&playing?'Pause ':'Play ')+openedPack.title} onClick={()=>playPack(openedPack)}>{activePackId===openedPack.id&&playing?<Pause/>:<Play/>}</button></div></div><button type="button" className="library-pack-add" disabled={!canEditOpenedPack||packUploading} onClick={()=>packFileInput.current?.click()}><span>+</span><span>Add tracks</span></button></header>
+       {canEditOpenedPack&&<input ref={packFileInput} type="file" accept=".mp3,.wav,audio/mpeg,audio/wav" multiple hidden onChange={event=>{const files=Array.from(event.target.files||[]);event.target.value='';void addPackFiles(files)}}/>}
+       {packDragging&&canEditOpenedPack&&<div className="v2-pack-drop-hint" role="status">Drop MP3 or WAV files to add tracks</div>}
+       {packUploading&&<p className="v2-library-status" role="status">{packUploadProgress||'Adding tracks…'}</p>}
+       {packUploadError&&<p className="v2-library-status" role="alert">{packUploadError}</p>}
        {packLoading?<p className="v2-library-status">Loading beats…</p>:packError?<p role="alert">{packError}</p>:<ol className="beat-track-list">{openedTracks.map((beat,index)=><li key={beat.id} onContextMenu={e=>showBeatMenu(e,beat)} className={current?.id===beat.id&&current?.owner_id===beat.owner_id?'beat-track-active':''}><button type="button" className="beat-track-play" onClick={()=>choose(beat,openedTracks,openedPack.id)} aria-label={(current?.id===beat.id&&playing?'Pause ':'Play ')+beat.title}><span className="beat-track-number">{current?.id===beat.id&&playing?'▥':index+1}</span><span><strong>{beat.title}</strong></span></button><div className="beat-track-menu"><button type="button" aria-label={'Open '+beat.title} onClick={()=>setOpenedBeat(beat)}>•••</button></div></li>)}</ol>}
       </div>:null;
  const profilePackPage=Boolean(profileRouteKey!==null&&detailOrigin==='profile'&&((openRequest?.kind==='pack'&&(detailPending||detailError))||openedPack));
