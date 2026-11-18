@@ -83,6 +83,31 @@ export async function handleProjectActions(req:IncomingMessage,res:ServerRespons
   });
   send(res,response.status,response.data);return true;
  }
+ // POST /api/library/projects/pack/:targetId/audio {audioFileId,title}
+ // One owner-scoped transaction prevents orphan standalone beats if attachment fails.
+ if(req.method==='POST'&&parts.length===6&&parts[3]==='pack'&&uuid.test(parts[4])&&parts[5]==='audio'){
+  const audioId=body?.audioFileId;
+  const title=typeof body?.title==='string'?body.title.trim():'';
+  if(typeof audioId!=='number'||!Number.isSafeInteger(audioId)||audioId<1||!title||title.length>180){
+   send(res,400,{error:'Invalid audio or title'});return true;
+  }
+  const response=await transaction(pool,owner,async c=>{
+   if(!await ownerProject(c,'pack',parts[4],owner))return result(404,{error:'Target pack not found'});
+   const file=await c.query("SELECT id FROM library_files WHERE id=$1 AND user_id=$2 AND kind='audio' AND status='ready'",[audioId,owner]);
+   if(file.rowCount!==1)return result(400,{error:'Audio must be owned by you and ready'});
+   const found=(await c.query('SELECT id,deleted_at FROM library_beats WHERE user_id=$1 AND audio_file_id=$2',[owner,audioId])).rows[0];
+   if(found?.deleted_at)return result(409,{error:'Beat is in Trash. Restore it first.'});
+   const existing=(await c.query('SELECT beat_id FROM library_pack_beats WHERE pack_id=$1',[parts[4]])).rows.map(row=>String(row.beat_id));
+   if(existing.length>=100&&(!found||!existing.includes(String(found.id))))
+    return result(400,{error:'A pack cannot contain more than 100 beats'});
+   const beatId=found?String(found.id):randomUUID();
+   if(!found)await c.query('INSERT INTO library_beats(id,user_id,title,audio_file_id,library_visible) VALUES($1,$2,$3,$4,FALSE)',
+    [beatId,owner,title,audioId]);
+   const added=await attach(c,parts[4],[beatId]);
+   return result(200,{id:parts[4],beatId,added,track_count:existing.length+added,reused:!!found});
+  });
+  send(res,response.status,response.data);return true;
+ }
  // POST /api/library/projects/pack/:targetId/add {sourceKind,sourceId}
  if(req.method==='POST'&&parts.length===6&&parts[3]==='pack'&&uuid.test(parts[4])&&parts[5]==='add'){
   const {sourceKind,sourceId}=body||{};
