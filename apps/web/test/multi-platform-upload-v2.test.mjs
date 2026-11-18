@@ -61,7 +61,7 @@ test('publishing requires connected selected destinations and supported media wi
  assert.match(multi,/Original video publishing is unavailable/);
  assert.match(multi,/requestIdForPublishingIntent\(userId,intent\)/);
  assert.match(multi,/if\(!pending.current\)/);
- assert.match(multi,/signal,pending.current/);
+ assert.match(multi,/signal,submission/);
  assert.match(multi,/controller.abort\(\);clearTimeout\(timer\)/);
  assert.doesNotMatch(multi,/\bfetch\s*\(/);
  assert.doesNotMatch(multi,/DESKTOP_BACKEND_URL|ACCOUNT_SESSION_KEY|publishToAll|localStorage/);
@@ -85,7 +85,7 @@ test('9:16 and 16:9 are YouTube-only options, not global platform settings',()=>
  assert.match(multi,/format\.id==='vertical'\?'Shorts 9:16':'Standard 16:9'/);
  assert.match(multi,/selectedYouTubeFormats=\{selectedYouTubeFormats\}/);
  assert.match(multi,/onToggleYouTubeFormat=\{toggleYouTubeFormat\}/);
- assert.match(multi,/const previewFormats=youtubeSelected[\s\S]*?selectedYouTubeFormats\.includes\(format\.id\)[\s\S]*?format\.id==='vertical'/);
+ assert.match(multi,/const youtubePreviewFormats=youtubeSelected[\s\S]*?selectedYouTubeFormats\.includes\(format\.id\)[\s\S]*?format\.id==='vertical'/);
  assert.match(multi,/previewFormats\.map\(format=>/);
  assert.doesNotMatch(multi,/onece-multi-youtube-options|Choose Shorts \(9:16\), standard video/);
  assert.match(css,/\.onece-multi-destination-more \{/);
@@ -109,11 +109,29 @@ test('YouTube formats ellipsis is before Disconnect and list retains balanced sp
 });
 
 test('Media preview keeps v1 width and shows 16:9 above 9:16 at equal width',()=>{
- assert.match(multi,/const previewFormats=youtubeSelected\s*\? formats\.filter\(format=>selectedYouTubeFormats\.includes\(format\.id\)\)\.reverse\(\)/);
+ assert.match(multi,/const youtubePreviewFormats=youtubeSelected\s*\? formats\.filter\(format=>selectedYouTubeFormats\.includes\(format\.id\)\)\.reverse\(\)/);
  assert.match(multi,/previewFormats\.map\(format=>/);
  assert.match(css,/\.onece-multi-preview-items \{ display: flex; flex-direction: column; align-items: center; gap: 16px; \}/);
  assert.match(css,/\.onece-multi-preview-item \{ width: min\(100%, 342\.2px\);/);
  assert.match(css,/\.onece-multi-preview-frame \{[^\n]*width: 100%;/);
  assert.match(css,/\.onece-multi-preview-frame\.vertical \{ aspect-ratio: 9 \/ 16; \}/);
  assert.match(css,/\.onece-multi-preview-frame\.horizontal \{ aspect-ratio: 16 \/ 9; \}/);
+});
+
+test('TikTok uses the shared destination picker, queue and history with its own readiness gate',()=>{
+ assert.match(multi,/onConnection=\{manageDestination\}/);
+ assert.match(multi,/tiktok\/connect/);
+ assert.match(multi,/tiktok\/disconnect/);
+ assert.doesNotMatch(multi,/tiktok\/creator-info|TikTok privacy|Publish to TikTok|Branded Content/);
+ assert.match(multi,/const tiktokReady=!tiktokSelected\|\|!!tiktokDraft/);
+ assert.match(multi,/!youtubeReady\|\|!instagramReady\|\|!tiktokReady/);
+ assert.match(multi,/targets.push\(\{platform:'tiktok',variant:'default'\}\)/);
+ assert.match(multi,/target.platform==='tiktok'&&target.state==='needs_review'/);
+ assert.match(multi,/\[userId,tiktokConnectionId,audioFile,image\]/);
+ assert.match(multi,/Send TikTok draft/);
+ assert.match(multi,/send TikTok draft/);
+ assert.match(multi,/tiktok&&target.state==='succeeded'\?'Draft sent'/);
+ assert.match(multi,/job.state==='succeeded'&&job.targets.some\(target=>target.platform==='tiktok'\)/);
+ assert.match(multi,/Open the notification in your TikTok inbox to edit and publish the video/);
+ assert.match(multi,/Check your TikTok inbox before sending this video again/);
 });

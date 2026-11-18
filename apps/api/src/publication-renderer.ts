@@ -37,18 +37,24 @@ export function parseMediaDuration(stderr:string):number{
  if(!Number.isFinite(seconds)||seconds<=0||seconds>1200)throw new PublishingError('audio_must_be_under_20_minutes',422);
  return seconds;
 }
-export async function renderPublication({audio,cover,output,variant,signal,audioBitrate='192k',audioSampleRate}:{
- audio:string;cover:string;output:string;variant:'shorts'|'standard';signal:AbortSignal;
+export async function validateTikTokDuration(path:string,max:number,signal:AbortSignal){
+ const result=await run(['-hide_banner','-nostdin','-protocol_whitelist','file,pipe','-i',path],{signal});
+ const duration=parseMediaDuration(result.stderr);
+ if(duration<3||duration>max)throw new PublishingError('tiktok_duration_invalid',422);
+}
+export async function renderPublication({audio,cover,output,variant,signal,maxDurationSec,audioBitrate='192k',audioSampleRate}:{
+ audio:string;cover:string;output:string;variant:'shorts'|'standard'|'vertical';signal:AbortSignal;maxDurationSec?:number;
  audioBitrate?:'128k'|'192k';audioSampleRate?:48000
 }):Promise<void>{
  if(!publicationRendererAvailable())throw new PublishingError('renderer_unavailable',503);
  const audioInfo=await run(['-hide_banner','-nostdin','-max_alloc','67108864','-protocol_whitelist','file,pipe','-i',audio],{signal});
  const duration=parseMediaDuration(audioInfo.stderr);
+ if(variant==='vertical'&&(!Number.isFinite(maxDurationSec)||duration<3||duration>maxDurationSec!))throw new PublishingError('tiktok_duration_invalid',422);
  if(variant==='shorts'&&duration>180)throw new PublishingError('shorts_must_be_under_3_minutes',422);
  const imageInfo=await run(['-hide_banner','-nostdin','-max_alloc','67108864','-protocol_whitelist','file,pipe','-i',cover],{signal});
  const dimensions=/,\s*(\d{1,6})x(\d{1,6})(?:[,\s\[])/.exec(imageInfo.stderr);
  if(!dimensions||Number(dimensions[1])*Number(dimensions[2])>32000000||Number(dimensions[1])>8192||Number(dimensions[2])>8192)throw new PublishingError('cover_dimensions_too_large',422);
- const [width,height]=variant==='shorts'?[720,1280]:[1280,720];
+ const [width,height]=variant==='standard'?[1280,720]:[720,1280];
  const result=await run(['-hide_banner','-nostdin','-loglevel','error','-y','-max_alloc','67108864',
   '-protocol_whitelist','file,pipe','-loop','1','-framerate','2','-i',cover,
   '-protocol_whitelist','file,pipe','-i',audio,'-map','0:v:0','-map','1:a:0',

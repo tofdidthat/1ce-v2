@@ -117,7 +117,7 @@ export async function settlePublicationTarget(db:QueryableV2,targetId:string,cla
  outcome:PublicationOutcome,{remoteId=null,errorCode=null}:{remoteId?:string|null;errorCode?:string|null}={}):Promise<boolean>{
  if(!/^[1-9]\d*$/.test(targetId)||!uuid.test(claimToken))throw Error('Invalid claim');
  if(!['succeeded','retryable','failed','needs_review'].includes(outcome))throw Error('Invalid outcome');
- if(remoteId!==null&&(remoteId.length<1||remoteId.length>120||! /^[A-Za-z0-9_-]+$/.test(remoteId)))
+ if(remoteId!==null&&(remoteId.length<1||remoteId.length>120||! /^[A-Za-z0-9_.~-]+$/.test(remoteId)))
   throw Error('Invalid remote id');
  if(errorCode!==null&&(errorCode.length<1||errorCode.length>64||! /^[a-z0-9_-]+$/.test(errorCode)))
   throw Error('Invalid error code');

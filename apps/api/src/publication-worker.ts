@@ -11,6 +11,9 @@ import {publishingConfig,openPublishing,sealPublishing,type PublishingConfig} fr
 import {publishingStorage,downloadPublishingAsset,hashPublishingFile,type PublishingStorage} from './publishing-storage.js';
 import {renderPublication,publicationRendererAvailable} from './publication-renderer.js';
 import {ensurePublishingSchema} from './publishing-schema.js';
+import {tiktokConfig} from './tiktok-connection.js';
+import {deliveryEndpoint} from './tiktok-draft-upload.js';
+import {runTikTokOnce,recoverTikTokClaims} from './tiktok-worker.js';
 import {instagramConfig} from './instagram-connection.js';
 import {runInstagramReelOnce,quarantineExpiredInstagramClaims,instagramReelsServerEnabled} from './instagram-reels-worker.js';
 import {processInstagramDataDeletionOnce} from './instagram-data-deletion.js';
@@ -182,8 +185,8 @@ export async function runPublicationOnce(db:QueryableV2,{storage,config,http=fet
  return true;
 }
 export function startPublicationWorker(db:PublishingPool):()=>void{
- const config=publishingConfig(),instagram=instagramConfig(),storage=publishingStorage();
- if(!config&&!instagram&&!storage)return()=>{};
+ const config=publishingConfig(),instagram=instagramConfig(),tiktok=tiktokConfig(),storage=publishingStorage();
+ if(!config&&!instagram&&!tiktok&&!storage)return()=>{};
  const renderer=publicationRendererAvailable();
  let stopped=false,timer:ReturnType<typeof setTimeout>|null=null;
  const tick=async()=>{
@@ -191,11 +194,13 @@ export function startPublicationWorker(db:PublishingPool):()=>void{
    await ensurePublishingSchema(db);
    // Compliance cleanup runs with publishing disabled and without FFmpeg.
    await processInstagramDataDeletionOnce(db,storage);
+   if(tiktok)await recoverTikTokClaims(db);
    if(storage){
    if(config)await recoverYouTubeClaims(db);
    if(instagram&&instagramReelsServerEnabled())await quarantineExpiredInstagramClaims(db);
    try{await cleanupArtifacts(db,storage)}catch{console.error('publication artifact cleanup temporarily unavailable');}
    if(renderer&&config)await runPublicationOnce(db,{config,storage});
+   if(renderer&&tiktok&&deliveryEndpoint())await runTikTokOnce(db,{config:tiktok,storage});
    if(renderer&&instagram&&instagramReelsServerEnabled())await runInstagramReelOnce(db,{config:instagram,storage});
    }
   }catch{console.error('publication worker temporarily unavailable');}

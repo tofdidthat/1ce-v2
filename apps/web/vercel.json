@@ -9,6 +9,10 @@
       "destination": "https://1ce-v2-production.up.railway.app/api/instagram/meta-compliance"
     },
     {
+      "source": "/api/publishing/tiktok-media",
+      "destination": "https://1ce-v2-production.up.railway.app/api/publishing/tiktok-media"
+    },
+    {
       "source": "/((?!assets/).*)",
       "destination": "/index.html"
     }

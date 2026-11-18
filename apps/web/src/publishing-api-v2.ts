@@ -1,8 +1,34 @@
+import type {TikTokDraftUpload} from './tiktok-draft-v2.ts';
+
 export type PublishingTarget={id:string;platform:string;variant:string;state:string;remoteId?:string|null;errorCode?:string|null};
 export type InstagramPublishingStatus={available:boolean;connected:boolean;username:string|null;publishingEnabled:boolean};
-export type PublishingStatus={available:boolean;connected:boolean;channelTitle?:string;instagram?:InstagramPublishingStatus;jobs:{id:string;requestId:string;title:string;state:string;targets:PublishingTarget[]}[]};
+export type TikTokPublishingStatus={available:boolean;connected:boolean;publishingEnabled:boolean;nickname?:string|null;connectionId?:string|null};
+export type PublishingStatus={available:boolean;connected:boolean;channelTitle?:string;instagram?:InstagramPublishingStatus;tiktok?:TikTokPublishingStatus;jobs:{id:string;requestId:string;title:string;state:string;targets:PublishingTarget[]}[]};
 export function publishingErrorMessage(code:unknown):string{
  const messages:Record<string,string>={
+  tiktok_draft_upload_disabled:'TikTok draft uploads are currently unavailable.',
+  tiktok_consent_required:'Confirm that you want to send a TikTok draft.',
+  tiktok_connection_changed:'The TikTok account changed. Verify the connected account before sending the draft.',
+  tiktok_reconnect_required:'Reconnect TikTok and grant permission to upload videos.',
+  tiktok_rate_limited:'TikTok reached an upload limit. Try again later.',
+  tiktok_init_uncertain:'TikTok did not confirm that it received the video.',
+  tiktok_status_unknown:'TikTok did not confirm delivery to your inbox.',
+  tiktok_duration_invalid:'The rendered video is outside TikTok?s allowed duration.',
+  tiktok_draft_failed:'TikTok could not deliver the draft.',
+  tiktok_draft_rejected:'TikTok rejected the draft. Check the video and account permissions.',
+  tiktok_pending_drafts_limit:'TikTok has too many pending drafts. Open your TikTok inbox to review them.',
+  tiktok_identity_mismatch:'TikTok returned a different account. Reconnect and verify the account.',
+  tiktok_refresh_failed:'Reconnect TikTok to renew upload permission.',
+  tiktok_url_unverified:'TikTok draft delivery is currently unavailable.',
+  tiktok_provider_unavailable:'TikTok is temporarily unavailable.',
+  tiktok_temporarily_unavailable:'TikTok is temporarily unavailable.',
+  tiktok_not_configured:'TikTok Login Kit is not configured. Add the TikTok developer app credentials before connecting.',
+  tiktok_session_missing:'Sign in to 1CE again before connecting your TikTok account.',
+  tiktok_consent_denied:'TikTok consent was cancelled or denied. Try connecting again.',
+  tiktok_state_expired:'The TikTok authorization expired. Start the connection again.',
+  tiktok_token_exchange_failed:'TikTok did not accept the authorization. Check client key, secret and callback URL.',
+  tiktok_scope_not_approved:'The TikTok app must have the video.upload permission approved before this account can connect.',
+  tiktok_authorization_failed:'TikTok authorization could not be completed. Try again.',
   instagram_data_deletion_pending:'Instagram data deletion is in progress. Reconnect after it completes.',
   youtube_reconnect_required:'Reconnect YouTube and grant both channel and upload permissions.',
   instagram_not_configured:'Instagram Business Login is not configured on this server.',
@@ -52,24 +78,25 @@ export function publishingErrorMessage(code:unknown):string{
   youtube_token_expired:'YouTube permission expired. Reconnect and grant access again.',
   youtube_reauth_required:'Reconnect YouTube and grant access again.',
   invalid_grant:'YouTube permission expired. Reconnect and grant access again.',
-  needs_review:'The outcome is uncertain. Review the YouTube channel before any new submission.',
+  needs_review:'The outcome is uncertain. Check the destination profile before any new submission.',
   publishing_unavailable:'Publishing is unavailable on this server. Please try again later.',
   audio_too_long:'Audio must be 20 minutes or less.',
   cover_too_large:'Use an image up to 15 MiB, 32 megapixels and 8192 pixels per side.',
   unauthorized:'Sign in again to continue.',
   forbidden:'This account does not have permission for this action.'
  };
- return typeof code==='string'&&Object.hasOwn(messages,code)?messages[code]:'Publishing could not complete. Check your connection and YouTube permissions, then review the job status.';
+ return typeof code==='string'&&Object.hasOwn(messages,code)?messages[code]:'Publishing could not complete. Check the destination connection and permissions, then review the job status.';
 }
-export type PublishingPayload={requestId:string;title:string;description:string;hashtags:string;targets:({platform:'youtube';variant:'shorts'|'standard'}|{platform:'instagram';variant:'default'})[];audioFileId:number;coverFileId:number;privacy:'private'|'unlisted'|'public';instagramPublicConsent?:boolean};
-export const canRetryPublishingTarget=(target:PublishingTarget)=>['failed','retryable'].includes(target.state)&&!target.remoteId;
+export type PublishingPayload={requestId:string;title:string;description:string;hashtags:string;targets:({platform:'youtube';variant:'shorts'|'standard'}|{platform:'instagram'|'tiktok';variant:'default'})[];audioFileId:number;coverFileId:number;privacy:'private'|'unlisted'|'public';instagramPublicConsent?:boolean;tiktok?:TikTokDraftUpload};
+export const canRetryPublishingTarget=(target:PublishingTarget)=>target.platform!=='tiktok'&&['failed','retryable'].includes(target.state)&&!target.remoteId;
 export function publishingAuthorizationUrl(api:string,value:unknown):string{
  if(typeof value!=='string')throw Error('Invalid authorization URL');
  const url=new URL(value),backend=new URL(api);
  const validYouTube=url.pathname==='/auth/youtube/start'&&/^pub_[A-Za-z0-9_-]{43}$/.test(url.searchParams.get('state')||'');
  const validInstagram=url.pathname==='/auth/instagram/start'&&/^igpub_[A-Za-z0-9_-]{43}$/.test(url.searchParams.get('state')||'');
+ const validTikTok=url.pathname==='/auth/tiktok/start'&&/^ttpub_[A-Za-z0-9_-]{43}$/.test(url.searchParams.get('state')||'');
  if(url.protocol!=='https:'||url.origin!==backend.origin||url.username||url.password||url.hash||
-  [...url.searchParams.keys()].some(key=>key!=='state')||(!validYouTube&&!validInstagram))throw Error('Invalid authorization URL');
+  [...url.searchParams.keys()].length!==1||(!validYouTube&&!validInstagram&&!validTikTok))throw Error('Invalid authorization URL');
  return url.href;
 }
 export async function publishingRequest<T>(api:string,path:string,signal:AbortSignal,body?:unknown):Promise<T>{
@@ -88,6 +115,14 @@ export async function publishingRequest<T>(api:string,path:string,signal:AbortSi
   if(typeof data.available!=='boolean'||typeof data.connected!=='boolean'||
    !(typeof data.username==='string'||data.username===null)||typeof data.publishingEnabled!=='boolean')
    throw Error('Invalid Instagram publishing status');
+ }
+ if(path==='/status'&&result.tiktok!==undefined){
+  const data=result.tiktok as Record<string,unknown>;
+  if(!data||typeof data!=='object'||Array.isArray(data)||
+   typeof data.available!=='boolean'||typeof data.connected!=='boolean'||
+   typeof data.publishingEnabled!=='boolean'||
+   (data.nickname!=null&&typeof data.nickname!=='string')||
+   (data.connectionId!=null&&(typeof data.connectionId!=='string'||!data.connectionId.trim())))throw Error('Invalid TikTok publishing status');
  }
  if(path==='/jobs'&&(typeof result.id!=='string'||typeof result.state!=='string'))throw Error('Invalid queue response; retry without editing');
  return result as T;
