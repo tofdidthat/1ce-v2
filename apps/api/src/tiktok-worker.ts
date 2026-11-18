@@ -7,7 +7,7 @@ import {PutObjectCommand} from '@aws-sdk/client-s3';
 import type {PublishingPool} from './publishing-jobs.js';
 import {claimPublicationTarget,settlePublicationTarget} from './publication-queue.js';
 import {tikTokAccess,type TikTokConfig} from './tiktok-connection.js';
-import {validateCreator,creatorInfo,deliveryEndpoint,parseTikTokPreferences,tikTokPost} from './tiktok-direct-post.js';
+import {deliveryEndpoint,draftMaxDurationSec,parseTikTokDraftConsent,TikTokDraftRejected,tikTokPost} from './tiktok-draft-upload.js';
 import {downloadPublishingAsset,hashPublishingFile,type PublishingStorage} from './publishing-storage.js';
 import {renderPublication,validateTikTokDuration} from './publication-renderer.js';
 import {PublishingError} from './youtube-connection.js';
@@ -52,7 +52,7 @@ export async function runTikTokOnce(db:PublishingPool,{storage,config,http=fetch
   const cp=(await db.query('SELECT publish_id FROM v2_tiktok_checkpoints WHERE target_id=$1',[target.id])).rows[0];
   started=!!cp;
   publishId=cp?.publish_id?String(cp.publish_id):'';
-  const prefs=parseTikTokPreferences(job?.tiktok_preferences);
+  const prefs=parseTikTokDraftConsent(job?.tiktok_preferences);
   const owner=Number(job.user_id);
   const access=()=>tikTokAccess(db,owner,config,http,prefs.connectionId);
   let auth=await access();
@@ -60,8 +60,6 @@ export async function runTikTokOnce(db:PublishingPool,{storage,config,http=fetch
    if(!cp.publish_id)throw new PublishingError('tiktok_init_uncertain',409);
    publishId=String(cp.publish_id);
   }else{
-   const creator=await creatorInfo(auth.token,auth.generation,http);
-   validateCreator(prefs,creator);
    const files=(await db.query(`SELECT kind,object_key,byte_size,sha256 FROM library_files WHERE user_id=$1 AND status='ready'
     AND ((id=$2 AND kind='audio') OR (id=$3 AND kind='cover'))`,[owner,job.audio_file_id,job.cover_file_id])).rows;
    const audio=files.find(f=>f.kind==='audio'), cover=files.find(f=>f.kind==='cover');
@@ -72,11 +70,8 @@ export async function runTikTokOnce(db:PublishingPool,{storage,config,http=fetch
    for(const [asset,path] of [[audio,audioPath],[cover,coverPath]] as const)
     await downloadPublishingAsset(storage,String(asset.object_key),path,Number(asset.byte_size),
      typeof asset.sha256==='string'?asset.sha256:null,controller.signal);
-   await render({audio:audioPath,cover:coverPath,output,variant:'vertical',maxDurationSec:creator.maxVideoPostDurationSec,signal:controller.signal});
-   auth=await access();
-   const current=await creatorInfo(auth.token,auth.generation,http);
-   validateCreator(prefs,current);
-   await validateDuration(output,current.maxVideoPostDurationSec,controller.signal);
+   await render({audio:audioPath,cover:coverPath,output,variant:'vertical',maxDurationSec:draftMaxDurationSec,signal:controller.signal});
+   await validateDuration(output,draftMaxDurationSec,controller.signal);
    const sha=await hashPublishingFile(output),bytes=(await stat(output)).size;
    if(bytes<1||bytes>256*1024*1024)throw new PublishingError('render_limit_exceeded',422);
    const key='publishing/users/'+owner+'/'+target.jobId+'/'+target.id+'/'+sha+'.mp4';
@@ -96,16 +91,16 @@ export async function runTikTokOnce(db:PublishingPool,{storage,config,http=fetch
     JOIN v2_tiktok_connections c ON c.user_id=j.user_id AND c.generation=$3::uuid
     WHERE t.id=$1 AND t.claim_token=$2 AND t.state='running' AND t.claim_until>clock_timestamp()
     AND j.state='ready' AND j.audio_file_id IS NOT NULL AND j.cover_file_id IS NOT NULL
+    AND 'video.upload'=ANY(regexp_split_to_array(trim(c.scope),'[[:space:]]*,[[:space:]]*'))
     FOR UPDATE OF t FOR SHARE OF c ON CONFLICT(target_id) DO NOTHING RETURNING target_id`,
     [...args,auth.generation,key,sha,bytes,createHash('sha256').update(capability).digest('hex')]);
-   if(!marker.rowCount)throw new PublishingError('tiktok_creator_changed',409);
+   if(!marker.rowCount)throw new PublishingError('tiktok_connection_changed',409);
    started=true;
    controller.signal.throwIfAborted();
-   if(deliveryEndpoint()!==endpoint)throw new PublishingError('tiktok_direct_post_disabled',503);
-   const data=await tikTokPost('video/init',auth.token,{source_info:{source:'PULL_FROM_URL',video_url:endpoint+'?token='+capability},
-    post_info:{title:prefs.title,privacy_level:prefs.privacyLevel,disable_comment:!prefs.allowComment,
-     disable_duet:!prefs.allowDuet,disable_stitch:!prefs.allowStitch,brand_organic_toggle:prefs.ownBrand,
-     brand_content_toggle:prefs.brandedContent}},http);
+   if(deliveryEndpoint()!==endpoint)throw new PublishingError('tiktok_draft_upload_disabled',503);
+   const data=await tikTokPost('inbox/video/init',auth.token,{
+    source_info:{source:'PULL_FROM_URL',video_url:endpoint+'?token='+capability}
+   },http);
    if(typeof data.publish_id!=='string'||!validPublishId(data.publish_id))throw new PublishingError('tiktok_init_uncertain',409);
    publishId=data.publish_id;
    const saved=await db.query(`UPDATE v2_tiktok_checkpoints SET publish_id=$3 WHERE target_id=$1 AND init_claim=$2
@@ -113,7 +108,7 @@ export async function runTikTokOnce(db:PublishingPool,{storage,config,http=fetch
    if(!saved.rowCount)throw new PublishingError('tiktok_checkpoint_failed',409);
   }
   const result=await tikTokPost('status/fetch',auth.token,{publish_id:publishId},http);
-  if(result.status==='PUBLISH_COMPLETE'){
+  if(result.status==='SEND_TO_USER_INBOX'||result.status==='PUBLISH_COMPLETE'){
    await settlePublicationTarget(db,target.id,target.claimToken,'succeeded',{remoteId:publishId});
   }else if(result.status==='PROCESSING_DOWNLOAD'||result.status==='PROCESSING_UPLOAD'){
    await settlePublicationTarget(db,target.id,target.claimToken,target.attempt>=30?'needs_review':'retryable',
@@ -121,14 +116,20 @@ export async function runTikTokOnce(db:PublishingPool,{storage,config,http=fetch
   }else{
    const knownFailures=['video_pull_failed','file_format_check_failed','duration_check_failed','picture_size_check_failed',
     'spam_risk_too_many_posts','auth_removed','publish_cancelled'];
-   const reason=knownFailures.includes(String(result.fail_reason))?'tiktok_'+result.fail_reason:'tiktok_post_failed';
+   const reason=knownFailures.includes(String(result.fail_reason))?'tiktok_'+result.fail_reason:'tiktok_draft_failed';
    await settlePublicationTarget(db,target.id,target.claimToken,result.status==='FAILED'?'failed':'needs_review',
     {errorCode:result.status==='FAILED'?reason:'tiktok_status_unknown',remoteId:publishId});
   }
  } catch(error){
+  if (error instanceof TikTokDraftRejected && started && !publishId) {
+   const cleared=await db.query(`DELETE FROM v2_tiktok_checkpoints c USING v2_publication_targets t
+    WHERE c.target_id=$1 AND c.init_claim=$2 AND c.publish_id IS NULL AND t.id=c.target_id
+     AND t.claim_token=$2 AND t.state='running' AND t.claim_until>clock_timestamp()`,args);
+   if(cleared.rowCount===1)started=false;
+  }
   const code=error instanceof PublishingError?error.code:'tiktok_temporarily_unavailable';
   const transient=!(error instanceof PublishingError)||error.status>=500||error.status===429;
-  const review=code==='tiktok_creator_changed'||(started&&(!publishId||!transient||target.attempt>=30));
+  const review=code==='tiktok_connection_changed'||(started&&(!publishId||!transient||target.attempt>=30));
   await settlePublicationTarget(db,target.id,target.claimToken,review?'needs_review':transient?'retryable':'failed',
    {remoteId:publishId||null,errorCode:code});
  } finally {

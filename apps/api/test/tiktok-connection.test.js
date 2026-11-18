@@ -34,7 +34,7 @@ function dbMock({claim=true,revoke=true,profileId='test-open-id'}={}){
   assert.equal(options.body.get('client_secret'),config.clientSecret);
   assert.equal(options.body.get('redirect_uri'),config.redirectUri);
   return Response.json({access_token:'synthetic-access',refresh_token:'synthetic-refresh',
-   open_id:'test-open-id',scope:'user.info.basic,video.publish',
+   open_id:'test-open-id',scope:'user.info.basic,video.upload',
    expires_in:7200,refresh_expires_in:15552000});
  };
  return{db,pool,http,calls};
@@ -67,7 +67,7 @@ test('TikTok state is 256-bit, owner-scoped, one-use and bound to a secure brows
  const target=new URL(start.url);
  assert.equal(target.origin,'https://www.tiktok.com');
  assert.equal(target.pathname,'/v2/auth/authorize/');
- assert.equal(target.searchParams.get('scope'),'user.info.basic,video.publish');
+ assert.equal(target.searchParams.get('scope'),'user.info.basic,video.upload');
  assert.equal(target.searchParams.get('client_key'),config.clientKey);
  assert.equal(target.searchParams.get('redirect_uri'),config.redirectUri);
  assert.match(start.cookie,/HttpOnly; Secure; SameSite=Lax/);
@@ -111,17 +111,18 @@ test('TikTok scope omission prevents connecting, even with a valid token',async(
  await finishTikTokConnection(req,res,url,pool,config,42,async(_url,options)=>{
   calls.push(options);
   return Response.json({access_token:'synthetic-access',refresh_token:'synthetic-refresh',
-   open_id:'test-open-id',scope:'user.info.basic',expires_in:7200,refresh_expires_in:15552000});
+   open_id:'test-open-id',scope:'user.info.basic,video.publish',expires_in:7200,refresh_expires_in:15552000});
  });
  assert.equal(calls.length,1);
  assert.match(res.headers.Location,/reason=tiktok_scope_not_approved/);
 });
 test('TikTok status depends on valid encrypted refresh credentials, not access-token expiry',async()=>{
  const row={refresh_cipher:sealPublishing('synthetic-refresh','tiktok-refresh:42',config.encryptionSecret),
-  refresh_expires_at:new Date(Date.now()+86400000).toISOString(),scope:'user.info.basic,video.publish'};
+  refresh_expires_at:new Date(Date.now()+86400000).toISOString(),scope:'user.info.basic,video.upload', generation:'11111111-1111-4111-8111-111111111111',nickname:'Fixture creator'};
  const db={async query(){return {rows:[row],rowCount:1}}};
  assert.deepEqual(await tiktokConnectionStatus(db,42,null),{available:false,connected:false,publishingEnabled:false});
- assert.deepEqual(await tiktokConnectionStatus(db,42,config),{available:true,connected:true,publishingEnabled:false});
+ assert.deepEqual(await tiktokConnectionStatus(db,42,config),{available:true,connected:true,publishingEnabled:false,
+  connectionId:row.generation,nickname:row.nickname});
  row.refresh_expires_at=new Date(Date.now()-86400000).toISOString();
  assert.deepEqual(await tiktokConnectionStatus(db,42,config),{available:true,connected:false,publishingEnabled:false});
 });

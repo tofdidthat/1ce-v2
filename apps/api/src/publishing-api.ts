@@ -10,9 +10,8 @@ import {instagramReelsServerEnabled} from './instagram-reels-worker.js';
 import {handleInstagramMetaCompliance} from './instagram-meta-compliance.js';
 import {serveInstagramDataDeletionStatus} from './instagram-data-deletion.js';
 import {enqueuePublication,listPublications,retryPublication,type PublishingPool} from './publishing-jobs.js';
-import {rateLimitExceeded} from './api-rate-limits.js';
-import {creatorInfo,deliveryEndpoint,mediaPath} from './tiktok-direct-post.js';
-import {tikTokAccess,tiktokConfig,tiktokCallbackPath,beginTikTokConnection,startTikTokConnection,
+import {deliveryEndpoint,mediaPath} from './tiktok-draft-upload.js';
+import {tiktokConfig,tiktokCallbackPath,beginTikTokConnection,startTikTokConnection,
  finishTikTokConnection,tiktokConnectionStatus,disconnectTikTok,type TikTokConfig} from './tiktok-connection.js';
 const send=(res:ServerResponse,status:number,value:unknown,headers:Record<string,string>={})=>{
  res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'private, no-store',...headers});res.end(JSON.stringify(value));
@@ -123,17 +122,6 @@ export async function handlePublishing(req:IncomingMessage,res:ServerResponse,pa
    await ensurePublishingSchema(db);await body(req);
    await disconnectInstagram(db,user.id);send(res,200,{ok:true});return true;
   }
-  if(req.method==='GET'&&pathname==='/api/publishing/tiktok/creator-info'){
-   if(!tiktok)throw new PublishingError('tiktok_not_configured',503);
-   await ensurePublishingSchema(db);
-   if(await rateLimitExceeded(db,'tiktok-creator-info',user.id,20,1))throw new PublishingError('tiktok_rate_limited',429);
-   const auth=await tikTokAccess(db,user.id,tiktok,http);
-   const creator=await creatorInfo(auth.token,auth.generation,http);
-   const saved=await db.query('UPDATE v2_tiktok_connections SET username=$3,nickname=$4 WHERE user_id=$1 AND generation=$2::uuid',
-    [user.id,auth.generation,creator.username,creator.nickname]);
-   if(!saved.rowCount)throw new PublishingError('tiktok_creator_changed',409);
-   send(res,200,creator);return true;
-  }
   if(req.method==='POST'&&pathname==='/api/publishing/tiktok/connect'){
    if(!tiktok)throw new PublishingError('tiktok_not_configured',503);
    await ensurePublishingSchema(db);await body(req);
@@ -143,10 +131,6 @@ export async function handlePublishing(req:IncomingMessage,res:ServerResponse,pa
    if(!tiktok)throw new PublishingError('tiktok_not_configured',503);
    await ensurePublishingSchema(db);await body(req);
    send(res,200,await disconnectTikTok(db,user.id,tiktok,http));return true;
-  }
-  if(!config&&pathname!=='/api/publishing/jobs'&&
-    !/^\/api\/publishing\/targets\/[1-9]\d*\/retry$/.test(pathname)){
-   send(res,503,{error:'youtube_not_configured'});return true;
   }
   await ensurePublishingSchema(db);
   if(req.method==='POST'&&pathname==='/api/publishing/youtube/connect'){
@@ -162,7 +146,7 @@ export async function handlePublishing(req:IncomingMessage,res:ServerResponse,pa
   if(req.method==='POST'&&pathname==='/api/publishing/jobs'){
    if(!(process.env.R2_ACCOUNT_ID&&process.env.R2_ACCESS_KEY_ID&&process.env.R2_SECRET_ACCESS_KEY&&process.env.R2_BUCKET_NAME))throw new PublishingError('publishing_storage_unavailable',503);
    if(!renderer()){send(res,503,{error:'renderer_unavailable'});return true;}
-   const value=await body(req),parsed=await enqueuePublication(db,user.id,value,tiktok?{config:tiktok,http}:undefined);
+   const value=await body(req),parsed=await enqueuePublication(db,user.id,value,tiktok??undefined);
    send(res,202,parsed);return true;
   }
   const retry=/^\/api\/publishing\/targets\/([1-9]\d*)\/retry$/.exec(pathname);

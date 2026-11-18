@@ -12,7 +12,7 @@ import {publishingStorage,downloadPublishingAsset,hashPublishingFile,type Publis
 import {renderPublication,publicationRendererAvailable} from './publication-renderer.js';
 import {ensurePublishingSchema} from './publishing-schema.js';
 import {tiktokConfig} from './tiktok-connection.js';
-import {deliveryEndpoint} from './tiktok-direct-post.js';
+import {deliveryEndpoint} from './tiktok-draft-upload.js';
 import {runTikTokOnce,recoverTikTokClaims} from './tiktok-worker.js';
 import {instagramConfig} from './instagram-connection.js';
 import {runInstagramReelOnce,quarantineExpiredInstagramClaims,instagramReelsServerEnabled} from './instagram-reels-worker.js';

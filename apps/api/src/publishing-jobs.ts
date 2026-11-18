@@ -1,5 +1,5 @@
-import {tikTokAccess,type TikTokConfig} from './tiktok-connection.js';
-import {parseTikTokPreferences,deliveryEndpoint,creatorInfo,validateCreator} from './tiktok-direct-post.js';
+import {tiktokConnectionStatus,type TikTokConfig} from './tiktok-connection.js';
+import {parseTikTokDraftConsent,deliveryEndpoint} from './tiktok-draft-upload.js';
 import {createHash} from 'node:crypto';
 import type {QueryableV2} from '../../../packages/shared/contracts.js';
 import {parsePublicationDraft,publicationRequestHash} from './publication-queue.js';
@@ -12,7 +12,7 @@ export function parsePublicationInput(input:unknown){
  const raw=input as Record<string,unknown>;
  const hasInstagram=draft.targets.some(t=>t.platform==='instagram');
  const hasTikTok=draft.targets.some(t=>t.platform==='tiktok');
- const tiktok=hasTikTok?parseTikTokPreferences(raw.tiktok):null;
+ const tiktok=hasTikTok?parseTikTokDraftConsent(raw.tiktok):null;
  if(draft.targets.some(t=>!['youtube','instagram','tiktok'].includes(t.platform))||draft.targets.length>4)
   throw new PublishingError('destination_not_available');
  if(hasInstagram&&raw.instagramPublicConsent!==true)throw new PublishingError('instagram_public_consent_required');
@@ -24,7 +24,7 @@ export function parsePublicationInput(input:unknown){
   (hasInstagram?':instagram-public-confirmed-v1':'')+(tiktok?JSON.stringify(tiktok):'')).digest('hex');
  return {draft,...media,hasInstagram,tiktok,fingerprint};
 }
-export async function enqueuePublication(pool:PublishingPool,owner:number,input:unknown,tiktokAuth?:{config:TikTokConfig;http?:typeof fetch}):Promise<{id:string;state:string}>{
+export async function enqueuePublication(pool:PublishingPool,owner:number,input:unknown,tiktokConfig?:TikTokConfig):Promise<{id:string;state:string}>{
  const data=parsePublicationInput(input);
  const existingJob=async(db:QueryableV2)=>{
   const row=(await db.query('SELECT id,state,request_hash FROM v2_publication_jobs WHERE user_id=$1 AND request_id=$2::uuid',[owner,data.draft.requestId])).rows[0];
@@ -32,23 +32,16 @@ export async function enqueuePublication(pool:PublishingPool,owner:number,input:
   if(row.request_hash!==data.fingerprint)throw new PublishingError('request_id_conflict',409);
   return {id:String(row.id),state:String(row.state)};
  };
- if(data.tiktok){
-  const replay=await existingJob(pool);
-  if(replay)return replay;
-  if(!deliveryEndpoint()||!tiktokAuth)throw new PublishingError('tiktok_direct_post_disabled',503);
-  const http=tiktokAuth.http??fetch;
-  const auth=await tikTokAccess(pool,owner,tiktokAuth.config,http,data.tiktok.connectionId);
-  validateCreator(data.tiktok,await creatorInfo(auth.token,auth.generation,http));
- }
  const db=await pool.connect();
  try{
   await db.query('BEGIN');await db.query('SELECT pg_advisory_xact_lock($1::bigint)',[owner]);
   const existing=await existingJob(db);
   if(existing){await db.query('COMMIT');return existing;}
   if(data.tiktok){
-   const connection=await db.query(`SELECT generation FROM v2_tiktok_connections WHERE user_id=$1 AND generation=$2::uuid
-    AND refresh_expires_at>clock_timestamp() AND 'video.publish'=ANY(string_to_array(scope,',')) FOR SHARE`,[owner,data.tiktok.connectionId]);
-   if(!connection.rowCount)throw new PublishingError('tiktok_creator_changed',409);
+   if(!deliveryEndpoint()||!tiktokConfig)throw new PublishingError('tiktok_draft_upload_disabled',503);
+   const connection=await tiktokConnectionStatus(db,owner,tiktokConfig);
+   if(!connection.connected)throw new PublishingError('tiktok_reconnect_required',409);
+   if(connection.connectionId!==data.tiktok.connectionId)throw new PublishingError('tiktok_connection_changed',409);
   }
   const requiresYouTube=data.draft.targets.some(t=>t.platform==='youtube');
   if(data.hasInstagram&&(await db.query(`SELECT 1 FROM v2_instagram_data_deletions
@@ -111,7 +104,8 @@ export async function retryPublication(db:QueryableV2,owner:number,targetId:stri
      (SELECT 1 FROM v2_youtube_connections c WHERE c.user_id=j.user_id AND c.generation=j.youtube_generation))
     OR (t.platform='tiktok' AND $4::boolean AND EXISTS
      (SELECT 1 FROM v2_tiktok_connections c WHERE c.user_id=j.user_id
-      AND c.generation::text=j.tiktok_preferences->>'connectionId' AND c.refresh_expires_at>clock_timestamp())
+      AND j.tiktok_preferences=jsonb_build_object('connectionId',c.generation::text,'consent',true)
+      AND 'video.upload'=ANY(regexp_split_to_array(trim(c.scope),'[[:space:]]*,[[:space:]]*')) AND c.refresh_expires_at>clock_timestamp())
      AND NOT EXISTS (SELECT 1 FROM v2_tiktok_checkpoints cp WHERE cp.target_id=t.id))
     OR (t.platform='instagram' AND $3::boolean=true AND j.instagram_public_confirmed=true
      AND EXISTS (SELECT 1 FROM v2_instagram_connections c WHERE c.user_id=j.user_id

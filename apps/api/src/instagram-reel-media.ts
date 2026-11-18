@@ -39,8 +39,9 @@ async function serveRenderedMedia(req:IncomingMessage,res:ServerResponse,url:URL
   FROM v2_tiktok_checkpoints c JOIN v2_publication_targets t ON t.id=c.target_id
   JOIN v2_publication_jobs j ON j.id=t.job_id JOIN v2_tiktok_connections conn ON conn.user_id=j.user_id
   AND conn.generation=c.connection_generation WHERE c.token_hash=$1 AND c.expires_at>clock_timestamp()
-  AND t.platform='tiktok' AND t.state IN ('running','retryable','needs_review') AND j.tiktok_preferences->>'consent'='true'
-  AND conn.generation::text=j.tiktok_preferences->>'connectionId'
+  AND t.platform='tiktok' AND t.state IN ('running','retryable','needs_review')
+  AND j.tiktok_preferences=jsonb_build_object('connectionId',conn.generation::text,'consent',true)
+  AND 'video.upload'=ANY(regexp_split_to_array(trim(conn.scope),'[[:space:]]*,[[:space:]]*'))
   AND c.artifact_key=concat('publishing/users/',j.user_id,'/',j.id,'/',t.id,'/',c.artifact_sha,'.mp4')`:`SELECT c.artifact_key,c.artifact_sha,c.artifact_bytes,j.user_id
   FROM v2_instagram_media_grants g
   JOIN v2_instagram_checkpoints c ON c.target_id=g.target_id

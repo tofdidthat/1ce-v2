@@ -13,7 +13,7 @@ const statePattern=/^ttpub_[A-Za-z0-9_-]{43}$/;
 const browserPattern=/^[A-Za-z0-9_-]{43}$/;
 const hash=(value:string)=>createHash('sha256').update(value).digest('hex');
 const record=(value:unknown):value is Record<string,unknown>=>!!value&&typeof value==='object'&&!Array.isArray(value);
-const hasPublishScope=(scope:string)=>scope.split(',').map(x=>x.trim()).includes('video.publish');
+const hasUploadScope=(scope:string)=>scope.split(',').map(x=>x.trim()).includes('video.upload');
 
 export function tiktokConfig():TikTokConfig|null{
  const clientKey=process.env.TIKTOK_CLIENT_KEY,clientSecret=process.env.TIKTOK_CLIENT_SECRET;
@@ -73,7 +73,7 @@ export async function startTikTokConnection(pool:PublishingPool,owner:number,sta
  if(used.rowCount!==1)throw new PublishingError('tiktok_state_expired',409);
  const url=new URL('https://www.tiktok.com/v2/auth/authorize/');
  for(const [key,value] of Object.entries({client_key:config.clientKey,response_type:'code',
-  scope:'user.info.basic,video.publish',redirect_uri:config.redirectUri,state}))
+  scope:'user.info.basic,video.upload',redirect_uri:config.redirectUri,state}))
   url.searchParams.set(key,value);
  return {url:url.href,cookie:`${stateCookie}=${browser}; HttpOnly; Secure; SameSite=Lax; Path=/auth/tiktok/callback; Max-Age=600`};
 }
@@ -106,7 +106,7 @@ export async function finishTikTokConnection(req:IncomingMessage,res:ServerRespo
   const data:unknown=await response.json().catch(()=>null);
   if(!response.ok)throw new PublishingError('tiktok_token_exchange_failed',409);
   const token=tokenPair(data);
-  if(!hasPublishScope(token.scope))
+  if(!hasUploadScope(token.scope))
    throw new PublishingError('tiktok_scope_not_approved',409);
   step='identity';
   const identityResponse=await http('https://open.tiktokapis.com/v2/user/info/?fields=open_id,display_name',{
@@ -153,16 +153,16 @@ export async function finishTikTokConnection(req:IncomingMessage,res:ServerRespo
   'Cache-Control':'no-store','Referrer-Policy':'no-referrer','Set-Cookie':clear});res.end();
 }
 export async function tiktokConnectionStatus(db:QueryableV2,owner:number,config:TikTokConfig|null):
- Promise<{available:boolean;connected:boolean;publishingEnabled:false}>{
+ Promise<{available:boolean;connected:boolean;publishingEnabled:false;connectionId?:string;nickname?:string}>{
  const empty={available:!!config,connected:false,publishingEnabled:false as const};
  if(!config)return empty;
- const row=(await db.query(`SELECT refresh_cipher,refresh_expires_at,scope,username,nickname FROM v2_tiktok_connections
+ const row=(await db.query(`SELECT refresh_cipher,refresh_expires_at,scope,generation,nickname FROM v2_tiktok_connections
   WHERE user_id=$1`,[owner])).rows[0];
- if(!row||new Date(String(row.refresh_expires_at)).getTime()<=Date.now()||
-  !hasPublishScope(String(row.scope)))return empty;
+ if(!row||!(new Date(String(row.refresh_expires_at)).getTime()>Date.now())||
+  !hasUploadScope(String(row.scope)))return empty;
  try{openPublishing(String(row.refresh_cipher),'tiktok-refresh:'+owner,config.encryptionSecret);}
  catch{return empty;}
- return {available:true,connected:true,publishingEnabled:false,...(row.username?{username:String(row.username)}:{}),...(row.nickname?{nickname:String(row.nickname)}:{})};
+ return {available:true,connected:true,publishingEnabled:false,connectionId:String(row.generation),...(row.nickname?{nickname:String(row.nickname)}:{})};
 }
 export async function disconnectTikTok(pool:PublishingPool,owner:number,config:TikTokConfig,
  http:typeof fetch=fetch):Promise<{providerRevoked:boolean}>{
@@ -194,10 +194,10 @@ export async function tikTokAccess(pool:PublishingPool,owner:number,config:TikTo
 async function tikTokAccessLocked(db:QueryableV2,owner:number,config:TikTokConfig,http:typeof fetch,
  expectedGeneration?:string) {
   const row=(await db.query('SELECT * FROM v2_tiktok_connections WHERE user_id=$1 FOR UPDATE',[owner])).rows[0];
-  if(!row||!hasPublishScope(String(row.scope))||!(new Date(String(row.refresh_expires_at)).getTime()>Date.now()))
+  if(!row||!hasUploadScope(String(row.scope))||!(new Date(String(row.refresh_expires_at)).getTime()>Date.now()))
    throw new PublishingError('tiktok_reconnect_required',409);
   const generation=String(row.generation);
-  if(expectedGeneration && expectedGeneration!==generation)throw new PublishingError('tiktok_creator_changed',409);
+  if(expectedGeneration && expectedGeneration!==generation)throw new PublishingError('tiktok_connection_changed',409);
   if(new Date(String(row.access_expires_at)).getTime()>Date.now()+60000)
    return {generation,token:openPublishing(String(row.access_cipher),'tiktok-access:'+owner,config.encryptionSecret)};
   const response=await http('https://open.tiktokapis.com/v2/oauth/token/',{
@@ -208,7 +208,7 @@ async function tikTokAccessLocked(db:QueryableV2,owner:number,config:TikTokConfi
    })});
   if(!response.ok)throw new PublishingError(response.status===429?'tiktok_rate_limited':'tiktok_refresh_failed',response.status===429?429:response.status>=500?503:409);
   const refreshed=tokenPair(await response.json());
-  if(refreshed.openId!==row.open_id||!hasPublishScope(refreshed.scope))throw new PublishingError('tiktok_reconnect_required',409);
+  if(refreshed.openId!==row.open_id||!hasUploadScope(refreshed.scope))throw new PublishingError('tiktok_reconnect_required',409);
   await db.query(`UPDATE v2_tiktok_connections SET scope=$2,access_cipher=$3,refresh_cipher=$4,
    access_expires_at=clock_timestamp()+$5::int*interval '1 second',
    refresh_expires_at=clock_timestamp()+$6::int*interval '1 second',updated_at=clock_timestamp()
