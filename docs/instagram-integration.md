@@ -1,5 +1,7 @@
 # 1CE v2 — Instagram connection and future Reel publishing (2026-11-15)
 
+> **Atualização de 16 de novembro de 2026.** O conteúdo abaixo registra a etapa inicial de autorização. Para o estado após a [PR #105](https://github.com/tofdidthat/1ce-v2/pull/105), consulte [Publicação e recuperação](publishing-release-2026-11.md).
+
 ## Scope of this change: authorization only
 
 This branch adds **Instagram Business Login** account linking to the existing Upload panel, without running a Reel publisher. YouTube and its private-by-default jobs remain unchanged. **Do not call this production Instagram publishing.** Selecting Instagram still cannot enqueue or upload media; this is intentional until the Meta app is configured and provider/video safety is tested.
