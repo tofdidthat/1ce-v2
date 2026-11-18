@@ -4,7 +4,8 @@ import {readFileSync} from 'node:fs';
 import {transformSync} from 'esbuild';
 const source=readFileSync(new URL('../src/multi-platform-upload-v2.tsx',import.meta.url),'utf8');
 const submit=source.slice(source.indexOf(' const submit='),source.indexOf(' const visualUrl='));
-const code=transformSync(`function run(ctx){const {act,accepted,setAccepted,currentStatus,video,audioFile,image,title,selectedPlatforms,pending,setNotice,uploadPublishingFile,api,description,hashtags,privacy,selectedYouTubeFormats,publishingRequest,userId,requestIdForPublishingIntent,reconcilePublishingRequestIds}=ctx;${submit};submit();}`,{loader:'ts'}).code;
+const readiness=source.slice(source.indexOf(' const youtubeSelected='),source.indexOf(' const act='));
+const code=transformSync(`function run(ctx){const {act,accepted,setAccepted,currentStatus,video,audioFile,image,title,selectedPlatforms,pending,setNotice,uploadPublishingFile,api,description,hashtags,privacy,selectedYouTubeFormats,publishingRequest,userId,requestIdForPublishingIntent,reconcilePublishingRequestIds,tiktokPost}=ctx;const tiktokSelected=selectedPlatforms.includes('TikTok'),tiktokReady=!tiktokSelected||!!tiktokPost;${readiness};${submit};submit();}`,{loader:'ts'}).code;
 const run=new Function(code+';return run;')();
 function fixture(){
  let work;const requests=[],uploads=[];
@@ -44,7 +45,7 @@ test('mixed YouTube and Instagram jobs keep private YouTube and explicit public 
  assert.deepEqual(f.uploads,['audio','cover']);
 });
 
-test('actual submit after reload and terminal status reconciles the original request instead of a second job',async()=>{
+test('mixed TikTok submission after reload recovers the original request instead of a second job',async()=>{
  const values=new Map(),store={get length(){return values.size},getItem:key=>values.get(key)??null,
   setItem:(key,value)=>values.set(key,value),removeItem:key=>values.delete(key),key:index=>[...values.keys()][index]??null};
  const recoverySource=readFileSync(new URL('../src/publishing-idempotency-v2.ts',import.meta.url),'utf8');
@@ -52,7 +53,11 @@ test('actual submit after reload and terminal status reconciles the original req
  new Function('module','exports',transformSync(recoverySource,{loader:'ts',format:'cjs'}).code)(mod,mod.exports);
  const recovery=mod.exports,jobs=new Map();let calls=0;
  const setup=()=>{
-  const f=fixture();f.ctx.requestIdForPublishingIntent=(owner,intent)=>recovery.requestIdForPublishingIntent(owner,intent,store);
+  const f=fixture();
+  f.ctx.selectedPlatforms=['YouTube','TikTok'];
+  f.ctx.tiktokPost={connectionId:'stable-generation',title:'TikTok caption',privacyLevel:'SELF_ONLY',
+   allowComment:false,allowDuet:false,allowStitch:false,ownBrand:false,brandedContent:false,consent:true};
+  f.ctx.requestIdForPublishingIntent=(owner,intent)=>recovery.requestIdForPublishingIntent(owner,intent,store);
   f.ctx.reconcilePublishingRequestIds=(owner,ids)=>recovery.reconcilePublishingRequestIds(owner,ids,store);
   f.ctx.publishingRequest=async(_api,_path,_signal,payload)=>{
    jobs.set(payload.requestId,{id:'original-job',state:'succeeded'});
@@ -70,4 +75,25 @@ test('actual submit after reload and terminal status reconciles the original req
 test('unavailable durable storage stops actual submit before POST /jobs',async()=>{
  const f=fixture();f.ctx.requestIdForPublishingIntent=async()=>{throw Error('Enable site storage')};
  await assert.rejects(f.start(),/Enable site storage/);assert.equal(f.requests.length,0);
+});
+
+test('TikTok-only and mixed submissions preserve consent and the same request after a lost response',async()=>{
+ for(const platforms of [['TikTok'],['YouTube','Instagram','TikTok']]){
+  const f=fixture();
+  f.ctx.selectedPlatforms=platforms;
+  f.ctx.currentStatus.instagram={connected:true,publishingEnabled:true};
+  await f.start();
+  assert.deepEqual(f.uploads,[],'TikTok without validated consent cannot upload');
+  f.ctx.tiktokPost={connectionId:'current-connection',title:'TikTok caption',privacyLevel:'SELF_ONLY',
+   allowComment:false,allowDuet:false,allowStitch:false,ownBrand:false,brandedContent:false,consent:true};
+  await assert.rejects(f.start(),/Transport lost/);
+  await f.start();
+  assert.equal(f.requests[0],f.requests[1]);
+  assert.deepEqual(f.uploads,['audio','cover']);
+  const payload=JSON.parse(f.requests[1]);
+  assert.deepEqual(payload.tiktok,f.ctx.tiktokPost);
+  assert.equal(payload.privacy,'private');
+  assert.deepEqual(payload.targets.map(target=>target.platform),platforms.length===1?
+   ['tiktok']:['youtube','youtube','instagram','tiktok']);
+ }
 });
