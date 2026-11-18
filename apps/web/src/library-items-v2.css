@@ -947,3 +947,7 @@
  .v2-active-player .onece-player-controls .onece-player-icon{width:32px;height:32px;flex-basis:32px}
  .v2-active-player .onece-player-controls .onece-player-play{width:36px;height:36px;flex-basis:36px}
 }
+
+/* Drag-and-drop is visible only while a file is over an editable pack. */
+.v2-pack-detail.v2-pack-dragging{outline:2px dashed #9b75ff;outline-offset:-5px;background:rgba(130,88,220,.07)}
+.v2-pack-drop-hint{margin:12px 0;padding:14px;text-align:center;border:1px dashed #9b75ff;border-radius:12px;color:#c8b5ff;background:rgba(130,88,220,.09);pointer-events:none}
