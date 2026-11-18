@@ -15,16 +15,12 @@ export async function addFilesToOwnedPack(packId:string,files:File[],signal:Abor
    onProgress('Adding '+(index+1)+'/'+files.length+': '+file.name);
    const audioFileId=await uploadPublishingFile(api,file,'audio',signal,onProgress);
    const title=file.name.replace(/\.(mp3|wav)$/i,'').trim();
-   const response=await fetch(api+'/api/library/files/beats',{method:'POST',credentials:'include',signal,
-    headers:{'Content-Type':'application/json'},body:JSON.stringify({title,audioFileId,coverFileId:null,stemsFileId:null})});
-   const beat=await response.json().catch(()=>null);
-   if(!response.ok||!beat||typeof beat.id!=='string')throw Error(beat?.error||'Unable to save beat');
-   const attached=await fetch(api+'/api/library/projects/pack/'+encodeURIComponent(packId)+'/add',{
+   const attached=await fetch(api+'/api/library/projects/pack/'+encodeURIComponent(packId)+'/audio',{
     method:'POST',credentials:'include',signal,headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({sourceKind:'beat',sourceId:beat.id})});
+    body:JSON.stringify({audioFileId,title})});
    const result=await attached.json().catch(()=>null);
-   if(!attached.ok)throw Error(result?.error||'Unable to add beat to pack');
-   added++;
+   if(!attached.ok||!result||typeof result.added!=='number')throw Error(result?.error||'Unable to add beat to pack');
+   added+=result.added;
   }catch(error){
    if(signal.aborted)break;
    errors.push(file.name+': '+(error instanceof Error?error.message:'Upload failed'));
