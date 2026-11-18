@@ -1,6 +1,6 @@
 # 1CE v2 — Architecture, operations and release guide
 
-> **TikTok publishing:** [TikTok integration](tiktok-integration.md) records the connection flow, the private R2 artifact delivery path, the shared publication worker, and the Direct Post release gates.
+> **TikTok publishing:** [TikTok integration](tiktok-integration.md) records the connection flow, the private R2 artifact delivery path, the shared publication worker, and the draft upload release gates.
 
 > **Instagram connection R1 (PR candidate, 2026-11-15):** `docs/instagram-integration.md` defines new optional Meta Instagram Business Login credentials, encrypted per-account connections, backend OAuth state binding, and Upload connect/disconnect UI. **This does not enable Reel publishing**, public visibility, Meta media upload, or new queue workers. The active YouTube private-by-default workflow is unchanged. Never expose private R2 objects to Meta without a reviewed transfer strategy and per-target explicit public confirmation. Merge/deployment/Meta app configuration are separate steps; see the integration guide and verify CI before release.
 
