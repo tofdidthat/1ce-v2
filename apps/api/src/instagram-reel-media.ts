@@ -21,14 +21,27 @@ export function validateInstagramRange(value:string|undefined,bytes:number):{sta
 }
 // Public-by-capability, not public by bucket: serves only an ephemeral rendered
 // video, only after one explicit, owner-authorized public-reel job exists.
-export async function serveInstagramReelMedia(req:IncomingMessage,res:ServerResponse,url:URL,
- db:QueryableV2,{storage=publishingStorage()}:{storage?:PublishingStorage|null}={}):Promise<void>{
+type MediaOptions={storage?:PublishingStorage|null};
+export function serveInstagramReelMedia(req:IncomingMessage,res:ServerResponse,url:URL,db:QueryableV2,options:MediaOptions={}){
+ return serveRenderedMedia(req,res,url,db,'instagram',options);
+}
+export function serveTikTokMedia(req:IncomingMessage,res:ServerResponse,url:URL,db:QueryableV2,options:MediaOptions={}){
+ return serveRenderedMedia(req,res,url,db,'tiktok',options);
+}
+async function serveRenderedMedia(req:IncomingMessage,res:ServerResponse,url:URL,db:QueryableV2,
+ provider:'instagram'|'tiktok',{storage=publishingStorage()}:MediaOptions):Promise<void>{
  const token=url.searchParams.get('token')||'';
  if(!['GET','HEAD'].includes(req.method||'')||[...url.searchParams.keys()].length!==1||
   !/^[A-Za-z0-9_-]{43}$/.test(token)){
   res.writeHead(404,publicHeader);res.end();return;
  }
- const row=(await db.query(`SELECT c.artifact_key,c.artifact_sha,c.artifact_bytes,j.user_id
+ const row=(await db.query(provider==='tiktok'?`SELECT c.artifact_key,c.artifact_sha,c.artifact_bytes,j.user_id
+  FROM v2_tiktok_checkpoints c JOIN v2_publication_targets t ON t.id=c.target_id
+  JOIN v2_publication_jobs j ON j.id=t.job_id JOIN v2_tiktok_connections conn ON conn.user_id=j.user_id
+  AND conn.generation=c.connection_generation WHERE c.token_hash=$1 AND c.expires_at>clock_timestamp()
+  AND t.platform='tiktok' AND t.state IN ('running','retryable','needs_review') AND j.tiktok_preferences->>'consent'='true'
+  AND conn.generation::text=j.tiktok_preferences->>'connectionId'
+  AND c.artifact_key=concat('publishing/users/',j.user_id,'/',j.id,'/',t.id,'/',c.artifact_sha,'.mp4')`:`SELECT c.artifact_key,c.artifact_sha,c.artifact_bytes,j.user_id
   FROM v2_instagram_media_grants g
   JOIN v2_instagram_checkpoints c ON c.target_id=g.target_id
   JOIN v2_publication_targets t ON t.id=g.target_id

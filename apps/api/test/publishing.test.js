@@ -11,7 +11,7 @@ import {sealPublishing,openPublishing} from '../dist/publishing-secrets.js';
 import {beginYouTubeConnection,startYouTubeConnection,finishYouTubeConnection,youtubeAccess} from '../dist/youtube-connection.js';
 import {parsePublicationInput} from '../dist/publishing-jobs.js';
 import {handlePublishing} from '../dist/publishing-api.js';
-import {publicationRendererAvailable,renderPublication,parseMediaDuration} from '../dist/publication-renderer.js';
+import {publicationRendererAvailable,renderPublication,parseMediaDuration,validateTikTokDuration} from '../dist/publication-renderer.js';
 const config={clientId:'fixture-client',clientSecret:'fixture-secret-not-a-real-credential',encryptionSecret:'fixture-encryption-not-a-real-secret',
  redirectUri:'https://api.invalid/auth/google/callback',webOrigin:'https://web.invalid'};
 function response(){return {status:0,headers:{},body:'',writeHead(status,headers){this.status=status;this.headers=headers},end(body){this.body=body||''}}}
@@ -132,6 +132,11 @@ test('real FFmpeg renders a synthetic PNG/WAV into both promised aspect ratios',
    const probe=spawnSync(process.env.FFMPEG_PATH||'ffmpeg',['-hide_banner','-i',output],{encoding:'utf8',windowsHide:true});
    assert.match(probe.stderr,new RegExp(dimensions));assert.match(probe.stderr,/Audio: aac/);assert.match(probe.stderr,/Video: h264/);
   }
+  const clip=join(dir,'tiktok.mp4'),signal=new AbortController().signal;
+  await writeFile(audio,wav(44100*4));
+  await renderPublication({audio,cover,output:clip,variant:'vertical',maxDurationSec:6,signal});
+  await validateTikTokDuration(clip,6,signal);
+  await assert.rejects(validateTikTokDuration(clip,3,signal),/tiktok_duration_invalid/);
   const long=join(dir,'long.wav');await writeFile(long,wav(44100*181));
   await assert.rejects(renderPublication({audio:long,cover,output:join(dir,'not-a-short.mp4'),variant:'shorts',signal:new AbortController().signal}),/shorts_must_be_under_3_minutes/);
  }finally{if(dirname(resolve(dir))===resolve(tmpdir())&&basename(dir).startsWith('onece-render-test-'))await rm(dir,{recursive:true,force:true});}

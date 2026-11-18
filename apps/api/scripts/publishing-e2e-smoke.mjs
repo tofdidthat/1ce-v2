@@ -10,6 +10,7 @@ import {runPublicationOnce,recoverYouTubeClaims} from '../dist/publication-worke
 import {claimPublicationTarget} from '../dist/publication-queue.js';
 import {sealPublishing} from '../dist/publishing-secrets.js';
 import {beginYouTubeConnection,startYouTubeConnection,finishYouTubeConnection} from '../dist/youtube-connection.js';
+import {tikTokPublishingSmoke} from './tiktok-publishing-smoke.mjs';
 import {instagramReliabilitySmoke} from './instagram-reliability-smoke.mjs';
 const url=process.env.S2_TEST_DATABASE_URL?new URL(process.env.S2_TEST_DATABASE_URL):null;
 if(process.env.CI!=='true'||process.env.GITHUB_ACTIONS!=='true'||!url||!['postgres:','postgresql:'].includes(url.protocol)||
@@ -68,6 +69,7 @@ async function file(kind){
 try{
  await ensurePublishingSchema(db);
  await instagramReliabilitySmoke(db);
+ await tikTokPublishingSmoke(db);
  owner=(await db.query('INSERT INTO account_users(email) VALUES($1) RETURNING id',[`publishing-${randomUUID()}@ci.invalid`])).rows[0].id;
  other=(await db.query('INSERT INTO account_users(email) VALUES($1) RETURNING id',[`publishing-other-${randomUUID()}@ci.invalid`])).rows[0].id;
  const generation=randomUUID();
