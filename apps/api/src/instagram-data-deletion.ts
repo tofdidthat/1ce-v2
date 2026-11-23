@@ -37,14 +37,19 @@ export async function scheduleInstagramDataDeletion(db:QueryableV2,requestHash:s
 }
 
 export async function serveInstagramDataDeletionStatus(req:IncomingMessage,res:ServerResponse,url:URL,db:QueryableV2):Promise<void>{
- const code=url.searchParams.get('code')||'';
+ const legacy=url.searchParams.has('deletion');
+ const code=url.searchParams.get(legacy?'deletion':'code')||'';
  const headers={'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer'};
  if(req.method!=='GET'||[...url.searchParams.keys()].length!==1||! /^[a-f0-9]{32}$/.test(code)){
   res.writeHead(404,headers);res.end(JSON.stringify({error:'not_found'}));return;
  }
- const row=(await db.query(`SELECT d.completed_at,r.legacy_response IS NOT NULL AS legacy_completed
+ const hash=deletionCodeHash(code);
+ const row=(await (legacy
+  ?db.query(`SELECT completed_at,true AS legacy_completed FROM v2_instagram_legacy_deletion_status
+   WHERE confirmation_hash=$1`,[hash])
+  :db.query(`SELECT d.completed_at,(r.v2_only OR r.legacy_response IS NOT NULL) AS legacy_completed
   FROM v2_instagram_data_deletions d JOIN v2_instagram_compliance_receipts r ON r.request_hash=d.request_hash
-  WHERE d.confirmation_hash=$1`,[deletionCodeHash(code)])).rows[0];
+  WHERE d.confirmation_hash=$1`,[hash]))).rows[0];
  res.writeHead(row?200:404,headers);
  res.end(JSON.stringify(row?{status:row.completed_at&&row.legacy_completed?'completed':'pending'}:{error:'not_found'}));
 }

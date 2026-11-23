@@ -2,7 +2,7 @@ import {createHash,createHmac,timingSafeEqual} from 'node:crypto';
 import type {IncomingMessage,ServerResponse} from 'node:http';
 import type {QueryableV2} from '../../../packages/shared/contracts.js';
 import type {InstagramConfig} from './instagram-connection.js';
-import {scheduleInstagramDataDeletion} from './instagram-data-deletion.js';
+import {deletionCodeHash,scheduleInstagramDataDeletion} from './instagram-data-deletion.js';
 
 type CompliancePool=QueryableV2&{connect():Promise<QueryableV2&{release():void}>};
 type MetaAction='deauthorize'|'data-deletion';
@@ -101,7 +101,8 @@ async function revokeV2Connection(client:QueryableV2,metaUserId:string):Promise<
   return true;
 }
 export async function handleInstagramMetaCompliance(req:IncomingMessage,res:ServerResponse,url:URL,db:CompliancePool,
- config:InstagramConfig|null,{http=fetch}:{http?:typeof fetch}={}):Promise<void>{
+ config:InstagramConfig|null,{http=fetch,standalone=process.env.INSTAGRAM_META_V2_ONLY==='true'}:
+ {http?:typeof fetch;standalone?:boolean}={}):Promise<void>{
  if(req.method!=='POST'){res.setHeader('Allow','POST');json(res,405,{error:'method_not_allowed'});return;}
  if([...url.searchParams.keys()].some(key=>key!=='action')||url.searchParams.getAll('action').length>1||
   (url.searchParams.has('action')&&!['deauthorize','data-deletion'].includes(url.searchParams.get('action')||''))){
@@ -116,6 +117,7 @@ export async function handleInstagramMetaCompliance(req:IncomingMessage,res:Serv
   return;
  }
  if(!config){
+  if(standalone){json(res,503,{error:'v2_compliance_unavailable'});return;}
   const legacy=await forwardLegacy(action,signedRequest,http);
   json(res,503,{error:legacy.ok?'v2_compliance_unavailable':'legacy_compliance_unavailable'});return;
  }
@@ -129,13 +131,32 @@ export async function handleInstagramMetaCompliance(req:IncomingMessage,res:Serv
   // A receipt also stops a delayed retry from revoking a later reconnection.
   const requestHash=createHash('sha256').update(action+':'+signedRequest).digest('hex');
   await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[requestHash]);
-  const receipt=(await client.query('SELECT legacy_response FROM v2_instagram_compliance_receipts WHERE request_hash=$1',[requestHash])).rows[0];
+  const receipt=(await client.query('SELECT legacy_response,v2_only FROM v2_instagram_compliance_receipts WHERE request_hash=$1',[requestHash])).rows[0];
+  if(standalone&&receipt&&!receipt.v2_only&&!receipt.legacy_response){
+   await client.query('ROLLBACK');
+   json(res,503,{error:'legacy_compliance_pending'});return;
+  }
   if(!receipt){
    if(action==='deauthorize')await revokeV2Connection(client,userId);
-   await client.query('INSERT INTO v2_instagram_compliance_receipts(request_hash,action) VALUES($1,$2)',[requestHash,action]);
+   await client.query('INSERT INTO v2_instagram_compliance_receipts(request_hash,action,v2_only) VALUES($1,$2,$3)',[requestHash,action,standalone]);
   }
   const confirmationCode=createHmac('sha256',config.appSecret).update('meta-v2-deletion:'+requestHash).digest('hex').slice(0,32);
   const v2Matched=action==='data-deletion'&&await scheduleInstagramDataDeletion(client,requestHash,confirmationCode,subjectHash(userId),userId);
+  if(standalone||receipt?.v2_only){
+   if(v2Matched==='unresolved'){
+    await client.query('ROLLBACK');
+    json(res,503,{error:'instagram_deletion_identity_unresolved'});return;
+   }
+   if(action==='data-deletion'&&v2Matched===false&&!receipt?.legacy_response)
+    await client.query(`INSERT INTO v2_instagram_data_deletions(request_hash,confirmation_hash,owners,completed_at)
+     VALUES($1,$2,'{}',clock_timestamp()) ON CONFLICT(request_hash) DO NOTHING`,[requestHash,deletionCodeHash(confirmationCode)]);
+   await client.query('COMMIT');
+   if(action==='deauthorize'){json(res,200,{success:true});return;}
+   if(v2Matched===false&&receipt?.legacy_response){json(res,200,receipt.legacy_response);return;}
+   const status=new URL('/api/instagram/data-deletion-status',config.webOrigin);
+   status.searchParams.set('code',confirmationCode);
+   json(res,200,{url:status.href,confirmation_code:confirmationCode});return;
+  }
   const legacy=receipt?.legacy_response?{ok:true,body:receipt.legacy_response}:await forwardLegacy(action,signedRequest,http);
   if(legacy.ok&&!receipt?.legacy_response)
    await client.query('UPDATE v2_instagram_compliance_receipts SET legacy_response=$2::jsonb WHERE request_hash=$1',

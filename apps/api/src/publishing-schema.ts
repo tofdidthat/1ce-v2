@@ -8,7 +8,8 @@ export function ensurePublishingSchema(db:QueryableV2):Promise<void>{
   pending=(async()=>{
    // Paths work for both src and compiled dist in the existing monorepo image.
    for(const name of ['016_publication_queue.sql','017_youtube_publishing.sql','018_instagram_connections.sql','019_instagram_reels.sql',
-    '020_instagram_meta_compliance.sql','021_instagram_data_deletion.sql','022_tiktok_connections.sql','023_tiktok_direct_post.sql']){
+    '020_instagram_meta_compliance.sql','021_instagram_data_deletion.sql','022_tiktok_connections.sql','023_tiktok_direct_post.sql',
+    '024_instagram_meta_retirement.sql']){
     const sql=await readFile(new URL('../../../history/database/'+name,import.meta.url),'utf8');
     await db.query(sql);
    }

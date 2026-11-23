@@ -4,6 +4,7 @@ import {Readable} from 'node:stream';
 import {createHash,createHmac} from 'node:crypto';
 import {handleInstagramMetaCompliance,parseMetaSignedRequest} from '../dist/instagram-meta-compliance.js';
 import {ensurePublishingSchema} from '../dist/publishing-schema.js';
+import {deletionCodeHash,serveInstagramDataDeletionStatus} from '../dist/instagram-data-deletion.js';
 
 const secret='synthetic-meta-app-secret-for-tests';
 const config={appId:'synthetic-id',appSecret:secret,redirectUri:'https://api.invalid/auth/instagram/callback',
@@ -26,7 +27,7 @@ function pool({matched=false,unmapped=false}={}){
   if(sql.startsWith('INSERT INTO v2_instagram_data_deletions'))deletions.set(args[0],{owners:args[2]});
   if(sql.startsWith('SELECT user_id FROM v2_instagram_connections'))return{rowCount:state.known?1:0,rows:state.known?[{user_id:42}]:[]};
   if(sql.startsWith('SELECT legacy_response'))return{rowCount:receipts.has(args[0])?1:0,rows:receipts.has(args[0])?[receipts.get(args[0])]:[]};
-  if(sql.startsWith('INSERT INTO v2_instagram_compliance_receipts'))receipts.set(args[0],{legacy_response:null});
+  if(sql.startsWith('INSERT INTO v2_instagram_compliance_receipts'))receipts.set(args[0],{legacy_response:null,v2_only:args[2]});
   if(sql.startsWith('UPDATE v2_instagram_compliance_receipts'))receipts.get(args[0]).legacy_response=JSON.parse(args[1]);
   if(sql.includes('SELECT user_id,generation FROM v2_instagram_connections'))return{rowCount:state.connected?1:0,rows:state.connected?[{user_id:42,generation:'00000000-0000-4000-8000-000000000001'}]:[]};
   if(sql.startsWith('SELECT 1 FROM v2_instagram_connections'))return{rowCount:state.known?1:0,rows:state.known?[{one:1}]:[]};
@@ -203,4 +204,58 @@ test('unmapped pre-migration V2 history cannot be falsely acknowledged as v1-onl
  assert.equal(forwards,1);assert.equal(output.status,503);
  assert.deepEqual(JSON.parse(output.body),{error:'instagram_deletion_identity_unresolved'});
  assert.equal(db.calls.some(call=>call.sql.startsWith('INSERT INTO v2_instagram_data_deletions')),false);
+});
+
+test('standalone deauthorization and deletion recognize V2 history without calling V1',async()=>{
+ const db=pool({matched:true});
+ const http=async()=>{assert.fail('V1 must not be called')};
+ for(const [action,standalone] of [['deauthorize',true],['data-deletion',true],['data-deletion',false]]){
+  const input=req(action),output=res();
+  await handleInstagramMetaCompliance(input.request,output,input.url,db,config,{http,standalone});
+  assert.equal(output.status,200);
+ }
+ assert.equal(db.calls.filter(call=>call.sql.startsWith('INSERT INTO v2_instagram_data_deletions')).length,1);
+ assert.equal(db.state.connected,false);
+});
+
+test('standalone deletion acknowledges an empty identity only when there is no unresolved history',async()=>{
+ for(const unmapped of [false,true]){
+  const input=req('data-deletion'),output=res(),db=pool({unmapped});
+  await handleInstagramMetaCompliance(input.request,output,input.url,db,config,
+   {http:async()=>{assert.fail('V1 must not be called')},standalone:true});
+  assert.equal(output.status,unmapped?503:200);
+  assert.equal(db.calls.some(call=>call.sql.startsWith('INSERT INTO v2_instagram_data_deletions')),!unmapped);
+ }
+});
+
+test('standalone missing configuration or an unacknowledged legacy receipt stays retryable',async()=>{
+ const db=pool(),http=async()=>{throw Error('synthetic outage')};
+ const input=req(),first=res();
+ await handleInstagramMetaCompliance(input.request,first,input.url,db,config,{http,standalone:false});
+ for(const [metaConfig,error] of [[null,'v2_compliance_unavailable'],[config,'legacy_compliance_pending']]){
+  const retry=req(),output=res();
+  await handleInstagramMetaCompliance(retry.request,output,retry.url,db,metaConfig,
+   {http:async()=>{assert.fail('V1 must not be called')},standalone:true});
+  assert.equal(output.status,503);
+  assert.equal(JSON.parse(output.body).error,error);
+ }
+});
+
+test('archived legacy receipt status uses only its hash and preserves pending and unknown status',async()=>{
+ const code='0123456789abcdef0123456789abcdef';
+ for(const [rows,status,body] of [
+  [[],404,{error:'not_found'}],
+  [[{completed_at:null,legacy_completed:true}],200,{status:'pending'}],
+  [[{completed_at:new Date(),legacy_completed:true}],200,{status:'completed'}],
+ ]){
+  const db={async query(sql,args){
+   assert.match(sql,/v2_instagram_legacy_deletion_status/);
+   assert.deepEqual(args,[deletionCodeHash(code)]);
+   return {rows};
+  }};
+  const output=res();
+  await serveInstagramDataDeletionStatus({method:'GET'},output,new URL('https://1ce.lol/privacy?deletion='+code),db);
+  assert.equal(output.status,status);
+  assert.deepEqual(JSON.parse(output.body),body);
+ }
 });
