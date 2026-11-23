@@ -1,4 +1,9 @@
 {
+  "git": {
+    "deploymentEnabled": {
+      "agent/1/T061-meta-v2-independencia": false
+    }
+  },
   "rewrites": [
     {
       "source": "/api/instagram/data-deletion-status",
