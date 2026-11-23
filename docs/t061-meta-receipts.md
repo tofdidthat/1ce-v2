@@ -80,11 +80,44 @@ concluído e desconhecido.
 
 Reexecução mantém uma entrada por código, promove pendente para concluído e preserva
 conclusão em replays antigos. Uma divergência entre duas datas de conclusão interrompe o lote.
-Rollback operacional após commit mantém o arquivo para preservar URLs e desativa o modo
-`INSTAGRAM_META_V2_ONLY` com V1 ainda disponível. Para reverter linhas carregadas, somente em
+Rollback de dados após commit preserva por padrão o arquivo para manter comprovantes.
+Para reverter linhas carregadas, somente em
 janela aprovada e com snapshot privado anterior dos hashes afetados e seus estados.
 Conferir que o valor corrente ainda é o gravado pelo lote antes de remover novas linhas ou
 restaurar as anteriores. Nunca restaurar sobre atualizações posteriores.
+
+## Ordem de ativação e rollback operacional
+
+Os três controles assumem `false` quando ausentes. Verificar a configuração efetiva em
+todas as réplicas a cada alteração.
+
+1. Publicar schema/API com os controles desativados. Confirmar papel DDL, transações antigas
+   e bloqueadores com o operador. Aplicar 024 em janela autorizada com `lock_timeout` curto
+   e abortar se a espera exceder o limite. Conferir no catálogo a coluna `v2_only` booleana
+   obrigatória com default falso e a chave primária em `confirmation_hash`. Mesmo com DDL
+   antecipada, validar que o papel da API pode executar a inicialização idempotente. Conferir
+   `/health/db` e o handler de status antes da Web.
+2. Publicar a página de privacidade. Links antigos usam o rewrite já existente da API, que
+   consulta o Railway legado nessa fase. Conferir pendente, concluído, desconhecido e
+   indisponível. Callbacks continuam com encaminhamento.
+3. Carregar o arquivo e reconciliar o delta. Antes de ativar
+   `INSTAGRAM_META_LEGACY_RECEIPTS_LOCAL=true`, coordenar uma janela sem emissão de novos
+   códigos legados fora do delta, ou manter a origem até esgotar essa diferença. Confirmar
+   consultas dos dois formatos de comprovante e manter a V1 disponível para rollback.
+   Enquanto houver encaminhamento, códigos ausentes ou ainda pendentes no arquivo
+   continuam consultando a V1. Reconciliar o delta antes de dispensar essa consulta.
+4. Ygor precisa aprovar a destinação de todos os dados exclusivos da integração V1, a
+   resolução dos pedidos em aberto e a evidência de que identidades ambíguas foram resolvidas.
+   Confirmar que a V1 já não recebe escritas independentes. Somente então configurar
+   `INSTAGRAM_META_LEGACY_RECONCILED=true` e `INSTAGRAM_META_V2_ONLY=true`. A API exige os
+   três controles e ausência de recibos legados pendentes, callbacks legados sem resposta e
+   histórico V2 sem vínculo. Em caso de pendência, volta a encaminhar. A V2 não pode atestar
+   sozinha que os dados exclusivos V1 foram tratados.
+5. Para voltar ao fluxo anterior, manter a mesma versão e a V1 disponível, desligar
+   `INSTAGRAM_META_V2_ONLY` e `INSTAGRAM_META_LEGACY_RECONCILED`. Desligar também
+   `INSTAGRAM_META_LEGACY_RECEIPTS_LOCAL` se precisar voltar a ler o legado. Conferir
+   comprovantes dos dois formatos e encaminhamento de novas mensagens. Evitar reverter a
+   versão da API, pois o binário anterior ignora a marca que protege replays já processados.
 
 ## Ensaio local e verificação de roteamento
 
@@ -100,9 +133,10 @@ node apps/api/scripts/t061-meta-receipt-smoke.mjs $t061Pglite
 
 Antes do corte, repetir com PostgreSQL da versão de produção e com o cliente `psql` que fará
 a carga. O ensaio local exercita SQL e handler, mas não o roteador da Vercel. Em implantação
-descartável, com rewrites apontados para uma API descartável, testar `/privacy` normal,
-`/privacy?deletion=<código>` com consulta preservada e sem parâmetro duplicado, e
-`/api/instagram/data-deletion-status?code=<código>`. Testar 200 pendente/concluído, 404
-desconhecido, cabeçalhos sem cache, ordem dos rewrites em relação à SPA e POST de callback
-assinado exclusivamente com segredo fictício. Conferir que nenhum destino possa resolver
+descartável, com rewrites apontados para uma API descartável e os upstreams da V1
+substituídos por fixtures, testar `/privacy` sem consulta e
+`/privacy?deletion=<código>` com a consulta na página. Conferir que a Web envia o
+parâmetro uma vez à API, que `?code=<código>` continua entregando JSON, que estados
+200/404/503 são distinguidos e que o status não é cacheado. Testar POST assinado só com
+segredo fictício em ambos os modos e após rollback. Confirmar que nenhum destino resolva
 para produção no ensaio.

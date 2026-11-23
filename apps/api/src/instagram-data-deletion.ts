@@ -36,7 +36,20 @@ export async function scheduleInstagramDataDeletion(db:QueryableV2,requestHash:s
  return true;
 }
 
-export async function serveInstagramDataDeletionStatus(req:IncomingMessage,res:ServerResponse,url:URL,db:QueryableV2):Promise<void>{
+export async function instagramLegacyReconciliationReady(db:QueryableV2):Promise<boolean>{
+ return (await db.query(`SELECT (
+  NOT EXISTS (SELECT 1 FROM v2_instagram_legacy_deletion_status WHERE completed_at IS NULL)
+  AND NOT EXISTS (SELECT 1 FROM v2_instagram_compliance_receipts WHERE NOT v2_only AND legacy_response IS NULL)
+  AND NOT EXISTS (SELECT 1 FROM v2_publication_jobs j WHERE j.instagram_generation IS NOT NULL
+   AND NOT EXISTS(SELECT 1 FROM v2_instagram_connections c WHERE c.user_id=j.user_id)
+   AND NOT EXISTS(SELECT 1 FROM v2_instagram_compliance_subjects s WHERE s.user_id=j.user_id))
+ ) AS legacy_ready`)).rows[0]?.legacy_ready===true;
+}
+
+export async function serveInstagramDataDeletionStatus(req:IncomingMessage,res:ServerResponse,url:URL,db:QueryableV2,
+ {http=fetch,localLegacyReceipts=process.env.INSTAGRAM_META_LEGACY_RECEIPTS_LOCAL==='true',
+  retireLegacy=process.env.INSTAGRAM_META_V2_ONLY==='true'&&process.env.INSTAGRAM_META_LEGACY_RECONCILED==='true'}:
+ {http?:typeof fetch;localLegacyReceipts?:boolean;retireLegacy?:boolean}={}):Promise<void>{
  const legacy=url.searchParams.has('deletion');
  const code=url.searchParams.get(legacy?'deletion':'code')||'';
  const headers={'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer'};
@@ -44,12 +57,25 @@ export async function serveInstagramDataDeletionStatus(req:IncomingMessage,res:S
   res.writeHead(404,headers);res.end(JSON.stringify({error:'not_found'}));return;
  }
  const hash=deletionCodeHash(code);
- const row=(await (legacy
-  ?db.query(`SELECT completed_at,true AS legacy_completed FROM v2_instagram_legacy_deletion_status
-   WHERE confirmation_hash=$1`,[hash])
-  :db.query(`SELECT d.completed_at,(r.v2_only OR r.legacy_response IS NOT NULL) AS legacy_completed
+ const archived=legacy&&localLegacyReceipts?(await db.query(`SELECT completed_at,true AS legacy_completed
+  FROM v2_instagram_legacy_deletion_status WHERE confirmation_hash=$1`,[hash])).rows[0]:undefined;
+ // Read through during dual delivery so codes issued after the last import still work.
+ if(legacy&&!archived?.completed_at&&(!localLegacyReceipts||!retireLegacy||!await instagramLegacyReconciliationReady(db))){
+  try{
+   const response=await http('https://render-autoshorts-production.up.railway.app/internal/meta/data-deletion/'+code,
+    {method:'GET',redirect:'error',signal:AbortSignal.timeout(8000)});
+   if(response.status===404&&!archived){res.writeHead(404,headers);res.end(JSON.stringify({error:'not_found'}));return;}
+   const body:unknown=response.ok?await response.json():null;
+   const status=body&&typeof body==='object'&&'status' in body?body.status:null;
+   if(status==='pending'||status==='completed'){
+    res.writeHead(200,headers);res.end(JSON.stringify({status}));return;
+   }
+  }catch{ /* A legacy outage must remain distinguishable from an unknown receipt. */ }
+  if(!archived){res.writeHead(503,headers);res.end(JSON.stringify({error:'legacy_status_unavailable'}));return;}
+ }
+ const row=legacy?archived:(await db.query(`SELECT d.completed_at,(r.v2_only OR r.legacy_response IS NOT NULL) AS legacy_completed
   FROM v2_instagram_data_deletions d JOIN v2_instagram_compliance_receipts r ON r.request_hash=d.request_hash
-  WHERE d.confirmation_hash=$1`,[hash]))).rows[0];
+  WHERE d.confirmation_hash=$1`,[hash])).rows[0];
  res.writeHead(row?200:404,headers);
  res.end(JSON.stringify(row?{status:row.completed_at&&row.legacy_completed?'completed':'pending'}:{error:'not_found'}));
 }

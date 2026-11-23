@@ -34,7 +34,9 @@ async function status(code){
  let status,body;
  await serveInstagramDataDeletionStatus({method:'GET'},{
   writeHead(value){status=value},end(value){body=JSON.parse(value)}
- },new URL('https://example.invalid/privacy?deletion='+code),db);
+ },new URL('https://example.invalid/privacy?deletion='+code),db,{
+  localLegacyReceipts:true,http:async()=>Response.json({status:'not_found'},{status:404}),
+ });
  return [status,body];
 }
 

@@ -38,7 +38,7 @@ export async function handlePublishing(req:IncomingMessage,res:ServerResponse,pa
  if(!callback&&!start&&!instagramCallback&&!instagramStart&&!tiktokCallback&&!tiktokStart&&!metaCompliance&&!deletionStatus&&!pathname.startsWith('/api/publishing/'))return false;
  try{
   if(deletionStatus){
-   await ensurePublishingSchema(db);await serveInstagramDataDeletionStatus(req,res,url,db);return true;
+   await ensurePublishingSchema(db);await serveInstagramDataDeletionStatus(req,res,url,db,{http});return true;
   }
   if(metaCompliance){
    await ensurePublishingSchema(db);

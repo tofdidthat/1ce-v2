@@ -2,7 +2,7 @@ import {createHash,createHmac,timingSafeEqual} from 'node:crypto';
 import type {IncomingMessage,ServerResponse} from 'node:http';
 import type {QueryableV2} from '../../../packages/shared/contracts.js';
 import type {InstagramConfig} from './instagram-connection.js';
-import {deletionCodeHash,scheduleInstagramDataDeletion} from './instagram-data-deletion.js';
+import {deletionCodeHash,instagramLegacyReconciliationReady,scheduleInstagramDataDeletion} from './instagram-data-deletion.js';
 
 type CompliancePool=QueryableV2&{connect():Promise<QueryableV2&{release():void}>};
 type MetaAction='deauthorize'|'data-deletion';
@@ -101,8 +101,10 @@ async function revokeV2Connection(client:QueryableV2,metaUserId:string):Promise<
   return true;
 }
 export async function handleInstagramMetaCompliance(req:IncomingMessage,res:ServerResponse,url:URL,db:CompliancePool,
- config:InstagramConfig|null,{http=fetch,standalone=process.env.INSTAGRAM_META_V2_ONLY==='true'}:
- {http?:typeof fetch;standalone?:boolean}={}):Promise<void>{
+ config:InstagramConfig|null,{http=fetch,standalone=process.env.INSTAGRAM_META_V2_ONLY==='true',
+ legacyReconciled=process.env.INSTAGRAM_META_LEGACY_RECONCILED==='true',
+ localLegacyReceipts=process.env.INSTAGRAM_META_LEGACY_RECEIPTS_LOCAL==='true'}:
+ {http?:typeof fetch;standalone?:boolean;legacyReconciled?:boolean;localLegacyReceipts?:boolean}={}):Promise<void>{
  if(req.method!=='POST'){res.setHeader('Allow','POST');json(res,405,{error:'method_not_allowed'});return;}
  if([...url.searchParams.keys()].some(key=>key!=='action')||url.searchParams.getAll('action').length>1||
   (url.searchParams.has('action')&&!['deauthorize','data-deletion'].includes(url.searchParams.get('action')||''))){
@@ -117,7 +119,7 @@ export async function handleInstagramMetaCompliance(req:IncomingMessage,res:Serv
   return;
  }
  if(!config){
-  if(standalone){json(res,503,{error:'v2_compliance_unavailable'});return;}
+  if(standalone&&legacyReconciled&&localLegacyReceipts){json(res,503,{error:'v2_compliance_unavailable'});return;}
   const legacy=await forwardLegacy(action,signedRequest,http);
   json(res,503,{error:legacy.ok?'v2_compliance_unavailable':'legacy_compliance_unavailable'});return;
  }
@@ -132,17 +134,16 @@ export async function handleInstagramMetaCompliance(req:IncomingMessage,res:Serv
   const requestHash=createHash('sha256').update(action+':'+signedRequest).digest('hex');
   await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[requestHash]);
   const receipt=(await client.query('SELECT legacy_response,v2_only FROM v2_instagram_compliance_receipts WHERE request_hash=$1',[requestHash])).rows[0];
-  if(standalone&&receipt&&!receipt.v2_only&&!receipt.legacy_response){
-   await client.query('ROLLBACK');
-   json(res,503,{error:'legacy_compliance_pending'});return;
-  }
+  // The deploy flags express an operator decision about data outside this database.
+  // A live check still blocks cutover when visible legacy work or ambiguous history remains.
+  const independent=standalone&&legacyReconciled&&localLegacyReceipts&&await instagramLegacyReconciliationReady(client);
   if(!receipt){
    if(action==='deauthorize')await revokeV2Connection(client,userId);
-   await client.query('INSERT INTO v2_instagram_compliance_receipts(request_hash,action,v2_only) VALUES($1,$2,$3)',[requestHash,action,standalone]);
+   await client.query('INSERT INTO v2_instagram_compliance_receipts(request_hash,action,v2_only) VALUES($1,$2,$3)',[requestHash,action,independent]);
   }
   const confirmationCode=createHmac('sha256',config.appSecret).update('meta-v2-deletion:'+requestHash).digest('hex').slice(0,32);
   const v2Matched=action==='data-deletion'&&await scheduleInstagramDataDeletion(client,requestHash,confirmationCode,subjectHash(userId),userId);
-  if(standalone||receipt?.v2_only){
+  if(independent||receipt?.v2_only){
    if(v2Matched==='unresolved'){
     await client.query('ROLLBACK');
     json(res,503,{error:'instagram_deletion_identity_unresolved'});return;

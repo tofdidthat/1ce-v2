@@ -20,13 +20,15 @@ function req(action='deauthorize',signed=signedRequest()){
  return {request,url:new URL('https://api.invalid/api/instagram/meta-compliance'+(action==='deauthorize'?'':'?action='+action))};
 }
 function res(){return{status:0,headers:{},body:'',setHeader(name,value){this.headers[name]=value},writeHead(status,headers){this.status=status;Object.assign(this.headers,headers)},end(value){this.body=value||''}};}
-function pool({matched=false,unmapped=false}={}){
+function pool({matched=false,unmapped=false,legacyPending=false}={}){
  const calls=[],receipts=new Map(),deletions=new Map(),state={connected:matched,known:matched};const client={async query(sql,args){calls.push({sql,args});
   if(sql.startsWith('SELECT request_hash FROM v2_instagram_data_deletions'))return{rowCount:deletions.has(args[0])?1:0,rows:deletions.has(args[0])?[{}]:[]};
   if(sql.startsWith('SELECT 1 FROM v2_publication_jobs j WHERE j.instagram_generation'))return{rowCount:unmapped?1:0,rows:unmapped?[{}]:[]};
   if(sql.startsWith('INSERT INTO v2_instagram_data_deletions'))deletions.set(args[0],{owners:args[2]});
   if(sql.startsWith('SELECT user_id FROM v2_instagram_connections'))return{rowCount:state.known?1:0,rows:state.known?[{user_id:42}]:[]};
   if(sql.startsWith('SELECT legacy_response'))return{rowCount:receipts.has(args[0])?1:0,rows:receipts.has(args[0])?[receipts.get(args[0])]:[]};
+  if(sql.includes('AS legacy_ready'))return{rowCount:1,rows:[{legacy_ready:!legacyPending&&
+   ![...receipts.values()].some(row=>!row.v2_only&&!row.legacy_response)}]};
   if(sql.startsWith('INSERT INTO v2_instagram_compliance_receipts'))receipts.set(args[0],{legacy_response:null,v2_only:args[2]});
   if(sql.startsWith('UPDATE v2_instagram_compliance_receipts'))receipts.get(args[0]).legacy_response=JSON.parse(args[1]);
   if(sql.includes('SELECT user_id,generation FROM v2_instagram_connections'))return{rowCount:state.connected?1:0,rows:state.connected?[{user_id:42,generation:'00000000-0000-4000-8000-000000000001'}]:[]};
@@ -211,7 +213,8 @@ test('standalone deauthorization and deletion recognize V2 history without calli
  const http=async()=>{assert.fail('V1 must not be called')};
  for(const [action,standalone] of [['deauthorize',true],['data-deletion',true],['data-deletion',false]]){
   const input=req(action),output=res();
-  await handleInstagramMetaCompliance(input.request,output,input.url,db,config,{http,standalone});
+  await handleInstagramMetaCompliance(input.request,output,input.url,db,config,
+   {http,standalone,legacyReconciled:true,localLegacyReceipts:true});
   assert.equal(output.status,200);
  }
  assert.equal(db.calls.filter(call=>call.sql.startsWith('INSERT INTO v2_instagram_data_deletions')).length,1);
@@ -222,22 +225,60 @@ test('standalone deletion acknowledges an empty identity only when there is no u
  for(const unmapped of [false,true]){
   const input=req('data-deletion'),output=res(),db=pool({unmapped});
   await handleInstagramMetaCompliance(input.request,output,input.url,db,config,
-   {http:async()=>{assert.fail('V1 must not be called')},standalone:true});
+   {http:async()=>{assert.fail('V1 must not be called')},standalone:true,legacyReconciled:true,localLegacyReceipts:true});
   assert.equal(output.status,unmapped?503:200);
   assert.equal(db.calls.some(call=>call.sql.startsWith('INSERT INTO v2_instagram_data_deletions')),!unmapped);
  }
 });
 
-test('standalone missing configuration or an unacknowledged legacy receipt stays retryable',async()=>{
+test('missing configuration fails safely and unacknowledged legacy receipts still forward during transition',async()=>{
  const db=pool(),http=async()=>{throw Error('synthetic outage')};
  const input=req(),first=res();
  await handleInstagramMetaCompliance(input.request,first,input.url,db,config,{http,standalone:false});
- for(const [metaConfig,error] of [[null,'v2_compliance_unavailable'],[config,'legacy_compliance_pending']]){
-  const retry=req(),output=res();
-  await handleInstagramMetaCompliance(retry.request,output,retry.url,db,metaConfig,
-   {http:async()=>{assert.fail('V1 must not be called')},standalone:true});
-  assert.equal(output.status,503);
-  assert.equal(JSON.parse(output.body).error,error);
+ const flags={standalone:true,legacyReconciled:true,localLegacyReceipts:true};
+ const unavailable=req(),unavailableOutput=res();
+ await handleInstagramMetaCompliance(unavailable.request,unavailableOutput,unavailable.url,db,null,
+  {...flags,http:async()=>{assert.fail('V1 must not be called without configuration after cutover')}});
+ assert.equal(unavailableOutput.status,503);
+ assert.equal(JSON.parse(unavailableOutput.body).error,'v2_compliance_unavailable');
+ const retry=req(),output=res();
+ await handleInstagramMetaCompliance(retry.request,output,retry.url,db,config,{...flags,http:legacyResponse('deauthorize')});
+ assert.equal(output.status,200);
+ assert.equal(db.calls.filter(call=>call.sql.startsWith('INSERT INTO v2_instagram_compliance_receipts')).length,1);
+});
+
+test('standalone request still forwards until external reconciliation, archive activation and no outstanding work',async()=>{
+ for(const [legacyReconciled,localLegacyReceipts,legacyPending] of [
+  [false,true,false],[true,false,false],[true,true,true],
+ ]){
+  const db=pool({legacyPending}),input=req('data-deletion'),output=res();
+  await handleInstagramMetaCompliance(input.request,output,input.url,db,config,{
+   standalone:true,legacyReconciled,localLegacyReceipts,http:legacyResponse('data-deletion'),
+  });
+  assert.equal(output.status,200);
+  assert.equal(new URL(JSON.parse(output.body).url).pathname,'/privacy');
+  assert.equal(db.calls.some(call=>call.sql.startsWith('INSERT INTO v2_instagram_data_deletions')),false);
+ }
+});
+
+test('before archive activation and after rollback, old links read live legacy status without touching the archive',async()=>{
+ const code='0123456789abcdef0123456789abcdef',url=new URL('https://1ce.lol/api/instagram/data-deletion-status?deletion='+code);
+ for(const [upstreamStatus,body,status,expected] of [
+  [200,{status:'completed',private:'synthetic'},200,{status:'completed'}],
+  [200,{status:'pending'},200,{status:'pending'}],
+  [404,{status:'not_found'},404,{error:'not_found'}],
+  [500,{},503,{error:'legacy_status_unavailable'}],
+ ]){
+  const output=res();
+  await serveInstagramDataDeletionStatus({method:'GET'},output,url,{query(){assert.fail('Archive consulted prematurely')}},{
+   localLegacyReceipts:false,http:async(target,options)=>{
+    assert.equal(target,'https://render-autoshorts-production.up.railway.app/internal/meta/data-deletion/'+code);
+    assert.equal(options.redirect,'error');
+    return Response.json(body,{status:upstreamStatus});
+   },
+  });
+  assert.equal(output.status,status);
+  assert.deepEqual(JSON.parse(output.body),expected);
  }
 });
 
@@ -249,13 +290,27 @@ test('archived legacy receipt status uses only its hash and preserves pending an
   [[{completed_at:new Date(),legacy_completed:true}],200,{status:'completed'}],
  ]){
   const db={async query(sql,args){
+   if(sql.includes('AS legacy_ready'))return {rows:[{legacy_ready:!rows.length}]};
    assert.match(sql,/v2_instagram_legacy_deletion_status/);
    assert.deepEqual(args,[deletionCodeHash(code)]);
    return {rows};
   }};
   const output=res();
-  await serveInstagramDataDeletionStatus({method:'GET'},output,new URL('https://1ce.lol/privacy?deletion='+code),db);
+  await serveInstagramDataDeletionStatus({method:'GET'},output,new URL('https://1ce.lol/privacy?deletion='+code),db,
+   {localLegacyReceipts:true,retireLegacy:true,http:async()=>{
+    assert.equal(body.status,'pending');
+    return Response.json({status:'not_found'},{status:404});
+   }});
   assert.equal(output.status,status);
   assert.deepEqual(JSON.parse(output.body),body);
  }
+});
+
+test('an imported archive still looks up late legacy codes while dual delivery is active',async()=>{
+ const output=res(),code='a'.repeat(32);
+ await serveInstagramDataDeletionStatus({method:'GET'},output,new URL('https://1ce.lol/?deletion='+code),{
+  async query(){return {rows:[]}},
+ },{localLegacyReceipts:true,retireLegacy:false,http:async()=>Response.json({status:'completed'})});
+ assert.equal(output.status,200);
+ assert.deepEqual(JSON.parse(output.body),{status:'completed'});
 });
