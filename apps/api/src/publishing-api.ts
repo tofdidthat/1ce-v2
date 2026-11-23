@@ -7,7 +7,7 @@ import {instagramConfig,instagramCallbackPath,beginInstagramConnection,startInst
 import {ensurePublishingSchema} from './publishing-schema.js';
 import {serveInstagramReelMedia,serveTikTokMedia} from './instagram-reel-media.js';
 import {instagramReelsServerEnabled} from './instagram-reels-worker.js';
-import {handleInstagramMetaCompliance} from './instagram-meta-compliance.js';
+import {handleInstagramMetaCompliance,instagramMetaConfig} from './instagram-meta-compliance.js';
 import {serveInstagramDataDeletionStatus} from './instagram-data-deletion.js';
 import {enqueuePublication,listPublications,retryPublication,type PublishingPool} from './publishing-jobs.js';
 import {deliveryEndpoint,mediaPath} from './tiktok-draft-upload.js';
@@ -22,9 +22,9 @@ async function body(req:IncomingMessage):Promise<unknown>{
   if(bytes>16384)throw new PublishingError('request_too_large',413);chunks.push(chunk);}
  try{return JSON.parse(Buffer.concat(chunks).toString('utf8')||'{}')}catch{throw new PublishingError('invalid_json');}
 }
-type Options={config?:PublishingConfig|null;instagram?:InstagramConfig|null;tiktok?:TikTokConfig|null;renderer?:()=>boolean;http?:typeof fetch};
+type Options={config?:PublishingConfig|null;instagram?:InstagramConfig|null;metaInstagram?:ReturnType<typeof instagramMetaConfig>;tiktok?:TikTokConfig|null;renderer?:()=>boolean;http?:typeof fetch};
 export async function handlePublishing(req:IncomingMessage,res:ServerResponse,pathname:string,db:PublishingPool,
- currentUser:(req:IncomingMessage)=>Promise<{id:number}|null>,{config=publishingConfig(),instagram=instagramConfig(),tiktok=tiktokConfig(),renderer=publicationRendererAvailable,http=fetch}:Options={}
+ currentUser:(req:IncomingMessage)=>Promise<{id:number}|null>,{config=publishingConfig(),instagram=instagramConfig(),metaInstagram=instagramMetaConfig(),tiktok=tiktokConfig(),renderer=publicationRendererAvailable,http=fetch}:Options={}
 ):Promise<boolean>{
  const url=new URL(req.url||pathname,'https://api.invalid');
  const callback=!!config&&pathname===new URL(config.redirectUri).pathname&&(url.searchParams.get('state')||'').startsWith('pub_');
@@ -38,11 +38,11 @@ export async function handlePublishing(req:IncomingMessage,res:ServerResponse,pa
  if(!callback&&!start&&!instagramCallback&&!instagramStart&&!tiktokCallback&&!tiktokStart&&!metaCompliance&&!deletionStatus&&!pathname.startsWith('/api/publishing/'))return false;
  try{
   if(deletionStatus){
-   await ensurePublishingSchema(db);await serveInstagramDataDeletionStatus(req,res,url,db,{http});return true;
+   await ensurePublishingSchema(db);await serveInstagramDataDeletionStatus(req,res,url,db);return true;
   }
   if(metaCompliance){
    await ensurePublishingSchema(db);
-   await handleInstagramMetaCompliance(req,res,url,db,instagram,{http});return true;
+   await handleInstagramMetaCompliance(req,res,url,db,metaInstagram);return true;
   }
   if(callback&&req.method==='GET'){
    const current=await currentUser(req);

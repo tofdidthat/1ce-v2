@@ -88,36 +88,36 @@ restaurar as anteriores. Nunca restaurar sobre atualizações posteriores.
 
 ## Ordem de ativação e rollback operacional
 
-Os três controles assumem `false` quando ausentes. Verificar a configuração efetiva em
-todas as réplicas a cada alteração.
-
-1. Publicar schema/API com os controles desativados. Confirmar papel DDL, transações antigas
-   e bloqueadores com o operador. Aplicar 024 em janela autorizada com `lock_timeout` curto
-   e abortar se a espera exceder o limite. Conferir no catálogo a coluna `v2_only` booleana
-   obrigatória com default falso e a chave primária em `confirmation_hash`. Mesmo com DDL
-   antecipada, validar que o papel da API pode executar a inicialização idempotente. Conferir
-   `/health/db` e o handler de status antes da Web.
-2. Publicar a página de privacidade. Links antigos usam o rewrite já existente da API, que
-   consulta o Railway legado nessa fase. Conferir pendente, concluído, desconhecido e
-   indisponível. Callbacks continuam com encaminhamento.
-3. Carregar o arquivo e reconciliar o delta. Antes de ativar
-   `INSTAGRAM_META_LEGACY_RECEIPTS_LOCAL=true`, coordenar uma janela sem emissão de novos
-   códigos legados fora do delta, ou manter a origem até esgotar essa diferença. Confirmar
-   consultas dos dois formatos de comprovante e manter a V1 disponível para rollback.
-   Enquanto houver encaminhamento, códigos ausentes ou ainda pendentes no arquivo
-   continuam consultando a V1. Reconciliar o delta antes de dispensar essa consulta.
-4. Ygor precisa aprovar a destinação de todos os dados exclusivos da integração V1, a
-   resolução dos pedidos em aberto e a evidência de que identidades ambíguas foram resolvidas.
-   Confirmar que a V1 já não recebe escritas independentes. Somente então configurar
-   `INSTAGRAM_META_LEGACY_RECONCILED=true` e `INSTAGRAM_META_V2_ONLY=true`. A API exige os
-   três controles e ausência de recibos legados pendentes, callbacks legados sem resposta e
-   histórico V2 sem vínculo. Em caso de pendência, volta a encaminhar. A V2 não pode atestar
-   sozinha que os dados exclusivos V1 foram tratados.
-5. Para voltar ao fluxo anterior, manter a mesma versão e a V1 disponível, desligar
-   `INSTAGRAM_META_V2_ONLY` e `INSTAGRAM_META_LEGACY_RECONCILED`. Desligar também
-   `INSTAGRAM_META_LEGACY_RECEIPTS_LOCAL` se precisar voltar a ler o legado. Conferir
-   comprovantes dos dois formatos e encaminhamento de novas mensagens. Evitar reverter a
-   versão da API, pois o binário anterior ignora a marca que protege replays já processados.
+1. Decidir com Ygor o destino da conexão Instagram da V1 e dos dados exclusivos da
+   integração. Verificar titularidade e escopo da conta no provedor sem igualar IDs dos
+   bancos, copiar tokens ou inferir correspondência só pelas contagens. Resolver pedidos
+   pendentes e vínculos ambíguos antes do corte. Confirmar no painel Meta quais app,
+   assinatura e URLs efetivamente atendem a V2. Confirmar propriedade e continuidade de
+   Postgres/R2, credenciais de apps e chave de publicação. Preservar a assinatura e acesso
+   de que a V2 depende; rotação exige plano próprio, inclusive reconexão ou recriptografia.
+2. Com autorização de DDL e carga, aplicar 024 no banco V2 antes da troca de aplicação.
+   Conferir transações antigas e bloqueadores, usar `lock_timeout` curto e abortar se
+   houver espera excessiva. Conferir a coluna `v2_only` obrigatória com default falso e a
+   chave primária em `confirmation_hash`. Validar o papel de inicialização da API para
+   DDL idempotente. Coordenar a janela sem novas escritas independentes ou emissão de
+   comprovantes legados fora do delta. Repetir os agregados e carregar o delta se houver
+   recibos. Conferir pendentes, concluídos e callbacks antigos sem resposta. Enquanto
+   houver estado sem solução, manter a ativação pendente.
+3. Com autorização para publicação, ordenar API/schema e Web para preservar links antigos.
+   A API final lê ambos os formatos apenas no Postgres V2. A Web mantém
+   `/privacy?deletion=…` e o rewrite de `/api/instagram/auth` aponta ao callback V2.
+   Conferir `/health/db`, os dois formatos de status e as URLs configuradas na Meta.
+   `INSTAGRAM_META_CUTOVER_APPROVED` assume falso. Habilitar apenas após comprovar a
+   destinação da V1 e o delta. Sem aprovação ou configuração, callbacks recebem 503
+   para nova tentativa. Sem vínculo confiável, a API não emite comprovante.
+4. Verificar que réplicas não misturam versões com e sem encaminhamento antes de declarar
+   o corte. Monitorar o worker e os retornos do provedor. Desligar a V1 separadamente
+   após comprovar independência e obter autorização operacional.
+5. Depois do corte, rollback seguro usa esta versão ou outra versão independente.
+   Desabilitar `INSTAGRAM_META_CUTOVER_APPROVED` para interromper novos callbacks com
+   resposta recuperável. A consulta local, comprovantes e operações aceitas permanecem
+   registrados. Não voltar a binários que encaminham para V1, nem restaurar rotas/URLs V1.
+   Corrigir e reaplicar o binário independente antes de reabilitar.
 
 ## Ensaio local e verificação de roteamento
 
@@ -131,12 +131,6 @@ $t061Pglite = (Resolve-Path 'node_modules/.t061-pglite/node_modules/@electric-sq
 node apps/api/scripts/t061-meta-receipt-smoke.mjs $t061Pglite
 ```
 
-Antes do corte, repetir com PostgreSQL da versão de produção e com o cliente `psql` que fará
-a carga. O ensaio local exercita SQL e handler, mas não o roteador da Vercel. Em implantação
-descartável, com rewrites apontados para uma API descartável e os upstreams da V1
-substituídos por fixtures, testar `/privacy` sem consulta e
-`/privacy?deletion=<código>` com a consulta na página. Conferir que a Web envia o
-parâmetro uma vez à API, que `?code=<código>` continua entregando JSON, que estados
-200/404/503 são distinguidos e que o status não é cacheado. Testar POST assinado só com
-segredo fictício em ambos os modos e após rollback. Confirmar que nenhum destino resolva
-para produção no ensaio.
+A carga já foi ensaiada com dados fictícios e `psql` no PostgreSQL 18. A consulta assinada
+em produção exige autorização própria. As verificações de publicação devem cobrir os
+dois formatos de link, resposta sem cache, callbacks locais e ausência de requisições à V1.

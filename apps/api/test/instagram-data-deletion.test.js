@@ -40,7 +40,7 @@ test('metadata completion clears owner links and only addresses Instagram integr
 });
 test('opaque status reports completed only after both local and legacy cleanup, without identity data',async()=>{
  for(const [completed,legacy,expected] of [[false,true,'pending'],[true,false,'pending'],[true,true,'completed']]){
-  const calls=[],db={async query(sql,args){calls.push({sql,args});return{rowCount:1,rows:[{completed_at:completed?'synthetic-date':null,legacy_completed:legacy,user_id:42}]}}};
+  const calls=[],db={async query(sql,args){calls.push({sql,args});return{rowCount:1,rows:[{completed_at:completed?'synthetic-date':null,scope_completed:legacy,user_id:42}]}}};
   const res={writeHead(status,headers){this.status=status;this.headers=headers},end(body){this.body=body}};
   await serveInstagramDataDeletionStatus({method:'GET'},res,new URL('https://web.invalid/api/instagram/data-deletion-status?code='+'c'.repeat(32)),db);
   assert.equal(res.status,200);assert.deepEqual(JSON.parse(res.body),{status:expected});
