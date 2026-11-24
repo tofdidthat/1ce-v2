@@ -81,7 +81,15 @@ Official docs: https://developers.facebook.com/docs/instagram-platform/instagram
 
 Reference: [Meta Content Publishing](https://developers.facebook.com/documentation/instagram-platform/content-publishing). Meta documents a 100 API-published-posts per 24-hour moving limit; provider limits and policies may change.
 
-## T030 — security and recovery candidate (not a production attestation)
+## T061 — independent Meta callbacks
+
+After the T061 cutover, the V2 callback authenticates and handles requests in V2.
+The existing Meta URL `https://1ce.lol/api/instagram/auth` still reaches the V2
+handler. Both receipt formats are served from PostgreSQL V2. Unknown identities
+and unresolved old deliveries remain retryable without forwarding the request.
+See the [cutover sequence and rollback](t061-meta-receipts.md#ordem-de-ativação-e-rollback-operacional).
+
+## T030 — historical security and recovery release
 
 The candidate adds signed, migration-aware Meta callbacks at
 `POST /api/instagram/meta-compliance?action=deauthorize|data-deletion`.

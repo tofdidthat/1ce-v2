@@ -109,26 +109,18 @@ export async function instagramReliabilitySmoke(db){
   await connect();
   const payload=Buffer.from(JSON.stringify({algorithm:'HMAC-SHA256',user_id:instagramId})).toString('base64url');
   const signed=createHmac('sha256',config.appSecret).update(payload).digest('base64url')+'.'+payload;
-  let forwards=0;
-  const http=async(raw,init)=>{
-   forwards++;assert.equal(new URL(raw).hostname,'autoshorts-nine.vercel.app');
-   assert.equal(init.body.get('signed_request'),signed);
-   return new URL(raw).searchParams.get('action')==='data-deletion'
-    ?Response.json({url:'https://1ce.lol/privacy?deletion='+'a'.repeat(32),confirmation_code:'a'.repeat(32)})
-    :Response.json({success:true});
-  };
   const callback=async action=>{
    const req=Readable.from([new URLSearchParams({signed_request:signed}).toString()]);
    req.method='POST';req.headers={'content-type':'application/x-www-form-urlencoded'};
    const res={status:0,body:'',writeHead(status){this.status=status},end(body){this.body=body},setHeader(){}};
-   await handleInstagramMetaCompliance(req,res,new URL('https://api.invalid/api/instagram/meta-compliance?action='+action),db,config,{http});
+   await handleInstagramMetaCompliance(req,res,new URL('https://api.invalid/api/instagram/meta-compliance?action='+action),db,config);
    return res;
   };
   for(const action of ['deauthorize','data-deletion'])receipts.push(hash(action+':'+signed));
   const duplicates=await Promise.all([callback('deauthorize'),callback('deauthorize')]);
-  assert.ok(duplicates.every(item=>item.status===200));assert.equal(forwards,1,'Concurrent receipts forward once');
+  assert.ok(duplicates.every(item=>item.status===200));
   await connect();
-  assert.equal((await callback('deauthorize')).status,200);assert.equal(forwards,1);
+  assert.equal((await callback('deauthorize')).status,200);
   assert.equal((await db.query('SELECT 1 FROM v2_instagram_connections WHERE user_id=$1',[owner])).rowCount,1,
    'Replayed deauth cannot remove a newly connected generation');
   const youtubeGeneration=randomUUID();
@@ -164,7 +156,6 @@ export async function instagramReliabilitySmoke(db){
   await Promise.race([scanReady,staleBackfill.then(()=>{throw Error('Expected identity scan')})]);
   const deletions=await Promise.all([callback('data-deletion'),callback('data-deletion')]);
   assert.ok(deletions.every(item=>item.status===200));assert.equal(deletions[0].body,deletions[1].body);
-  assert.equal(forwards,2,'Duplicate deletion must not repeat v1 handling');
   const acknowledgement=JSON.parse(deletions[0].body),statusUrl=new URL(acknowledgement.url);
   assert.equal(statusUrl.pathname,'/api/instagram/data-deletion-status');
   const deletionStatus=async()=>{
@@ -208,7 +199,6 @@ export async function instagramReliabilitySmoke(db){
   assert.equal((await callback('data-deletion')).status,200);
   assert.equal((await db.query('SELECT 1 FROM v2_instagram_connections WHERE user_id=$1',[owner])).rowCount,1,
    'A completed deletion replay must not revoke a later connection');
-  assert.equal(forwards,2);
   console.log('Instagram reliability PASS: PostgreSQL leases, crash recovery, late confirmation, reconnect, request dedup, concurrent Meta receipts, durable deletion/R2 retry and mixed-platform/owner isolation; external providers simulated.');
  }finally{
   for(const receipt of receipts)await db.query('DELETE FROM v2_instagram_data_deletions WHERE request_hash=$1',[receipt]);

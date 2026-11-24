@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 function LegalLayout({title,updated,children}:{title:string;updated:string;children:React.ReactNode}){return <div className="legal-site"><header className="legal-header"><Link to="/" className="brand">1CE</Link><Link to="/">Back to 1CE</Link></header><main className="legal-body"><h1>{title}</h1><p className="legal-date">Last updated: {updated}</p><article>{children}</article></main><footer className="legal-footer"><Link to="/terms">Terms of Service</Link><Link to="/privacy">Privacy Policy</Link><p>© 2026 1CE. All rights reserved.</p></footer></div>}
 function LegalSection({id,title,children}:{id:string;title:string;children:React.ReactNode}){return <section id={id}><h2>{title}</h2>{children}</section>}
 export function TermsPage() {
@@ -125,9 +125,36 @@ export function TermsPage() {
   )
 }
 
+function LegacyDeletionReceipt({code}:{code:string}){
+  const [status,setStatus]=React.useState('Checking request status…');
+  React.useEffect(()=>{
+    const controller=new AbortController();
+    async function load(){
+      try{
+        const response=await fetch('/api/instagram/data-deletion-status?deletion='+encodeURIComponent(code),
+          {signal:controller.signal,credentials:'omit',cache:'no-store',referrerPolicy:'no-referrer'});
+        const data=response.ok?await response.json():null;
+        if(controller.signal.aborted)return;
+        if(data?.status==='completed')setStatus('The deletion request is complete.');
+        else if(data?.status==='pending')setStatus('The deletion request is pending.');
+        else if(response.status===404)setStatus('The deletion request was not found.');
+        else setStatus('Request status is temporarily unavailable. Try again later.');
+      }catch{
+        if(!controller.signal.aborted)setStatus('Request status is temporarily unavailable. Try again later.');
+      }
+    }
+    void load();
+    return ()=>controller.abort();
+  },[code]);
+  return <LegalSection id="data-deletion-status" title="Data deletion request status"><p role="status">{status}</p></LegalSection>;
+}
+
 export function PrivacyPage() {
+  const [params]=useSearchParams();
+  const codes=params.getAll('deletion');
   return (
     <LegalLayout title="Privacy Policy" updated="September 1, 2026">
+      {codes.length===1&&/^[a-f0-9]{32}$/.test(codes[0])&&<LegacyDeletionReceipt key={codes[0]} code={codes[0]}/>}
       <LegalSection id="overview" title="1. Overview">
         <p>
           This Privacy Policy explains how 1ce handles information when you use the service,

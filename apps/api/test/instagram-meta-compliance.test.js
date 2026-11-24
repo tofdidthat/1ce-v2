@@ -1,9 +1,10 @@
-import test from 'node:test';
+﻿import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Readable} from 'node:stream';
 import {createHash,createHmac} from 'node:crypto';
-import {handleInstagramMetaCompliance,parseMetaSignedRequest} from '../dist/instagram-meta-compliance.js';
+import {handleInstagramMetaCompliance,instagramMetaConfig,parseMetaSignedRequest} from '../dist/instagram-meta-compliance.js';
 import {ensurePublishingSchema} from '../dist/publishing-schema.js';
+import {deletionCodeHash,serveInstagramDataDeletionStatus} from '../dist/instagram-data-deletion.js';
 
 const secret='synthetic-meta-app-secret-for-tests';
 const config={appId:'synthetic-id',appSecret:secret,redirectUri:'https://api.invalid/auth/instagram/callback',
@@ -19,28 +20,29 @@ function req(action='deauthorize',signed=signedRequest()){
  return {request,url:new URL('https://api.invalid/api/instagram/meta-compliance'+(action==='deauthorize'?'':'?action='+action))};
 }
 function res(){return{status:0,headers:{},body:'',setHeader(name,value){this.headers[name]=value},writeHead(status,headers){this.status=status;Object.assign(this.headers,headers)},end(value){this.body=value||''}};}
-function pool({matched=false,unmapped=false}={}){
+function pool({matched=false,scopeUnresolved=false,prior=null,withDeletion=false,fail=false}={}){
  const calls=[],receipts=new Map(),deletions=new Map(),state={connected:matched,known:matched};const client={async query(sql,args){calls.push({sql,args});
   if(sql.startsWith('SELECT request_hash FROM v2_instagram_data_deletions'))return{rowCount:deletions.has(args[0])?1:0,rows:deletions.has(args[0])?[{}]:[]};
-  if(sql.startsWith('SELECT 1 FROM v2_publication_jobs j WHERE j.instagram_generation'))return{rowCount:unmapped?1:0,rows:unmapped?[{}]:[]};
-  if(sql.startsWith('INSERT INTO v2_instagram_data_deletions'))deletions.set(args[0],{owners:args[2]});
+  if(sql==='BEGIN'&&fail)throw Error('synthetic database failure');
+  if(sql.includes('AS scope_unresolved'))return{rows:[{matched_owners:1,scope_unresolved:scopeUnresolved}]};
+  if(sql.startsWith('INSERT INTO v2_instagram_data_deletions'))deletions.set(args[0],{owners:args[2],hash:args[1]});
+  if(sql.startsWith('SELECT 1 FROM v2_instagram_data_deletions')){
+   const found=withDeletion||deletions.get(args[0])?.hash===args[1];
+   return {rowCount:found?1:0,rows:[]};
+  }
   if(sql.startsWith('SELECT user_id FROM v2_instagram_connections'))return{rowCount:state.known?1:0,rows:state.known?[{user_id:42}]:[]};
-  if(sql.startsWith('SELECT legacy_response'))return{rowCount:receipts.has(args[0])?1:0,rows:receipts.has(args[0])?[receipts.get(args[0])]:[]};
-  if(sql.startsWith('INSERT INTO v2_instagram_compliance_receipts'))receipts.set(args[0],{legacy_response:null});
-  if(sql.startsWith('UPDATE v2_instagram_compliance_receipts'))receipts.get(args[0]).legacy_response=JSON.parse(args[1]);
+  if(sql.startsWith('SELECT 1 FROM v2_instagram_compliance_subjects'))return{rowCount:state.known?1:0,rows:[]};
+  if(sql.startsWith('SELECT legacy_response')){
+   const receipt=receipts.get(args[0])??prior;
+   return{rowCount:receipt?1:0,rows:receipt?[receipt]:[]};
+  }
+  if(sql.startsWith('INSERT INTO v2_instagram_compliance_receipts'))receipts.set(args[0],{legacy_response:null,v2_only:true});
   if(sql.includes('SELECT user_id,generation FROM v2_instagram_connections'))return{rowCount:state.connected?1:0,rows:state.connected?[{user_id:42,generation:'00000000-0000-4000-8000-000000000001'}]:[]};
   if(sql.startsWith('SELECT 1 FROM v2_instagram_connections'))return{rowCount:state.known?1:0,rows:state.known?[{one:1}]:[]};
   if(sql.startsWith('DELETE FROM v2_instagram_connections'))state.connected=false;
   return{rowCount:1,rows:[]};},release(){}};
  return{calls,state,query:client.query,async connect(){return client}};
 }
-function legacyResponse(action){return async(url,options)=>{
- const target=new URL(String(url));assert.equal(target.hostname,'autoshorts-nine.vercel.app');
- assert.equal(target.searchParams.get('action'),action);assert.equal(options.method,'POST');
- assert.equal(new URLSearchParams(String(options.body)).get('signed_request'),signedRequest());
- return action==='data-deletion'?Response.json({url:'https://1ce.lol/privacy?deletion=0123456789abcdef0123456789abcdef',confirmation_code:'0123456789abcdef0123456789abcdef'}):Response.json({success:true});
-};}
-
 test('signed_request verifies HMAC and preserves large Meta user ids exactly',()=>{
  assert.deepEqual(parseMetaSignedRequest(signedRequest(),'synthetic-meta-app-secret-for-tests'),{userId:'17841405309211844'});
  assert.throws(()=>parseMetaSignedRequest(signedRequest(),'different-synthetic-secret'),/signature/);
@@ -52,9 +54,8 @@ test('alternate base64 spelling cannot bypass an existing callback replay receip
  const alternate=signature.slice(0,-1)+alphabet[alphabet.indexOf(signature.at(-1))+1];
  assert.deepEqual(Buffer.from(alternate,'base64url'),Buffer.from(signature,'base64url'));
  const input=req('data-deletion',alternate+'.'+payload),db=pool({matched:true}),output=res();
- let forwarded=false;
- await handleInstagramMetaCompliance(input.request,output,input.url,db,config,{http:async()=>{forwarded=true;throw Error('Must not forward')}});
- assert.equal(output.status,400);assert.equal(db.calls.length,0);assert.equal(forwarded,false);
+ await handleInstagramMetaCompliance(input.request,output,input.url,db,config);
+ assert.equal(output.status,400);assert.equal(db.calls.length,0);
 });
 
 test('valid HMAC does not admit an unsupported algorithm or malformed user id',()=>{
@@ -71,136 +72,118 @@ test('valid HMAC does not admit an unsupported algorithm or malformed user id',(
 test('duplicate signed_request fields and oversized callbacks are rejected before storage or forwarding',async()=>{
  for(const body of ['signed_request='+signedRequest()+'&signed_request='+signedRequest(),'a'.repeat(16385)]){
   const request=Readable.from([body]);request.method='POST';request.headers={'content-type':'application/x-www-form-urlencoded'};
-  const db=pool(),response=res();let forwarded=false;
-  await handleInstagramMetaCompliance(request,response,new URL('https://api.invalid/api/instagram/meta-compliance'),db,config,
-   {http:async()=>{forwarded=true;return Response.json({success:true})}});
-  assert.equal(response.status,400);assert.equal(db.calls.length,0);assert.equal(forwarded,false);
+  const db=pool(),response=res();
+  await handleInstagramMetaCompliance(request,response,new URL('https://api.invalid/api/instagram/meta-compliance'),db,config);
+  assert.equal(response.status,400);assert.equal(db.calls.length,0);
  }
 });
 
-test('legacy success responses cannot echo extra provider data into public responses or receipts',async()=>{
- const input=req(),response=res(),db=pool();
- await handleInstagramMetaCompliance(input.request,response,input.url,db,config,
-  {http:async()=>Response.json({success:true,access_token:'synthetic-private-extra'})});
- assert.equal(response.status,200);assert.deepEqual(JSON.parse(response.body),{success:true});
- assert.doesNotMatch(JSON.stringify(db.calls),/synthetic-private-extra/);
+async function invoke(db,action='deauthorize',meta=config,signed=signedRequest()){
+ const {request,url}=req(action,signed),output=res();
+ await handleInstagramMetaCompliance(request,output,url,db,meta);
+ return output;
+}
+
+test('callback configuration needs no OAuth redirect or publishing credential',()=>{
+ const env={INSTAGRAM_CLIENT_SECRET:secret,WEB_ORIGIN:'https://1ce.lol/'};
+ assert.equal(instagramMetaConfig(env),null);
+ const approved={...env,INSTAGRAM_META_CUTOVER_APPROVED:'true'};
+ assert.deepEqual(instagramMetaConfig(approved),
+  {appSecret:secret,webOrigin:'https://1ce.lol'});
+ assert.equal(instagramMetaConfig({...approved,INSTAGRAM_APP_SECRET:'conflicting'}),null);
+ assert.equal(instagramMetaConfig({...approved,WEB_ORIGIN:'https://1ce.lol/legacy'}),null);
 });
 
-test('deauthorization revokes matched v2 tokens and fences queued work, then preserves the v1 callback',async()=>{
- const db=pool({matched:true}),input=req(),response=res();
- await handleInstagramMetaCompliance(input.request,response,input.url,db,config,{http:legacyResponse('deauthorize')});
- assert.equal(response.status,200);assert.deepEqual(JSON.parse(response.body),{success:true});
- assert.ok(db.calls.some(call=>call.sql==='DELETE FROM v2_instagram_connections WHERE user_id=$1 AND instagram_user_id=$2'));
+test('deauthorization fences work and replay cannot revoke a later connection',async()=>{
+ const db=pool({matched:true});
+ assert.deepEqual(JSON.parse((await invoke(db)).body),{success:true});
+ assert.equal(db.state.connected,false);
+ assert.ok(db.calls.some(call=>call.sql.includes("state='needs_review'")));
  assert.ok(db.calls.some(call=>call.sql.includes('INSERT INTO v2_instagram_compliance_subjects')&&
   call.args[1]===createHash('sha256').update('instagram-meta-subject:17841405309211844').digest('hex')));
- assert.ok(db.calls.some(call=>call.sql.includes("state='needs_review'")));
- assert.ok(db.calls.some(call=>call.sql==='COMMIT'));
+ db.state.connected=true;
+ assert.equal((await invoke(db)).status,200);
+ assert.equal(db.state.connected,true);
+ assert.equal(db.calls.filter(call=>call.sql.startsWith('INSERT INTO v2_instagram_compliance_receipts')).length,1);
 });
 
-test('data deletion after deauthorization recognizes V2 history and returns a processing status URL',async()=>{
- const db=pool({matched:true}),actions=[];
- const http=async(url)=>{
-  const action=new URL(String(url)).searchParams.get('action');actions.push(action);
-  return action==='data-deletion'?Response.json({url:'https://1ce.lol/privacy?deletion=0123456789abcdef0123456789abcdef',
-   confirmation_code:'0123456789abcdef0123456789abcdef'}):Response.json({success:true});
- };
- const revoke=req('deauthorize'),revoked=res();
- await handleInstagramMetaCompliance(revoke.request,revoked,revoke.url,db,config,{http});
- assert.equal(revoked.status,200);
- const deletion=req('data-deletion'),response=res();
- await handleInstagramMetaCompliance(deletion.request,response,deletion.url,db,config,{http});
- assert.equal(response.status,200);
- const data=JSON.parse(response.body);
- assert.equal(new URL(data.url).pathname,'/api/instagram/data-deletion-status');
- assert.match(data.confirmation_code,/^[a-f0-9]{32}$/);
- assert.ok(db.calls.some(call=>call.sql.startsWith('INSERT INTO v2_instagram_data_deletions')));
- assert.deepEqual(actions,['deauthorize','data-deletion']);
+test('deletion after deauthorization schedules local cleanup once and issues a stable V2 receipt',async()=>{
+ const db=pool({matched:true});
+ assert.equal((await invoke(db)).status,200);
+ const first=await invoke(db,'data-deletion'),replay=await invoke(db,'data-deletion');
+ assert.equal(first.status,200);
+ assert.equal(replay.body,first.body);
+ const receipt=JSON.parse(first.body);
+ assert.equal(new URL(receipt.url).pathname,'/api/instagram/data-deletion-status');
+ assert.match(receipt.confirmation_code,/^[a-f0-9]{32}$/);
+ assert.equal(db.calls.filter(call=>call.sql.startsWith('INSERT INTO v2_instagram_data_deletions')).length,1);
+ assert.equal(db.calls.some(call=>/DELETE FROM (account_users|library_)/.test(call.sql)),false);
 });
 
-test('v1 deletion is proxied unchanged; V2 schedules only approved integration cleanup',async()=>{
- const input=req('data-deletion'),db=pool(),response=res();
- await handleInstagramMetaCompliance(input.request,response,input.url,db,config,{http:legacyResponse('data-deletion')});
- assert.equal(response.status,200);
- assert.deepEqual(JSON.parse(response.body),{url:'https://1ce.lol/privacy?deletion=0123456789abcdef0123456789abcdef',confirmation_code:'0123456789abcdef0123456789abcdef'});
- const v2=pool({matched:true}),v2Response=res(),v2Input=req('data-deletion');
- await handleInstagramMetaCompliance(v2Input.request,v2Response,v2Input.url,v2,config,{http:legacyResponse('data-deletion')});
- assert.equal(v2Response.status,200);
- assert.equal(new URL(JSON.parse(v2Response.body).url).pathname,'/api/instagram/data-deletion-status');
- assert.equal(v2.calls.some(call=>/DELETE FROM (account_users|library_)/.test(call.sql)),false);
- assert.ok(v2.calls.some(call=>call.sql.startsWith('DELETE FROM v2_instagram_connections')));
- assert.match(v2.calls.find(call=>call.sql.includes('v2_instagram_compliance_subjects')).sql,/UNION/);
+test('unknown, conflicting or already pending identities do not receive a completion receipt',async()=>{
+ for(const options of [{},{matched:true,scopeUnresolved:true}]){
+  const db=pool(options),output=await invoke(db,'data-deletion');
+  assert.equal(output.status,503);
+  assert.equal(JSON.parse(output.body).error,'instagram_compliance_identity_unresolved');
+  assert.ok(db.calls.some(call=>call.sql==='ROLLBACK'));
+  assert.equal(db.calls.some(call=>call.sql.startsWith('INSERT INTO v2_instagram_data_deletions')),false);
+  assert.equal(db.calls.some(call=>call.sql.startsWith('DELETE FROM')),false);
+ }
+ assert.equal((await invoke(pool())).status,503);
 });
 
-test('publishing schema installs the compliance identity tombstone migration',async()=>{
+test('old V2 deletion receipts are stable and historical pending or legacy-only deliveries are not reapplied',async()=>{
+ for(const [prior,withDeletion,expected] of [
+  [{v2_only:false,legacy_response:null},true,503],
+  [{v2_only:false,legacy_response:{confirmation_code:'a'.repeat(32)}},false,503],
+  [{v2_only:false,legacy_response:{confirmation_code:'a'.repeat(32)}},true,200],
+ ]){
+  const db=pool({matched:true,prior,withDeletion}),output=await invoke(db,'data-deletion');
+  assert.equal(output.status,expected);
+  if(expected===200)assert.equal(new URL(JSON.parse(output.body).url).pathname,'/api/instagram/data-deletion-status');
+  assert.equal(db.calls.some(call=>/^(INSERT|DELETE|UPDATE)/.test(call.sql)),false);
+ }
+});
+
+test('unavailable configuration or database fails locally, and invalid signatures do not touch storage',async()=>{
+ const noConfig=pool();
+ assert.equal((await invoke(noConfig,'deauthorize',null)).status,503);
+ assert.equal(noConfig.calls.length,0);
+ const failure=await invoke(pool({fail:true}));
+ assert.equal(failure.status,503);
+ assert.doesNotMatch(failure.body,/synthetic database/);
+ const invalid=pool();
+ const signed=signedRequest();
+ assert.equal((await invoke(invalid,'deauthorize',config,(signed.startsWith('A')?'B':'A')+signed.slice(1))).status,400);
+ assert.equal(invalid.calls.length,0);
+});
+
+test('publishing schema installs identity tombstones and the local archive',async()=>{
  const migrations=[],identityHash=createHash('sha256').update('instagram-meta-subject:17841405309211844').digest('hex');
  const db={async query(sql,args){migrations.push({sql,args});
   return sql.startsWith('SELECT user_id,instagram_user_id FROM v2_instagram_connections')
    ?{rowCount:1,rows:[{user_id:42,instagram_user_id:'17841405309211844'}]}:{rowCount:0,rows:[]};}};
  await ensurePublishingSchema(db);
  assert.ok(migrations.some(item=>item.sql.includes('CREATE TABLE IF NOT EXISTS v2_instagram_compliance_subjects')));
+ assert.ok(migrations.some(item=>item.sql.includes('CREATE TABLE IF NOT EXISTS v2_instagram_legacy_deletion_status')));
  assert.ok(migrations.some(item=>item.sql.includes('INSERT INTO v2_instagram_compliance_subjects')&&item.args[1]===identityHash));
 });
 
-test('when V2 Meta config is unavailable, the signed callback still reaches V1 but V2 does not claim completion',async()=>{
- const input=req(),response=res();
- await handleInstagramMetaCompliance(input.request,response,input.url,pool(),null,{http:legacyResponse('deauthorize')});
- assert.equal(response.status,503);
- assert.deepEqual(JSON.parse(response.body),{error:'v2_compliance_unavailable'});
-});
-
-test('invalid signature never reaches v1 or changes v2 records',async()=>{
- const input=req('deauthorize',signedRequest().replace(/^./,'A'));
- const db=pool({matched:true}),response=res();let upstream=0;
- await handleInstagramMetaCompliance(input.request,response,input.url,db,config,{http:async()=>{upstream++;return Response.json({success:true})}});
- assert.equal(response.status,400);assert.equal(upstream,0);
- assert.equal(db.calls.some(call=>/DELETE|UPDATE/.test(call.sql)),false);
-});
-
-test('legacy callback outages return retryable server errors without forwarding provider payloads',async()=>{
- const input=req(),response=res();
- await handleInstagramMetaCompliance(input.request,response,input.url,pool(),config,{http:async()=>{throw Error('synthetic token in URL') }});
- assert.equal(response.status,503);assert.doesNotMatch(response.body,/synthetic/);
-});
-
-test('duplicate deauth delivery reuses its receipt and does not revoke a later connection',async()=>{
- const db=pool({matched:true});let upstream=0;
- const http=async()=>{upstream++;return Response.json({success:true})};
- const first=req(),a=res();await handleInstagramMetaCompliance(first.request,a,first.url,db,config,{http});
- assert.equal(a.status,200);assert.equal(db.state.connected,false);
- db.state.connected=true;
- const duplicate=req(),b=res();await handleInstagramMetaCompliance(duplicate.request,b,duplicate.url,db,config,{http});
- assert.equal(b.status,200);assert.equal(db.state.connected,true);assert.equal(upstream,1);
- assert.equal(a.body,b.body);
- assert.doesNotMatch(JSON.stringify(db.calls),new RegExp(signedRequest().replace(/\./g,'\\.')));
-});
-
-test('a v1 outage can retry delivery without repeating local revocation after reconnect',async()=>{
- const db=pool({matched:true});let upstream=0;
- const http=async()=>{if(++upstream===1)throw Error('synthetic unavailable');return Response.json({success:true})};
- const first=req(),a=res();await handleInstagramMetaCompliance(first.request,a,first.url,db,config,{http});
- assert.equal(a.status,503);assert.equal(db.state.connected,false);db.state.connected=true;
- const second=req(),b=res();await handleInstagramMetaCompliance(second.request,b,second.url,db,config,{http});
- assert.equal(b.status,200);assert.equal(upstream,2);assert.equal(db.state.connected,true);
-});
-
-test('duplicate V2 deletion keeps its receipt and forwards v1 only once',async()=>{
- const db=pool({matched:true});let upstream=0;
- const http=async(...args)=>{upstream++;return legacyResponse('data-deletion')(...args)};
- for(let index=0;index<2;index++){
-  const input=req('data-deletion'),output=res();await handleInstagramMetaCompliance(input.request,output,input.url,db,config,{http});
-  assert.equal(output.status,200);assert.match(JSON.parse(output.body).confirmation_code,/^[a-f0-9]{32}$/);
-  if(index===0)db.state.connected=true; // A completed cleanup may later reconnect.
+test('legacy receipt reads only the local hash and preserves pending, complete and unknown states',async()=>{
+ const code='0123456789abcdef0123456789abcdef';
+ for(const [rows,status,body] of [
+  [[],404,{error:'not_found'}],
+  [[{completed_at:null,scope_completed:true}],200,{status:'pending'}],
+  [[{completed_at:new Date(),scope_completed:true}],200,{status:'completed'}],
+ ]){
+  const db={async query(sql,args){
+   assert.match(sql,/v2_instagram_legacy_deletion_status/);
+   assert.deepEqual(args,[deletionCodeHash(code)]);
+   return {rows};
+  }};
+  const output=res();
+  await serveInstagramDataDeletionStatus({method:'GET'},output,new URL('https://1ce.lol/privacy?deletion='+code),db);
+  assert.equal(output.status,status);
+  assert.deepEqual(JSON.parse(output.body),body);
  }
- assert.equal(upstream,1);assert.equal(db.state.connected,true);
- assert.equal(db.calls.filter(call=>call.sql.startsWith('INSERT INTO v2_instagram_data_deletions')).length,1);
-});
-
-test('unmapped pre-migration V2 history cannot be falsely acknowledged as v1-only deletion',async()=>{
- const db=pool({unmapped:true}),input=req('data-deletion'),output=res();let forwards=0;
- await handleInstagramMetaCompliance(input.request,output,input.url,db,config,{http:async(...args)=>{
-  forwards++;return legacyResponse('data-deletion')(...args);
- }});
- assert.equal(forwards,1);assert.equal(output.status,503);
- assert.deepEqual(JSON.parse(output.body),{error:'instagram_deletion_identity_unresolved'});
- assert.equal(db.calls.some(call=>call.sql.startsWith('INSERT INTO v2_instagram_data_deletions')),false);
 });

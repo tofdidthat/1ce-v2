@@ -1,23 +1,27 @@
 import {createHash,createHmac,timingSafeEqual} from 'node:crypto';
 import type {IncomingMessage,ServerResponse} from 'node:http';
 import type {QueryableV2} from '../../../packages/shared/contracts.js';
-import type {InstagramConfig} from './instagram-connection.js';
-import {scheduleInstagramDataDeletion} from './instagram-data-deletion.js';
+import {deletionCodeHash,scheduleInstagramDataDeletion} from './instagram-data-deletion.js';
 
 type CompliancePool=QueryableV2&{connect():Promise<QueryableV2&{release():void}>};
 type MetaAction='deauthorize'|'data-deletion';
-const legacyDefault='https://autoshorts-nine.vercel.app/api/instagram/auth';
+type MetaConfig={appSecret:string;webOrigin:string};
 const subjectHash=(metaUserId:string)=>createHash('sha256').update('instagram-meta-subject:'+metaUserId).digest('hex');
 const json=(res:ServerResponse,status:number,value:unknown)=>{
  res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer'});
  res.end(JSON.stringify(value));
 };
-function callbackUrl():string{
- const value=process.env.LEGACY_INSTAGRAM_META_CALLBACK_URL||legacyDefault;
- const url=new URL(value);
- if(url.protocol!=='https:'||url.hostname!=='autoshorts-nine.vercel.app'||url.pathname!=='/api/instagram/auth'||
-  url.search||url.hash||url.username||url.password)throw Error('Legacy Meta callback URL is not an approved v1 endpoint');
- return url.href;
+export function instagramMetaConfig(env=process.env):MetaConfig|null{
+ if(env.INSTAGRAM_META_CUTOVER_APPROVED!=='true')return null;
+ const {INSTAGRAM_CLIENT_SECRET,INSTAGRAM_APP_SECRET,WEB_ORIGIN}=env;
+ if(INSTAGRAM_CLIENT_SECRET&&INSTAGRAM_APP_SECRET&&INSTAGRAM_CLIENT_SECRET!==INSTAGRAM_APP_SECRET)return null;
+ const appSecret=INSTAGRAM_CLIENT_SECRET||INSTAGRAM_APP_SECRET;
+ if(!appSecret||appSecret.length<16||!WEB_ORIGIN)return null;
+ try{
+  const web=new URL(WEB_ORIGIN);
+  if(web.protocol!=='https:'||web.pathname!=='/'||web.search||web.hash||web.username||web.password)return null;
+  return {appSecret,webOrigin:web.origin};
+ }catch{return null;}
 }
 function decodeBase64Url(value:string):Buffer{
  if(!/^[A-Za-z0-9_-]+$/.test(value))throw Error('Malformed Meta signature');
@@ -61,27 +65,11 @@ async function signedRequestBody(req:IncomingMessage):Promise<string>{
  if(!signed||params.getAll('signed_request').length!==1||[...params.keys()].some(key=>key!=='signed_request'))throw Error('Missing Meta signed request');
  return signed;
 }
-async function forwardLegacy(action:MetaAction,signedRequest:string,http:typeof fetch):Promise<{ok:boolean;body:unknown}>{
- try{
-  const url=new URL(callbackUrl());url.searchParams.set('action',action);
-  const response=await http(url.href,{method:'POST',redirect:'error',headers:{'Content-Type':'application/x-www-form-urlencoded'},
-   body:new URLSearchParams({signed_request:signedRequest}),signal:AbortSignal.timeout(12000)});
-  const body:unknown=await response.json().catch(()=>null);
-  if(!response.ok||!body||typeof body!=='object'||Array.isArray(body))return {ok:false,body:null};
-  if(action==='deauthorize')return {ok:(body as Record<string,unknown>).success===true,body:{success:true}};
-  const data=body as Record<string,unknown>;
-  if(typeof data.confirmation_code!=='string'||!/^[a-f0-9]{32}$/.test(data.confirmation_code)||typeof data.url!=='string')return {ok:false,body:null};
-  const result=new URL(data.url);
-  if(result.origin!=='https://1ce.lol'||result.pathname!=='/privacy'||result.username||result.password||result.hash||
-   [...result.searchParams.keys()].length!==1||result.searchParams.get('deletion')!==data.confirmation_code)
-   return {ok:false,body:null};
-  return {ok:true,body:{url:result.href,confirmation_code:data.confirmation_code}};
- }catch{return {ok:false,body:null};}
-}
 async function revokeV2Connection(client:QueryableV2,metaUserId:string):Promise<boolean>{
   const found=await client.query(`SELECT user_id,generation FROM v2_instagram_connections
    WHERE instagram_user_id=$1 ORDER BY user_id`,[metaUserId]);
-  if(!found.rowCount)return false;
+  if(!found.rowCount)return !!(await client.query(`SELECT 1 FROM v2_instagram_compliance_subjects
+   WHERE instagram_user_id_hash=$1 LIMIT 1`,[subjectHash(metaUserId)])).rowCount;
   const owners=found.rows.map(row=>Number(row.user_id)).filter(Number.isSafeInteger);
   for(const owner of owners){
    await client.query('SELECT pg_advisory_xact_lock($1::bigint)',[owner]);
@@ -101,7 +89,7 @@ async function revokeV2Connection(client:QueryableV2,metaUserId:string):Promise<
   return true;
 }
 export async function handleInstagramMetaCompliance(req:IncomingMessage,res:ServerResponse,url:URL,db:CompliancePool,
- config:InstagramConfig|null,{http=fetch}:{http?:typeof fetch}={}):Promise<void>{
+ config:MetaConfig|null):Promise<void>{
  if(req.method!=='POST'){res.setHeader('Allow','POST');json(res,405,{error:'method_not_allowed'});return;}
  if([...url.searchParams.keys()].some(key=>key!=='action')||url.searchParams.getAll('action').length>1||
   (url.searchParams.has('action')&&!['deauthorize','data-deletion'].includes(url.searchParams.get('action')||''))){
@@ -115,10 +103,7 @@ export async function handleInstagramMetaCompliance(req:IncomingMessage,res:Serv
   json(res,400,{error:'invalid_meta_callback'});
   return;
  }
- if(!config){
-  const legacy=await forwardLegacy(action,signedRequest,http);
-  json(res,503,{error:legacy.ok?'v2_compliance_unavailable':'legacy_compliance_unavailable'});return;
- }
+ if(!config){json(res,503,{error:'v2_compliance_unavailable'});return;}
  let userId:string;
  try{userId=parseMetaSignedRequest(signedRequest,config.appSecret).userId;}
  catch{json(res,400,{error:'invalid_meta_callback'});return;}
@@ -129,28 +114,34 @@ export async function handleInstagramMetaCompliance(req:IncomingMessage,res:Serv
   // A receipt also stops a delayed retry from revoking a later reconnection.
   const requestHash=createHash('sha256').update(action+':'+signedRequest).digest('hex');
   await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[requestHash]);
-  const receipt=(await client.query('SELECT legacy_response FROM v2_instagram_compliance_receipts WHERE request_hash=$1',[requestHash])).rows[0];
-  if(!receipt){
-   if(action==='deauthorize')await revokeV2Connection(client,userId);
-   await client.query('INSERT INTO v2_instagram_compliance_receipts(request_hash,action) VALUES($1,$2)',[requestHash,action]);
+  const receipt=(await client.query('SELECT legacy_response,v2_only FROM v2_instagram_compliance_receipts WHERE request_hash=$1',[requestHash])).rows[0];
+  if(receipt&&!receipt.v2_only&&!receipt.legacy_response){
+   await client.query('ROLLBACK');
+   json(res,503,{error:'legacy_compliance_pending'});return;
   }
   const confirmationCode=createHmac('sha256',config.appSecret).update('meta-v2-deletion:'+requestHash).digest('hex').slice(0,32);
-  const v2Matched=action==='data-deletion'&&await scheduleInstagramDataDeletion(client,requestHash,confirmationCode,subjectHash(userId),userId);
-  const legacy=receipt?.legacy_response?{ok:true,body:receipt.legacy_response}:await forwardLegacy(action,signedRequest,http);
-  if(legacy.ok&&!receipt?.legacy_response)
-   await client.query('UPDATE v2_instagram_compliance_receipts SET legacy_response=$2::jsonb WHERE request_hash=$1',
-    [requestHash,JSON.stringify(legacy.body)]);
-  await client.query('COMMIT');
-  if(!legacy.ok){json(res,503,{error:'legacy_compliance_unavailable'});return;}
-  if(v2Matched==='unresolved'){json(res,503,{error:'instagram_deletion_identity_unresolved'});return;}
-  if(v2Matched){
-   // This acknowledges an accepted request, not completed deletion. The opaque
-   // URL reports pending until local cleanup and legacy handling both finish.
-   const status=new URL('/api/instagram/data-deletion-status',config.webOrigin);
-   status.searchParams.set('code',confirmationCode);
-   json(res,200,{url:status.href,confirmation_code:confirmationCode});return;
+  if(!receipt){
+   await client.query('INSERT INTO v2_instagram_compliance_receipts(request_hash,action,v2_only) VALUES($1,$2,true)',[requestHash,action]);
+   const identified=action==='deauthorize'?await revokeV2Connection(client,userId):
+    await scheduleInstagramDataDeletion(client,requestHash,confirmationCode,subjectHash(userId),userId)===true;
+   if(!identified){
+    await client.query('ROLLBACK');
+    json(res,503,{error:'instagram_compliance_identity_unresolved'});return;
+   }
   }
-  json(res,200,legacy.body);
+  if(action==='data-deletion'&&receipt){
+   const existing=await client.query(`SELECT 1 FROM v2_instagram_data_deletions
+    WHERE request_hash=$1 AND confirmation_hash=$2`,[requestHash,deletionCodeHash(confirmationCode)]);
+   if(!existing.rowCount){
+    await client.query('ROLLBACK');
+    json(res,503,{error:'instagram_compliance_receipt_unresolved'});return;
+   }
+  }
+  await client.query('COMMIT');
+  if(action==='deauthorize'){json(res,200,{success:true});return;}
+  const status=new URL('/api/instagram/data-deletion-status',config.webOrigin);
+  status.searchParams.set('code',confirmationCode);
+  json(res,200,{url:status.href,confirmation_code:confirmationCode});
  }catch{
   if(client)try{await client.query('ROLLBACK')}catch{}
   json(res,503,{error:'v2_compliance_unavailable'});return;
