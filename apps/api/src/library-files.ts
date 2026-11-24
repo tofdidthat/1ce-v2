@@ -20,6 +20,7 @@ type StorageV2={s3:S3Client|null;bucket:string};
 type DependencyOverridesV2={
  storageFactory?:()=>StorageV2;
  signUrl?:typeof getSignedUrl;
+ desktopUser?:CurrentUserV2;
 };
 type StoredPendingFileV2={
  id:number|string;
@@ -82,12 +83,14 @@ export async function handleLibraryFiles(
  req:IncomingMessage,res:ServerResponse,pathname:string,
  pool:TransactionPoolV2,currentUser:CurrentUserV2,{
   storageFactory=()=>({s3:client(),bucket:config().bucket as string}),
-  signUrl=getSignedUrl
+  signUrl=getSignedUrl,desktopUser
  }:DependencyOverridesV2={}
 ):Promise<boolean>{
  if(!pathname.startsWith('/api/library/files'))return false;
  if(!['GET','POST'].includes(req.method||'')){send(res,405,{error:'Method not allowed'});return true;}
- const user=await currentUser(req);
+ const desktop=Boolean(req.headers.authorization);
+ const desktopRoute=req.method==='POST'&&/^\/api\/library\/files\/(init|beats|[1-9][0-9]*\/complete)$/.test(pathname);
+ const user=desktop?(desktopRoute&&desktopUser?await desktopUser(req):null):await currentUser(req);
  if(!user){send(res,401,{error:'Not authenticated'});return true;}
  const {s3,bucket}=storageFactory(),cfg={bucket};
  if(!s3){send(res,503,{error:'Storage is not configured'});return true;}
@@ -96,6 +99,7 @@ export async function handleLibraryFiles(
   let data:Record<string,unknown>|null;try{data=await bodyJSON(req)}catch{send(res,400,{error:'Invalid request'});return true;}
   const title=typeof data?.title==='string'?data.title.trim():'';
   if(!title||title.length>180||typeof data?.audioFileId!=='number'||!Number.isSafeInteger(data.audioFileId)||data.audioFileId<1){send(res,400,{error:'Invalid beat'});return true;}
+  if(desktop&&data.coverFileId!=null){send(res,403,{error:'Desktop uploads cannot attach a cover'});return true;}
   const ids=[data.audioFileId,data.coverFileId,data.stemsFileId].filter(x=>x!=null);
   if(ids.some(x=>typeof x!=='number'||!Number.isSafeInteger(x)||x<1)){send(res,400,{error:'Invalid asset IDs'});return true;}
   // Take the same owner lock as Trash: a concurrent purge cannot retire a
@@ -109,11 +113,20 @@ export async function handleLibraryFiles(
    if(valid.get(data.audioFileId)!=='audio'||data.coverFileId!=null&&valid.get(data.coverFileId as number)!=='cover'||data.stemsFileId!=null&&valid.get(data.stemsFileId as number)!=='stems'){
     await db.query('ROLLBACK');send(res,400,{error:'Assets must be owned by you and ready'});return true;
    }
-   const existing=await db.query("SELECT id,deleted_at FROM library_beats WHERE user_id=$1 AND audio_file_id=$2",[user.id,data.audioFileId]);
-   if(existing.rows[0]){
+   const existing=desktop
+    ?await db.query(`SELECT b.id,b.deleted_at,b.stems_file_id,EXISTS(
+       SELECT 1 FROM v2_public_projects p WHERE p.user_id=b.user_id AND p.kind='beat' AND p.project_id=b.id
+      ) AS published FROM library_beats b WHERE b.user_id=$1 AND b.audio_file_id=$2`,[user.id,data.audioFileId])
+    :await db.query("SELECT id,deleted_at FROM library_beats WHERE user_id=$1 AND audio_file_id=$2",[user.id,data.audioFileId]);
+   const beat=existing.rows[0];
+   if(beat){
     await db.query('COMMIT');
-    if(existing.rows[0].deleted_at){send(res,409,{error:'Beat is in Trash. Restore it first.'});return true;}
-    send(res,200,{id:existing.rows[0].id,reused:true});return true;
+    if(beat.deleted_at){send(res,409,{error:'Beat is in Trash. Restore it first.'});return true;}
+    if(desktop&&beat.published){send(res,409,{error:'This audio already has a published beat'});return true;}
+    if(desktop&&Number(beat.stems_file_id||0)!==Number(data.stemsFileId||0)){
+     send(res,409,{error:'This audio already has a beat with different stems'});return true;
+    }
+    send(res,200,{id:beat.id,reused:true});return true;
    }
    const id=randomUUID();
    await db.query("INSERT INTO library_beats(id,user_id,title,audio_file_id,cover_file_id,stems_file_id) VALUES($1,$2,$3,$4,$5,$6)",[id,user.id,title,data.audioFileId,data.coverFileId||null,data.stemsFileId||null]);
@@ -159,6 +172,7 @@ export async function handleLibraryFiles(
    typeof size!=='number'||!Number.isSafeInteger(size)||size<=0||size>limits[kind]||typeof sha256!=='string'||!/^[a-f0-9]{64}$/.test(sha256)){
    send(res,400,{error:'Unsupported file type or size'});return true;
   }
+  if(desktop&&kind==='cover'){send(res,403,{error:'Desktop uploads cannot upload covers'});return true;}
   // Serialize per-owner reservations across replicas. Only pending keys
   // receive signed PUT URLs; verified keys are never writable by clients.
   if(await rateLimitExceeded(pool,'upload-init',user.id,uploadLimits.initPerHour,60)){
@@ -173,20 +187,29 @@ export async function handleLibraryFiles(
    if(existing.rows[0]){
     await db.query('COMMIT');send(res,200,{id:existing.rows[0].id,reused:true});return true;
    }
-   const quota=await db.query(`SELECT
-    count(*) FILTER (WHERE status='pending' AND created_at>now()-interval '30 minutes')::int AS pending_count,
-    COALESCE(sum(byte_size) FILTER (WHERE status='ready' OR
-      (status='pending' AND created_at>now()-interval '30 minutes')),0)::text AS reserved_bytes
-    FROM library_files WHERE user_id=$1`,[user.id]);
-   const maxStoredBytes=await accountStorageQuota(db,user.id);
-   const count=Number(quota.rows[0]?.pending_count||0);
-   const reserved=Number(quota.rows[0]?.reserved_bytes||0);
-   if(count>=uploadLimits.maxPending||reserved+size>maxStoredBytes){
-    await db.query('ROLLBACK');
-    send(res,429,{error:'Account upload quota reached'});return true;
+   const pending=desktop?await db.query(`SELECT id,object_key FROM library_files
+    WHERE user_id=$1 AND kind=$2 AND sha256=$3 AND status='pending'
+    AND content_type=$4 AND byte_size=$5 AND created_at>now()-interval '30 minutes'
+    ORDER BY id LIMIT 1`,[user.id,kind,sha256,contentType,size]):null;
+   if(pending?.rows[0]){
+    inserted=pending;
+    objectKey=decodePendingUploadRow({...pending.rows[0],kind,sha256,content_type:contentType,byte_size:size,status:'pending'},user.id).object_key;
+   }else{
+    const quota=await db.query(`SELECT
+     count(*) FILTER (WHERE status='pending' AND created_at>now()-interval '30 minutes')::int AS pending_count,
+     COALESCE(sum(byte_size) FILTER (WHERE status='ready' OR
+       (status='pending' AND created_at>now()-interval '30 minutes')),0)::text AS reserved_bytes
+     FROM library_files WHERE user_id=$1`,[user.id]);
+    const maxStoredBytes=await accountStorageQuota(db,user.id);
+    const count=Number(quota.rows[0]?.pending_count||0);
+    const reserved=Number(quota.rows[0]?.reserved_bytes||0);
+    if(count>=uploadLimits.maxPending||reserved+size>maxStoredBytes){
+     await db.query('ROLLBACK');
+     send(res,429,{error:'Account upload quota reached'});return true;
+    }
+    objectKey='staging/users/'+user.id+'/assets/'+kind+'/'+randomUUID()+'.'+ext;
+    inserted=await db.query("INSERT INTO library_files(user_id,kind,object_key,original_name,content_type,byte_size,status,sha256) VALUES($1,$2,$3,$4,$5,$6,'pending',$7) RETURNING id",[user.id,kind,objectKey,name,contentType,size,sha256]);
    }
-   objectKey='staging/users/'+user.id+'/assets/'+kind+'/'+randomUUID()+'.'+ext;
-   inserted=await db.query("INSERT INTO library_files(user_id,kind,object_key,original_name,content_type,byte_size,status,sha256) VALUES($1,$2,$3,$4,$5,$6,'pending',$7) RETURNING id",[user.id,kind,objectKey,name,contentType,size,sha256]);
    await db.query('COMMIT');
   }catch(err){try{await db.query('ROLLBACK');}catch{}throw err;}
   finally{db.release();}
@@ -194,16 +217,20 @@ export async function handleLibraryFiles(
    const uploadUrl=await signUrl(s3,new PutObjectCommand({Bucket:cfg.bucket,Key:objectKey,ContentType:contentType,ContentLength:size}),{expiresIn:300});
    send(res,200,{id:inserted.rows[0].id,uploadUrl,expiresIn:300});
   }catch(err){
-   await pool.query("DELETE FROM library_files WHERE id=$1 AND user_id=$2 AND status='pending'",[inserted.rows[0].id,user.id]);
+   if(!desktop)await pool.query("DELETE FROM library_files WHERE id=$1 AND user_id=$2 AND status='pending'",[inserted.rows[0].id,user.id]);
    throw err;
   }
   return true;
  }
  if(req.method==='POST'&&segments.length===5&&segments[4]==='complete'&&/^\d+$/.test(segments[3])){
   const id=segments[3];
+  if(desktop&&!validStoredFileId(id)){send(res,404,{error:'File not found'});return true;}
   const q=await pool.query('SELECT id,kind,sha256,object_key,content_type,byte_size,status FROM library_files WHERE id=$1 AND user_id=$2',[id,user.id]);
   const rawFile=q.rows[0];
   if(!rawFile){send(res,404,{error:'File not found'});return true;}
+  if(desktop&&rawFile.kind!=='audio'&&rawFile.kind!=='stems'){
+   send(res,404,{error:'File not found'});return true;
+  }
   if(rawFile.status==='ready'){
    if(!validStoredFileId(rawFile.id))throw Error('Invalid ready upload metadata');
    send(res,200,{ok:true,id:rawFile.id});return true;

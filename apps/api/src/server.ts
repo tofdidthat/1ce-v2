@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { randomBytes, createHash, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import pg from 'pg';
+import {desktopUploadUser,handleDesktopUploadAuth} from './desktop-upload-auth.js';
 import { handleLibraryFiles } from './library-files.js';
 import {handleAudioWaveform} from './audio-waveform.js';
 import {handlePublishing} from './publishing-api.js';
@@ -99,6 +100,10 @@ const server=createServer(async(req,res)=>{
  if(!allowed && req.headers.origin)return json(res,403,{error:'Origin not allowed'});
  try{
 
+  const desktopSession=parseCookies(req.headers.cookie)[cookieName];
+  const desktopSessionHash=desktopSession&&/^[a-f0-9]{64}$/.test(desktopSession)?hash(desktopSession):undefined;
+  if(await handleDesktopUploadAuth(req,res,pathname,pool,origin,desktopSessionHash))return;
+
   if(await handlePublishing(req,res,pathname,pool,currentUser))return;
   if(await handleProfileIdentity(req,res,pathname,pool,currentUser))return;
   if(await handleProfileFollows(req,res,pathname,pool,currentUser))return;
@@ -106,7 +111,7 @@ const server=createServer(async(req,res)=>{
   if(await handlePublicProfiles(req,res,pathname,pool,currentUser))return;
   if(await handleTrash(req,res,pathname,pool,currentUser))return;
   if(await handleProjectActions(req,res,pathname,pool,currentUser))return;
-  if(await handleLibraryFiles(req,res,pathname,pool,currentUser))return;
+  if(await handleLibraryFiles(req,res,pathname,pool,currentUser,{desktopUser:request=>desktopUploadUser(request,pool)}))return;
 
   if(pathname==='/auth/google'&&req.method==='GET'){
    const config=googleConfig();
