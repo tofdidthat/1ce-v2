@@ -1,9 +1,19 @@
 {
   "git": {
     "deploymentEnabled": {
-      "agent/1/T061-meta-v2-independencia": false
+      "agent/1/T061-meta-v2-independencia": false,
+      "agent/1/T063-desktop-upload-v2": false
     }
   },
+  "headers": [
+    {
+      "source": "/app/desktop-upload",
+      "headers": [
+        { "key": "Content-Security-Policy", "value": "frame-ancestors 'none'" },
+        { "key": "Referrer-Policy", "value": "no-referrer" }
+      ]
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/instagram/data-deletion-status",

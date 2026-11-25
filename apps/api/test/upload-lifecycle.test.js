@@ -46,7 +46,7 @@ function setup(){
   if(sql.startsWith('SELECT storage_limit_bytes')){
    return {rows:[{storage_limit_bytes:String(planBytes.get(args[0])??10*1024*1024*1024)}],rowCount:1};
   }
-  if(sql.startsWith('SELECT\n    count(*) FILTER')){
+  if(/^SELECT\s+count\(\*\) FILTER/.test(sql)){
    const owned=[...files.values()].filter(f=>f.user_id===args[0]);
    const pending=owned.filter(f=>f.status==='pending'&&f.pendingValid!==false);
    const reserved=owned.filter(f=>f.status==='ready'||f.status==='pending'&&f.pendingValid!==false).reduce((sum,f)=>sum+f.byte_size,0);

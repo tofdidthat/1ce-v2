@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import './styles.css';
 import { TermsPage, PrivacyPage } from './legal';
+import DesktopUploadConsent from './desktop-upload-consent';
 import { LoginPage } from './login';
 import WorkspaceV2 from './workspace-v1';
 import {isAccountUserV2,type AccountUserV2} from './account-identity-v2';
@@ -92,5 +93,5 @@ function SharedProjectPage(){
  </div>;
 }
 
-function App() { return <BrowserRouter><Routes><Route path="/" element={<Landing/>}/><Route path="/login" element={<LoginPage/>}/><Route path="/register" element={<Register/>}/><Route path="/terms" element={<TermsPage/>}/><Route path="/privacy" element={<PrivacyPage/>}/><Route path="/app" element={<LoginPage/>}/><Route path="/app/library" element={<WorkspaceRoute/>}/><Route path="/app/discover" element={<WorkspaceRoute/>}/><Route path="/app/upload" element={<WorkspaceRoute/>}/><Route path="/app/settings" element={<WorkspaceRoute/>}/><Route path="/app/profile" element={<WorkspaceRoute/>}/><Route path="/app/profile/edit" element={<WorkspaceRoute/>}/><Route path="/u/:id" element={<WorkspaceRoute/>}/><Route path="/shared/:token" element={<SharedProjectPage/>}/><Route path="*" element={<Navigate to="/" replace/>}/></Routes></BrowserRouter> }
+function App() { return <BrowserRouter><Routes><Route path="/" element={<Landing/>}/><Route path="/login" element={<LoginPage/>}/><Route path="/register" element={<Register/>}/><Route path="/terms" element={<TermsPage/>}/><Route path="/privacy" element={<PrivacyPage/>}/><Route path="/app" element={<LoginPage/>}/><Route path="/app/desktop-upload" element={<PublicPage><DesktopUploadConsent/></PublicPage>}/><Route path="/app/library" element={<WorkspaceRoute/>}/><Route path="/app/discover" element={<WorkspaceRoute/>}/><Route path="/app/upload" element={<WorkspaceRoute/>}/><Route path="/app/settings" element={<WorkspaceRoute/>}/><Route path="/app/profile" element={<WorkspaceRoute/>}/><Route path="/app/profile/edit" element={<WorkspaceRoute/>}/><Route path="/u/:id" element={<WorkspaceRoute/>}/><Route path="/shared/:token" element={<SharedProjectPage/>}/><Route path="*" element={<Navigate to="/" replace/>}/></Routes></BrowserRouter> }
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);
