@@ -19,7 +19,7 @@ import { handlePublicProfiles } from './public-profiles.js';
 import { handleProfileFollows } from './profile-follows.js';
 import { handleProfileIdentity } from './profile-identity.js';
 import {parseGoogleAccessToken,parseVerifiedGoogleUser,type VerifiedGoogleV2} from './google-identity.js';
-type AccountV2={id:number;email:string;name:string|null;picture:string|null;username?:string|null;has_avatar?:boolean;avatar_updated_at?:string|null};
+type AccountV2={id:number;email:string;name:string|null;picture:string|null;username?:string|null;has_avatar?:boolean;avatar_updated_at?:string|null;web_beta:boolean};
 type GoogleConfigV2={clientId:string|undefined;clientSecret:string|undefined;redirectUri:string|undefined};
 const scrypt=promisify(scryptCallback) as (password:string,salt:Buffer,size:number,options:{N:number;r:number;p:number})=>Promise<Buffer>;
 const pool=new pg.Pool({connectionString:process.env.DATABASE_URL,ssl:process.env.DATABASE_SSL==='true'?{rejectUnauthorized:true}:undefined});
@@ -43,14 +43,15 @@ async function verify(password:string,stored:string|undefined|null):Promise<bool
  }finally{activePasswordChecks--;}
 }
 function cookie(token:string,maxAge:number){return cookieName+'='+token+'; HttpOnly; Secure; SameSite=None; Path=/; Max-Age='+maxAge;}
-async function currentUser(req:IncomingMessage):Promise<AccountV2|null>{const token=parseCookies(req.headers.cookie)[cookieName];if(!token||!/^[a-f0-9]{64}$/.test(token))return null;const q=await pool.query('SELECT u.id,u.email,u.name,u.picture,u.username,(u.avatar_key IS NOT NULL) AS has_avatar,u.avatar_updated_at FROM account_sessions s JOIN account_users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>now()',[hash(token)]);return q.rows[0]||null;}
+async function currentUser(req:IncomingMessage):Promise<AccountV2|null>{const token=parseCookies(req.headers.cookie)[cookieName];if(!token||!/^[a-f0-9]{64}$/.test(token))return null;const q=await pool.query('SELECT u.id,u.email,u.name,u.picture,u.username,(u.avatar_key IS NOT NULL) AS has_avatar,u.avatar_updated_at,u.web_beta FROM account_sessions s JOIN account_users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>now()',[hash(token)]);return q.rows[0]||null;}
 
 const googleStateCookie='onece_v2_google_state';
 const shaBase64=(s:string)=>createHash('sha256').update(s).digest('base64url');
 const validCode=(s:unknown):s is string=>typeof s==='string'&&/^[A-Za-z0-9_-]{43}$/.test(s);
 const googleConfig=()=>({clientId:process.env.GOOGLE_CLIENT_ID,clientSecret:process.env.GOOGLE_CLIENT_SECRET,redirectUri:process.env.GOOGLE_REDIRECT_URI});
 const redirect=(res:ServerResponse,url:string,headers:Record<string,string>={})=>{res.writeHead(302,{'Location':url,'Cache-Control':'no-store',...headers});res.end();};
-const googleError=(res:ServerResponse)=>redirect(res,origin+'/app?login=error',{'Set-Cookie':googleStateCookie+'=; HttpOnly; Secure; SameSite=Lax; Path=/auth/google; Max-Age=0'});
+const googleError=(res:ServerResponse,reason:'error'|'beta_access'='error')=>redirect(res,origin+'/app?login='+reason,{'Set-Cookie':googleStateCookie+'=; HttpOnly; Secure; SameSite=Lax; Path=/auth/google; Max-Age=0'});
+class GoogleBetaAccessRequired extends Error {}
 async function requestGoogleUser(code:string,config:GoogleConfigV2):Promise<VerifiedGoogleV2>{
  const tokenResponse=await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({code,client_id:config.clientId!,client_secret:config.clientSecret!,redirect_uri:config.redirectUri!,grant_type:'authorization_code'}),signal:AbortSignal.timeout(10000)});
  if(!tokenResponse.ok)throw new Error('Google token exchange failed');
@@ -83,7 +84,9 @@ async function linkGoogleUser(client:PoolClient,profile:VerifiedGoogleV2):Promis
   await client.query('UPDATE account_users SET google_id=$1,password_hash=CASE WHEN email_verified THEN password_hash ELSE NULL END,email_verified=true,name=COALESCE($2,name),picture=COALESCE($3,picture),updated_at=now() WHERE id=$4',[profile.sub,profile.name||null,profile.picture||null,existing.id]);
   return existing.id;
  }
- const created=await client.query('INSERT INTO account_users(google_id,email,email_verified,name,picture) VALUES($1,$2,true,$3,$4) RETURNING id',[profile.sub,email,profile.name||null,profile.picture||null]);
+ const allowedEmails=(process.env.WEB_BETA_GOOGLE_EMAILS||'').split(',').map(value=>value.trim().toLowerCase());
+ if(!allowedEmails.includes(email))throw new GoogleBetaAccessRequired();
+ const created=await client.query('INSERT INTO account_users(google_id,email,email_verified,name,picture,web_beta) VALUES($1,$2,true,$3,$4,true) RETURNING id',[profile.sub,email,profile.name||null,profile.picture||null]);
  return created.rows[0].id;
 }
 
@@ -143,6 +146,7 @@ const server=createServer(async(req,res)=>{
     await client.query('COMMIT');
    }catch(err){
     try{await client.query('ROLLBACK');}catch{}
+    if(err instanceof GoogleBetaAccessRequired)return googleError(res,'beta_access');
     console.error('Google callback failed:',redactSensitiveLogText(String((err as Error)?.message||'')));
     return googleError(res);
    }finally{client.release();}

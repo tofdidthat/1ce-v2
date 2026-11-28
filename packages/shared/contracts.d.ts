@@ -19,6 +19,7 @@ export type AccountUserV2={
  username?:string|null;
  has_avatar?:boolean;
  avatar_updated_at?:string|null;
+ web_beta?:boolean;
 };
 export type AccountSummaryV2={
  id:AccountIdV2;

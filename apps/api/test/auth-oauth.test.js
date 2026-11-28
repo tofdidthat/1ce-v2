@@ -12,10 +12,11 @@ const passwordHash='scrypt$'+salt.toString('hex')+'$'+scryptSync('correct-secret
 
 function fixture(){
  const user={id:42,email:'producer@example.test',name:'Producer',picture:null,username:'producer',
-  password_hash:passwordHash,email_verified:true,google_id:'google-sub-42'};
+  password_hash:passwordHash,email_verified:true,google_id:'google-sub-42',web_beta:false};
+ const googleUser={sub:user.google_id,email:user.email,email_verified:true,name:user.name,picture:null};
  const sessions=new Map(),attempts=new Map(),queries=[],googleFetches=[],rates=new Map();
  let nextAttempt=1;
- const db={user,sessions,attempts,queries,googleFetches,rates,async query(sql,args=[]){
+ const db={user,googleUser,sessions,attempts,queries,googleFetches,rates,async query(sql,args=[]){
   queries.push({sql,args});
   if(sql==='BEGIN'||sql==='COMMIT'||sql==='ROLLBACK')return {rowCount:0,rows:[]};
   if(sql.startsWith('INSERT INTO v2_api_rate_limits')){
@@ -25,8 +26,8 @@ function fixture(){
   if(sql==='SELECT 1')return {rowCount:1,rows:[{'?column?':1}]};
   if(sql.includes('FROM account_sessions s JOIN account_users u')){
    const s=sessions.get(args[0]);
-   const active=s&&s.expiresAt==='mock-future';
-   return {rowCount:active?1:0,rows:active?[{id:user.id,email:user.email,name:user.name,picture:user.picture,username:user.username,has_avatar:false,avatar_updated_at:null}]:[]};
+   const active=s&&s.userId===user.id&&s.expiresAt==='mock-future';
+   return {rowCount:active?1:0,rows:active?[{id:user.id,email:user.email,name:user.name,picture:user.picture,username:user.username,has_avatar:false,avatar_updated_at:null,web_beta:user.web_beta}]:[]};
   }
   if(sql.startsWith('SELECT id,email,name,picture,password_hash,email_verified FROM account_users')){
    return {rowCount:args[0]===user.email?1:0,rows:args[0]===user.email?[user]:[]};
@@ -52,6 +53,13 @@ function fixture(){
   }
   if(sql.startsWith('SELECT id FROM account_users WHERE lower(email)=$1 AND id<>$2'))return {rowCount:0,rows:[]};
   if(sql.startsWith('UPDATE account_users SET email='))return {rowCount:1,rows:[]};
+  if(sql.startsWith('SELECT id,google_id,email_verified FROM account_users WHERE lower(email)=')){
+   return {rowCount:0,rows:[]};
+  }
+  if(sql.startsWith('INSERT INTO account_users(google_id,email,email_verified,name,picture,web_beta)')&&sql.includes('VALUES($1,$2,true,$3,$4,true)')){
+   Object.assign(user,{id:43,google_id:args[0],email:args[1],name:args[2],picture:args[3],web_beta:true});
+   return {rowCount:1,rows:[{id:user.id}]};
+  }
   if(sql.startsWith('UPDATE account_google_login_attempts SET user_id=$1,')){
    const a=attempts.get(args[2]);
    if(!a)throw Error('No attempt to link');
@@ -94,7 +102,7 @@ const cookieValue=(value,name)=>{
 };
 
 const originalQuery=apiPool.query,originalConnect=apiPool.connect,originalFetch=globalThis.fetch;
-const envKeys=['GOOGLE_CLIENT_ID','GOOGLE_CLIENT_SECRET','GOOGLE_REDIRECT_URI'];
+const envKeys=['GOOGLE_CLIENT_ID','GOOGLE_CLIENT_SECRET','GOOGLE_REDIRECT_URI','WEB_BETA_GOOGLE_EMAILS'];
 const originalEnv=Object.fromEntries(envKeys.map(k=>[k,process.env[k]]));
 let h;
 test.beforeEach(()=>{
@@ -104,10 +112,11 @@ test.beforeEach(()=>{
  process.env.GOOGLE_CLIENT_ID='test-client-id';
  process.env.GOOGLE_CLIENT_SECRET='mock-not-real';
  process.env.GOOGLE_REDIRECT_URI='https://example.test/auth/google/callback';
+ delete process.env.WEB_BETA_GOOGLE_EMAILS;
  globalThis.fetch=async(url)=>{
   h.googleFetches.push(String(url));
   return {ok:true,json:async()=>String(url).includes('/token')?{access_token:'mock-only-access-token'}:
-   {sub:h.user.google_id,email:h.user.email,email_verified:true,name:h.user.name,picture:null}};
+   h.googleUser};
  };
 });
 test.after(()=>{
@@ -263,6 +272,30 @@ test('Google exchange rejects malformed codes without reaching database',async()
  assert.equal(res.status,400);
  assert.equal(h.attempts.size,0);
  assert.equal(h.sessions.size,0);
+});
+
+test('new Google sign-ins require a listed verified identity and retain the web beta marker in session',async()=>{
+ h.googleUser.sub='new-google-sub';
+ h.googleUser.email='new-producer@example.test';
+ const verifier=Buffer.alloc(32,11).toString('base64url');
+ async function callback(){
+  const start=await send('GET','/auth/google?challenge='+shaBase64(verifier));
+  const state=new URL(start.headers.Location).searchParams.get('state');
+  return send('GET','/auth/google/callback?state='+state+'&code=mock-code',undefined,{cookie:'onece_v2_google_state='+state});
+ }
+ for(const allowed of ['', 'other@example.test, not-new-producer@example.test']){
+  process.env.WEB_BETA_GOOGLE_EMAILS=allowed;
+  assert.match((await callback()).headers.Location,/\/app\?login=beta_access$/);
+ }
+ assert.equal(h.queries.some(({sql})=>sql.startsWith('INSERT INTO account_users')),false);
+ assert.equal(h.sessions.size,0);
+
+ process.env.WEB_BETA_GOOGLE_EMAILS='other@example.test, NEW-PRODUCER@EXAMPLE.TEST ';
+ const loginCode=new URL((await callback()).headers.Location).searchParams.get('login_code');
+ const exchange=await send('POST','/auth/google/exchange',{loginCode,verifier});
+ assert.equal(exchange.status,200);
+ const cookie=exchange.headers['Set-Cookie'].split(';')[0];
+ assert.equal((await send('GET','/auth/me',undefined,{cookie})).json.user.web_beta,true);
 });
 
 test('untrusted browser Origin is denied before auth/database work',async()=>{

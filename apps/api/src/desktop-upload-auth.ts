@@ -52,10 +52,12 @@ export async function handleDesktopUploadAuth(
    accountId>2147483647){
    send(res,400,{error:'Invalid authorization request'});return true;
   }
-  const session=await pool.query('SELECT id,user_id FROM account_sessions WHERE token_hash=$1 AND expires_at>now()',[sessionHash]);
+  const session=await pool.query(`SELECT s.id,s.user_id,u.web_beta FROM account_sessions s
+   JOIN account_users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>now()`,[sessionHash]);
   const active=session.rows[0];
   if(!active){send(res,401,{error:'Not authenticated'});return true;}
   if(active.user_id!==accountId){send(res,409,{error:'Account changed. Reload before authorizing.'});return true;}
+  if(active.web_beta){send(res,403,{error:'Desktop upload is unavailable in the web beta'});return true;}
   if(await rateLimitExceeded(pool,'desktop-upload-consent',accountId,30,60)){
    send(res,429,{error:'Too many authorization requests'});return true;
   }
@@ -63,7 +65,8 @@ export async function handleDesktopUploadAuth(
    AND COALESCE(token_expires_at,code_expires_at)<=now()`,[active.id]);
   const code=randomToken();
   const inserted=await pool.query(`INSERT INTO account_desktop_upload_grants(code_hash,session_id,challenge)
-   SELECT $1,id,$3 FROM account_sessions WHERE id=$2 AND expires_at>now() RETURNING session_id`,
+   SELECT $1,s.id,$3 FROM account_sessions s JOIN account_users u ON u.id=s.user_id
+   WHERE s.id=$2 AND s.expires_at>now() AND NOT u.web_beta RETURNING session_id`,
    [hash(code),active.id,challenge]);
   if(!inserted.rowCount){send(res,401,{error:'Not authenticated'});return true;}
   send(res,200,{code});return true;
@@ -77,9 +80,9 @@ export async function handleDesktopUploadAuth(
  const expiresIn=1800;
  const exchanged=await pool.query(`UPDATE account_desktop_upload_grants AS g
   SET token_hash=$3,token_expires_at=LEAST(s.expires_at,now()+ $4::int * interval '1 second')
-  FROM account_sessions AS s
+  FROM account_sessions s JOIN account_users u ON u.id=s.user_id
   WHERE g.code_hash=$1 AND g.challenge=$2 AND g.token_hash IS NULL AND g.code_expires_at>now()
-  AND s.id=g.session_id AND s.expires_at>now()
+  AND s.id=g.session_id AND s.expires_at>now() AND NOT u.web_beta
   RETURNING s.user_id, GREATEST(0,FLOOR(EXTRACT(EPOCH FROM (g.token_expires_at-now()))))::int AS expires_in`,
   [hash(code),createHash('sha256').update(verifier).digest('base64url'),hash(token),expiresIn]);
  const grant=exchanged.rows[0];
@@ -92,7 +95,8 @@ export async function desktopUploadUser(req:IncomingMessage,pool:QueryableV2):Pr
  if(!token||req.headers.origin||req.headers.cookie)return null;
  const result=await pool.query(`SELECT s.user_id AS id FROM account_desktop_upload_grants g
   JOIN account_sessions s ON s.id=g.session_id
-  WHERE g.token_hash=$1 AND g.token_expires_at>now() AND s.expires_at>now()`,[hash(token)]);
+  JOIN account_users u ON u.id=s.user_id
+  WHERE g.token_hash=$1 AND g.token_expires_at>now() AND s.expires_at>now() AND NOT u.web_beta`,[hash(token)]);
  const id=result.rows[0]?.id;
  return typeof id==='number'?{id}:null;
 }

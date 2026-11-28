@@ -40,7 +40,7 @@ export default function DesktopUploadConsent(){
  },[valid]);
 
  async function authorize(){
-  if(!valid||!api||!account||sending)return;
+  if(!valid||!api||!account||account.web_beta||sending)return;
   setSending(true);
   setNotice('');
   try{
@@ -61,6 +61,12 @@ export default function DesktopUploadConsent(){
    setSending(false);
   }
  }
+
+ if(account?.web_beta)return <section className="auth-card">
+  <h1>Desktop upload unavailable</h1>
+  <p>Upload audio from your web library during the beta.</p>
+  <Link to="/app/library">Go to library</Link>
+ </section>;
 
  return <section className="auth-card">
   <h1>Authorize 1CE desktop upload</h1>
