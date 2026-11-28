@@ -34,12 +34,14 @@ async function invoke(route,data,userId){
  assert.equal(await handleLibraryFiles(req,res,route,db,async()=>({id:userId}),opts),true);
  return res;
 }
-async function patchProject(path,data,userId){
- const req=Readable.from([Buffer.from(JSON.stringify(data))]);req.method='PATCH';req.headers={};
+async function projectAction(method,path,data,userId){
+ const req=Readable.from(data===undefined?[]:[Buffer.from(JSON.stringify(data))]);
+ req.method=method;req.headers={'content-type':'application/json'};
  const res={status:0,body:null,writeHead(status){this.status=status;},end(raw){this.body=raw?JSON.parse(raw):null;}};
  assert.equal(await handleProjectActions(req,res,'/api/library/projects/'+path,db,async()=>userId==null?null:{id:userId}),true);
  return res;
 }
+const patchProject=(path,data,userId)=>projectAction('PATCH',path,data,userId);
 async function getFile(path,userId){
  const req=Readable.from([]);req.method='GET';req.headers={};
  const res={status:0,headers:{},body:null,writeHead(status,headers={}){this.status=status;this.headers=headers;},end(raw){this.body=raw?JSON.parse(raw):null;}};
@@ -253,6 +255,33 @@ try{
   'Stems edits must not change pack membership');
  assert.equal(Number((await getFile('beat/'+beatOne.body.id,a)).body.beat.stems_file_id),stemsA,
   'Existing beat and pack shared stems reference must remain unchanged');
+
+ // T068 binds an empty private beat exactly once with independently verified hashes.
+ const bindingPath=path+'/stems-binding';
+ const binding=(method,data,owner=a)=>projectAction(method,bindingPath,data,owner);
+ const firstBinding={audioFileId:String(audioA2),audioSha256:sha('audio-a2.mp3'),
+  stemsFileId:String(stemsA),stemsSha256:sha('stems-a.zip')};
+ const secondBinding={...firstBinding,stemsFileId:String(stemsA2),stemsSha256:sha('stems-replacement.zip')};
+ assert.equal((await binding('GET',undefined,null)).status,401);
+ assert.equal((await binding('GET',undefined,b)).status,404);
+ assert.equal((await binding('POST',firstBinding,b)).status,404);
+ assert.equal((await binding('POST',{...firstBinding,audioSha256:sha('wrong audio')})).status,409);
+ assert.equal((await binding('POST',{...firstBinding,audioFileId:String(audioA)})).status,409);
+ assert.equal((await binding('POST',{...firstBinding,stemsFileId:String(stemsB),stemsSha256:sha('foreign-stems.zip')})).status,400);
+ assert.equal((await binding('POST',{...firstBinding,stemsFileId:String(stemsPending),stemsSha256:sha('pending-stems.zip')})).status,400);
+ assert.equal((await binding('POST',{...firstBinding,stemsSha256:sha('wrong ZIP')})).status,400);
+ assert.equal((await binding('GET')).body.stemsFileId,null);
+ const contenders=await Promise.all([firstBinding,secondBinding].map(item=>binding('POST',item)));
+ assert.deepEqual(contenders.map(value=>value.status).sort(),[200,409]);
+ const winner=[firstBinding,secondBinding][contenders.findIndex(value=>value.status===200)];
+ assert.deepEqual((await binding('GET')).body,{beatId:beatTwo.body.id,...winner});
+ assert.equal((await binding('POST',winner)).body.reused,true);
+ const rejected=winner===firstBinding?secondBinding:firstBinding;
+ assert.equal((await binding('POST',rejected)).status,409);
+ assert.equal(await count('SELECT count(*)::int AS n FROM library_beats WHERE user_id=$1 AND audio_file_id=$2',[a,audioA2]),1);
+ await db.query("INSERT INTO v2_public_projects(user_id,kind,project_id) VALUES($1,'beat',$2)",[a,beatTwo.body.id]);
+ assert.equal((await binding('GET')).status,404);
+ assert.equal((await binding('POST',winner)).status,404);
 
  // Ready-only dedup: reinit a ready stored SHA reuses owner file without URL.
  const existing=await invoke('/api/library/files/init',{

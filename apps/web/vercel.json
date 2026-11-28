@@ -1,6 +1,7 @@
 {
   "git": {
     "deploymentEnabled": {
+      "agent/1/T068-stems-vinculo": false,
       "agent/1/T061-meta-v2-independencia": false,
       "agent/1/T063-desktop-upload-v2": false,
       "agent/1/T065-beta-web": false
