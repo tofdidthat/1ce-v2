@@ -75,6 +75,9 @@
 .onece-player-time span { color: #8e8799; }
 .onece-player-controls { display: flex; align-items: center; justify-self: end; gap: 13px; }
 .onece-player-transport,.onece-player-options { display: flex; align-items: center; gap: 6px; }
+.onece-player-preview { flex: 0 0 auto; min-height: 34px; padding: 0 9px; border: 1px solid #ffffff2a; border-radius: 999px; background: transparent; color: #e0dae8; font-family: inherit; font-size: 11px; font-weight: 600; line-height: 1; cursor: pointer; }
+.onece-player-preview:hover { border-color: #c4b5fd; }
+.onece-player-preview[aria-pressed="true"] { border-color: #c4b5fd; background: #c4b5fd; color: #211534; }
 .onece-player-icon { position: relative; display: grid; place-items: center; flex: 0 0 32px; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: #b7b1c1; cursor: pointer; transition: color 150ms ease, background 150ms ease; }
 .onece-player-icon svg { width: 17px; height: 17px; stroke-width: 1.8; }
 .onece-player-icon:hover:not(:disabled) { color: #fff; background: #ffffff09; }
@@ -946,6 +949,7 @@
  .onece-player-controls{gap:3px}
  .v2-active-player .onece-player-controls .onece-player-icon{width:32px;height:32px;flex-basis:32px}
  .v2-active-player .onece-player-controls .onece-player-play{width:36px;height:36px;flex-basis:36px}
+ .onece-player-preview{padding-inline:6px;margin-right:3px}
 }
 
 /* Drag-and-drop is visible only while a file is over an editable pack. */

@@ -26,6 +26,19 @@ export function upcomingQueueV2<T extends QueueIdentity>(queue:readonly T[],now:
  return queue.slice(at+1);
 }
 
+export function nextQueueTrackV2<T extends QueueIdentity>(
+ queue:readonly T[],current:T,repeat:'off'|'all'|'one',shuffle:boolean,random=Math.random
+):T|null{
+ if(repeat==='one')return current;
+ const key=queueTrackKeyV2(current);
+ if(shuffle&&queue.length>1){
+  const others=queue.filter(track=>queueTrackKeyV2(track)!==key);
+  return others[Math.floor(random()*others.length)]??null;
+ }
+ const index=queue.findIndex(track=>queueTrackKeyV2(track)===key);
+ return queue[index+1]??(repeat==='all'?queue[0]??null:null);
+}
+
 export function tracksFromPlayableProjectV2(project:PlayableProjectV2):PlaybackQueueTrackV2[]{
  const beats=normalizeLibraryProjectsV2({beats:project.tracks},project.owner_id).beats;
  if(!beats.length||beats.length!==project.tracks.length)throw Error('Invalid playable project tracks');
