@@ -1,6 +1,6 @@
 // Visual-only audio dock. No hooks, no Audio elements, no API requests.
 // LibraryItemsV2 remains the sole owner of playback, queue and audio lifecycle.
-// Keep DOM/classes unchanged so Home, Catalog and Saves show one player.
+// Home, Catalog and Saves share the same dock.
 import React from 'react';
 import {Play,Pause,Shuffle,Repeat,Repeat1,ListMusic,Volume2,VolumeX,X,Music2} from 'lucide-react';
 import {upcomingQueueV2,queueTrackKeyV2,type PlaybackQueueTrackV2} from './playback-queue-v2';
@@ -17,6 +17,8 @@ type Props={
  queue:PlaybackQueueTrackV2[];
  repeat:RepeatMode;
  shuffle:boolean;
+ preview:boolean;
+ togglePreview:()=>void;
  popup:PopupMode;
  muted:boolean;
  volume:number;
@@ -38,7 +40,7 @@ type Props={
  SkipForwardIcon:React.ComponentType;
 };
 
-export default function PlayerDockV2({current,coverUrl,waveBars,elapsed,duration,playing,queue,repeat,shuffle,popup,muted,volume,playerError,audioRef,previous,toggle,next,setShuffle,setRepeat,setPopup,setMuted,setVolume,setCurrent,setActivePackId,setElapsed,formatTime,SkipBackIcon,SkipForwardIcon}:Props){
+export default function PlayerDockV2({current,coverUrl,waveBars,elapsed,duration,playing,queue,repeat,shuffle,preview,togglePreview,popup,muted,volume,playerError,audioRef,previous,toggle,next,setShuffle,setRepeat,setPopup,setMuted,setVolume,setCurrent,setActivePackId,setElapsed,formatTime,SkipBackIcon,SkipForwardIcon}:Props){
  return <>
   <div className="onece-global-player">
    <div className="onece-player-cover" aria-hidden="true">{coverUrl?<img src={coverUrl} alt=""/>:<Music2 size={20}/>}</div>
@@ -55,6 +57,7 @@ export default function PlayerDockV2({current,coverUrl,waveBars,elapsed,duration
     <button type="button" className="onece-player-icon" title="Next" aria-label="Next" disabled={queue.length<2&&repeat!=='all'} onClick={next}><SkipForwardIcon/></button>
     </div>
     <div className="onece-player-options" role="group" aria-label="Playback options">
+    <button type="button" className="onece-player-preview" title="Advance after 29 seconds of playback" aria-pressed={preview} onClick={togglePreview}>Preview</button>
     <button type="button" className={'onece-player-icon'+(shuffle?' is-active':'')} title="Shuffle" aria-label="Shuffle" aria-pressed={shuffle} onClick={()=>setShuffle(v=>!v)}><Shuffle/></button>
     <button type="button" className={'onece-player-icon'+(repeat!=='off'?' is-active':'')} title={'Repeat: '+repeat} aria-label="Repeat" aria-pressed={repeat!=='off'} onClick={()=>setRepeat(v=>v==='off'?'all':v==='all'?'one':'off')}>{repeat==='one'?<Repeat1/>:<Repeat/>}</button>
     <button type="button" className={'onece-player-icon onece-player-queue'+(popup==='queue'?' is-active':'')} title="Playback queue" aria-label="Playback queue" aria-expanded={popup==='queue'} onClick={()=>setPopup(v=>v==='queue'?null:'queue')}><ListMusic/>{upcomingQueueV2(queue,current).length>0&&<span className="onece-queue-count">{upcomingQueueV2(queue,current).length}</span>}</button>

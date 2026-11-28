@@ -3,7 +3,8 @@
     "deploymentEnabled": {
       "agent/1/T061-meta-v2-independencia": false,
       "agent/1/T063-desktop-upload-v2": false,
-      "agent/1/T065-beta-web": false
+      "agent/1/T065-beta-web": false,
+      "agent/1/T069-player-preview": false
     }
   },
   "headers": [

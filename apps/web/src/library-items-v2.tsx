@@ -4,6 +4,7 @@ import {createPortal} from 'react-dom';
 import {Play,Pause,SkipBack,SkipForward,Shuffle,Repeat,Repeat1,ListMusic,Volume2,VolumeX,X,Music2,ChevronLeft,Bookmark,Eye,EyeOff,ListPlus,FolderPlus,Pencil,Image as ImageIcon,Download,Layers,Trash2,ChevronRight,Link2} from 'lucide-react';
 import './library-items-v2.css';
 import PlayerDockV2 from './player-dock-v2';
+import {PlayerPreviewV2} from './player-preview-v2';
 import {loadWaveform,useWaveform} from './player-waveform-v2';
 import {subscribeV2DataChanges,subscribeV2Resume} from './data-refresh-v2';
 import useProjectFlagsV2 from './project-flags-v2';
@@ -16,7 +17,7 @@ import {savedProjectKeyV2} from './project-identity-v2';
 import {createProjectShareLinkV2} from './project-requests-v2';
 import {fetchPlayableProjectV2,publicProjectLinkV2,downloadAuthorizedMp3V2} from './public-project-actions-v2';
 import {downloadOwnedProjectV2} from './owner-download-v2';
-import {appendDistinctQueueV2,upcomingQueueV2,queueTrackKeyV2,tracksFromPlayableProjectV2,type PlaybackQueueTrackV2} from './playback-queue-v2';
+import {appendDistinctQueueV2,upcomingQueueV2,queueTrackKeyV2,nextQueueTrackV2,nextPreviewQueueTrackV2,tracksFromPlayableProjectV2,type PlaybackQueueTrackV2} from './playback-queue-v2';
 import ProjectActionDialogV2,{type ContextProject,type ProjectAction,type ChangedProject} from './project-action-dialog-v2';
 import {findOwnProjectV2,OwnedPackCacheV2} from './owned-pack-cache-v2';
 import {addFilesToOwnedPack,isAudioFileDrag} from './pack-drop-upload-v2';
@@ -232,12 +233,14 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
  const [muted,setMuted]=useState(false);
  const [shuffle,setShuffle]=useState(false);
  const [repeat,setRepeat]=useState<'off'|'all'|'one'>('off');
+ const [preview,setPreview]=useState(false);
+ const [previewClock]=useState(()=>new PlayerPreviewV2());
  const coverUrl=useProjectCoverUrlV2(current?.owner_id??userId??null,current?.cover_file_id??null);
  useEffect(()=>{if(audioRef.current){audioRef.current.volume=volume;audioRef.current.muted=muted}},[volume,muted,current?.id]);
  useEffect(()=>{if(!popup)return;const key=(e:KeyboardEvent)=>{if(e.key==='Escape')setPopup(null)};document.addEventListener('keydown',key);return()=>document.removeEventListener('keydown',key)},[popup]);
  const audioRef=useRef<HTMLAudioElement|null>(null);
  useEffect(()=>{onPlayerVisibility?.(Boolean(current));return ()=>onPlayerVisibility?.(false)},[Boolean(current),onPlayerVisibility]);
- useEffect(()=>{const audio=audioRef.current;if(!audio||!current)return;audio.load();audio.play().then(()=>setPlaying(true)).catch(()=>{setPlaying(false);setPlayerError('Unable to play audio')})},[current?.owner_id,current?.id,current?.audio_file_id]);
+ useEffect(()=>{previewClock.resetTrack();const audio=audioRef.current;if(!audio||!current)return;audio.load();audio.play().then(()=>setPlaying(true)).catch(()=>{setPlaying(false);setPlayerError('Unable to play audio')})},[current?.owner_id,current?.id,current?.audio_file_id,previewClock]);
  const toggle=()=>{const a=audioRef.current;if(!a)return;if(a.paused)a.play().then(()=>setPlaying(true)).catch(()=>setPlayerError('Unable to play audio'));else{a.pause();setPlaying(false)}};
  const choose=(beat:BeatItem,list:BeatItem[],packId:string|null=null)=>{
   const tracks:PlaybackQueueTrackV2[]=list.map(item=>({...item,queue_pack_id:packId}));
@@ -251,8 +254,36 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
   else setQueue(previous=>appendDistinctQueueV2(previous,[{...beat,queue_pack_id:null}]));
   setContextBeat(null);
  };
- const next=()=>{if(!current)return;if(repeat==='one'){if(audioRef.current){audioRef.current.currentTime=0;audioRef.current.play().catch(()=>{})}return;}const index=queue.findIndex(b=>b.id===current.id&&b.owner_id===current.owner_id);const target=shuffle&&queue.length>1?queue.filter(b=>b.id!==current.id||b.owner_id!==current.owner_id)[Math.floor(Math.random()*(queue.length-1))]:queue[index+1]||(repeat==='all'?queue[0]:null);if(target){setCurrent(target);setActivePackId(target.queue_pack_id??null);setElapsed(0)}else{setPlaying(false)}};
- const previous=()=>{if(!current)return;const index=queue.findIndex(b=>b.id===current.id&&b.owner_id===current.owner_id);if(index>0){setCurrent(queue[index-1]);setActivePackId(queue[index-1].queue_pack_id??null);setElapsed(0)}else if(audioRef.current)audioRef.current.currentTime=0};
+ const advance=(selectNext:typeof nextQueueTrackV2)=>{
+  if(!current)return;
+  const target=selectNext(queue,current,repeat,shuffle);
+  if(!target){
+   previewClock.resetTrack();
+   if(audioRef.current?.ended)setPlaying(false);
+   return;
+  }
+  if(!previewClock.claimTransition())return;
+  if(queueTrackKeyV2(target)===queueTrackKeyV2(current)){
+   const audio=audioRef.current;
+   if(audio){audio.currentTime=0;setElapsed(0);audio.play().catch(()=>{});}
+   previewClock.resetTrack();
+   return;
+  }
+  setCurrent(target);setActivePackId(target.queue_pack_id??null);setElapsed(0);
+ };
+ const next=()=>advance(nextQueueTrackV2);
+ const advanceAutomatically=()=>advance(preview?nextPreviewQueueTrackV2:nextQueueTrackV2);
+ const previous=()=>{if(!current)return;const index=queue.findIndex(b=>b.id===current.id&&b.owner_id===current.owner_id);if(index>0){setCurrent(queue[index-1]);setActivePackId(queue[index-1].queue_pack_id??null);setElapsed(0)}else if(audioRef.current){previewClock.resetTrack();audioRef.current.currentTime=0}};
+ const canCountPreview=(audio:HTMLAudioElement)=>!audio.paused&&!audio.ended&&!audio.seeking&&audio.readyState>=HTMLMediaElement.HAVE_FUTURE_DATA;
+ const togglePreview=()=>{
+  const audio=audioRef.current;
+  previewClock.setEnabled(!preview,audio&&canCountPreview(audio)?audio.currentTime:null);
+  setPreview(!preview);
+ };
+ const countPreview=(audio:HTMLAudioElement)=>{
+  setElapsed(audio.currentTime);
+  if(canCountPreview(audio)&&previewClock.sample(audio.currentTime))advanceAutomatically();
+ };
  const playPack=async(p:PackItem)=>{if(activePackId===p.id&&current?.owner_id===p.owner_id){toggle();return;}try{setPlayerError('');const project=await fetchPlayableProjectV2(p.owner_id,'pack',p.id);const beats=tracksFromPlayableProjectV2(project);if(!beats.length)throw Error('Pack has no playable beats');choose(beats[0],beats,p.id)}catch(e){setPlayerError(e instanceof Error?e.message:'Unable to load pack')}};
 
  // A Profile/Catalog/Saves play request resolves the original owner's project.
@@ -469,10 +500,20 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
   </div>
  </div>,document.body)}
  {current&&createPortal(<div className="onece-player-dock v2-active-player" aria-label="Audio player">
-  <PlayerDockV2 current={current} coverUrl={coverUrl} waveBars={waveBars} elapsed={elapsed} duration={duration} playing={playing} queue={queue} repeat={repeat} shuffle={shuffle} popup={popup} muted={muted} volume={volume} playerError={playerError} audioRef={audioRef} previous={previous} toggle={toggle} next={next} setShuffle={setShuffle} setRepeat={setRepeat} setPopup={setPopup} setMuted={setMuted} setVolume={setVolume} setCurrent={setCurrent} setActivePackId={setActivePackId} setElapsed={setElapsed} formatTime={formatTime} SkipBackIcon={V1SkipBack} SkipForwardIcon={V1SkipForward}/>
+  <PlayerDockV2 current={current} coverUrl={coverUrl} waveBars={waveBars} elapsed={elapsed} duration={duration} playing={playing} queue={queue} repeat={repeat} shuffle={shuffle} preview={preview} togglePreview={togglePreview} popup={popup} muted={muted} volume={volume} playerError={playerError} audioRef={audioRef} previous={previous} toggle={toggle} next={next} setShuffle={setShuffle} setRepeat={setRepeat} setPopup={setPopup} setMuted={setMuted} setVolume={setVolume} setCurrent={setCurrent} setActivePackId={setActivePackId} setElapsed={setElapsed} formatTime={formatTime} SkipBackIcon={V1SkipBack} SkipForwardIcon={V1SkipForward}/>
  </div>,document.body)}
  {playerError&&!current&&createPortal(<p className="v2-player-error v2-player-notice" role="alert">{playerError}</p>,document.body)}
- {current&&createPortal(<audio ref={audioRef} crossOrigin="use-credentials" preload="metadata" src={api+'/api/public/audio/'+(current.owner_id??userId)+'/'+current.audio_file_id} onTimeUpdate={e=>setElapsed(e.currentTarget.currentTime)} onLoadedMetadata={e=>setDuration(Number.isFinite(e.currentTarget.duration)?e.currentTarget.duration:0)} onEnded={next} onPause={()=>setPlaying(false)} onPlay={()=>setPlaying(true)} onError={()=>{setPlaying(false);setPlayerError('Audio could not be loaded')}}/>,document.body)}
+ {current&&createPortal(<audio ref={audioRef} crossOrigin="use-credentials" preload="metadata" src={api+'/api/public/audio/'+(current.owner_id??userId)+'/'+current.audio_file_id}
+  onTimeUpdate={event=>countPreview(event.currentTarget)}
+  onLoadedMetadata={event=>setDuration(Number.isFinite(event.currentTarget.duration)?event.currentTarget.duration:0)}
+  onEnded={event=>{if(event.currentTarget.ended)advanceAutomatically()}}
+  onPlaying={event=>previewClock.resume(event.currentTarget.currentTime)}
+  onWaiting={event=>previewClock.suspend(event.currentTarget.seeking?undefined:event.currentTarget.currentTime)}
+  onSeeking={()=>previewClock.suspend()}
+  onSeeked={event=>{if(canCountPreview(event.currentTarget))previewClock.resume(event.currentTarget.currentTime)}}
+  onPause={event=>{previewClock.suspend(event.currentTarget.seeking?undefined:event.currentTarget.currentTime);setPlaying(false)}}
+  onPlay={()=>setPlaying(true)}
+  onError={()=>{previewClock.suspend();setPlaying(false);setPlayerError('Audio could not be loaded')}}/>,document.body)}
  </section>;
 }
 
