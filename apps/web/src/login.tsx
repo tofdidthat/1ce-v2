@@ -59,6 +59,10 @@ export function LoginPage(){
   const loginCode=params.get('login_code');
   const api=import.meta.env.VITE_API_URL;
   if(params.get('login')==='error'&&!loginCode)setNotice('Google sign-in did not complete. Please try again.');
+  if(params.get('login')==='beta_access'&&!loginCode){
+   sessionStorage.removeItem('onece_v2_google_verifier');
+   setNotice('This Google account does not have web beta access.');
+  }
   if(loginCode){
    const verifier=sessionStorage.getItem('onece_v2_google_verifier');
    if(!api||!verifier){setNotice('Google sign-in did not complete. Please try again.');return;}

@@ -34,7 +34,7 @@ function Landing() {
  if(enter)return <Navigate to="/app/library" replace/>;
  return <PublicPage><div className="empty-landing" aria-label="Landing content reserved for future design"/></PublicPage>;
 }
-function Register() { return <PublicPage><section className="auth-card"><h1>Create an account</h1><p>Registration will be enabled when the v2 authentication API is ready.</p><Link to="/login">Back to login</Link></section></PublicPage> }
+function Register() { return <PublicPage><section className="auth-card"><h1>Join the 1CE web beta</h1><p>Access is by invitation. If you have beta access, sign in with your approved Google account.</p><Link to="/login">Go to login</Link></section></PublicPage> }
 function WorkspaceRoute(){
  const {id}=useParams();
  const location=useLocation();

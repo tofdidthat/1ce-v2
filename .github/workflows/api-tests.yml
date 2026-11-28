@@ -87,6 +87,10 @@ jobs:
           node --check apps/api/scripts/publication-pg-smoke.mjs
           node apps/api/scripts/publication-pg-smoke.mjs
           node apps/api/scripts/publishing-e2e-smoke.mjs
+      - name: Verify Web Beta and Desktop separation on disposable PostgreSQL
+        env:
+          T063_LOCAL_TEST_DB: postgresql://s2_ci:isolated-ci-only@127.0.0.1:5432/onece_s2_ci
+        run: node --test apps/api/test/desktop-upload.test.js
 
   s2-local-s3-syntax-preflight:
     runs-on: ubuntu-latest

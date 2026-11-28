@@ -11,5 +11,6 @@ export function isAccountUserV2(value:unknown):value is AccountUserV2{
  }
  if(user.email!==undefined&&typeof user.email!=='string')return false;
  if(user.has_avatar!==undefined&&typeof user.has_avatar!=='boolean')return false;
+ if(user.web_beta!==undefined&&typeof user.web_beta!=='boolean')return false;
  return true;
 }

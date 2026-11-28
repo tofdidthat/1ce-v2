@@ -17,7 +17,7 @@ const codeChallenge=createHash('sha256').update(verifier).digest('base64url');
 test('desktop upload grants and retries are scoped to the authorizing account', {skip:!dbUrl}, async()=>{
  const url=new URL(dbUrl);
  assert.equal(url.hostname,'127.0.0.1');
- assert.equal(url.pathname,'/t063_test');
+ assert.ok(['/t063_test','/onece_s2_ci'].includes(url.pathname));
  const schema='t063_'+randomBytes(8).toString('hex');
  const admin=new pg.Pool({connectionString:dbUrl});
  const pool=new pg.Pool({connectionString:dbUrl,options:'-c search_path='+schema});
@@ -31,6 +31,11 @@ test('desktop upload grants and retries are scoped to the authorizing account', 
   }
   const {rows:[alice,bob]}=await pool.query(
    "INSERT INTO account_users(email) VALUES('alice@example.test'),('bob@example.test') RETURNING id");
+  const webBetaMigration=await readFile(new URL('../../../history/database/026_web_beta_accounts.sql',import.meta.url),'utf8');
+  await pool.query(webBetaMigration);
+  await pool.query(webBetaMigration);
+  const existing=(await pool.query('SELECT web_beta FROM account_users ORDER BY id')).rows;
+  assert.deepEqual(existing,[{web_beta:false},{web_beta:false}]);
   const aliceSession=digest(random());
   const bobSession=digest(random());
   await pool.query("INSERT INTO account_sessions(user_id,token_hash,expires_at) VALUES($1,$2,now()+interval '1 hour'),($3,$4,now()+interval '1 hour')",
@@ -86,6 +91,12 @@ test('desktop upload grants and retries are scoped to the authorizing account', 
   await pool.query("UPDATE account_desktop_upload_grants SET code_expires_at=now()-interval '1 second' WHERE code_hash=$1",[digest(expired)]);
   assert.equal((await exchange(expired)).status,401);
   const bobToken=(await exchange((await authorize(bob.id,bobSession)).data.code)).data.accessToken;
+  const pendingCode=(await authorize(bob.id,bobSession)).data.code;
+  await pool.query('UPDATE account_users SET web_beta = true WHERE id = $1',[bob.id]);
+  assert.equal((await authorize(bob.id,bobSession)).status,403);
+  assert.equal((await exchange(pendingCode)).status,401);
+  assert.equal(await desktopUploadUser({headers:{authorization:'Bearer '+bobToken}},pool),null);
+  await pool.query('UPDATE account_users SET web_beta = false WHERE id = $1',[bob.id]);
 
   const base='/api/library/files';
   const frame=Buffer.alloc(417);
