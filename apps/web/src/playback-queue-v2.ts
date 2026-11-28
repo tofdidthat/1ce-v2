@@ -5,6 +5,7 @@ import type {PlayableProjectV2} from './playable-manifest-v2';
 
 export type PlaybackQueueTrackV2=LibraryBeatV2&{queue_pack_id?:string|null};
 type QueueIdentity=Pick<LibraryBeatV2,'owner_id'|'id'>;
+type QueueRepeatV2='off'|'all'|'one';
 export const queueTrackKeyV2=(track:QueueIdentity)=>track.owner_id+':'+track.id;
 
 export function appendDistinctQueueV2<T extends QueueIdentity>(current:readonly T[],incoming:readonly T[]):T[]{
@@ -27,7 +28,7 @@ export function upcomingQueueV2<T extends QueueIdentity>(queue:readonly T[],now:
 }
 
 export function nextQueueTrackV2<T extends QueueIdentity>(
- queue:readonly T[],current:T,repeat:'off'|'all'|'one',shuffle:boolean,random=Math.random
+ queue:readonly T[],current:T,repeat:QueueRepeatV2,shuffle:boolean,random=Math.random
 ):T|null{
  if(repeat==='one')return current;
  const key=queueTrackKeyV2(current);
@@ -37,6 +38,12 @@ export function nextQueueTrackV2<T extends QueueIdentity>(
  }
  const index=queue.findIndex(track=>queueTrackKeyV2(track)===key);
  return queue[index+1]??(repeat==='all'?queue[0]??null:null);
+}
+
+export function nextPreviewQueueTrackV2<T extends QueueIdentity>(
+ queue:readonly T[],current:T,repeat:QueueRepeatV2,shuffle:boolean
+):T|null{
+ return nextQueueTrackV2(queue,current,repeat==='one'?'off':repeat,shuffle);
 }
 
 export function tracksFromPlayableProjectV2(project:PlayableProjectV2):PlaybackQueueTrackV2[]{

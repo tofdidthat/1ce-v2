@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {PlayerPreviewV2,previewSecondsV2} from '../src/player-preview-v2.ts';
-import {nextQueueTrackV2} from '../src/playback-queue-v2.ts';
+import {nextQueueTrackV2,nextPreviewQueueTrackV2} from '../src/playback-queue-v2.ts';
 
 test('initially disabled, then counts 29 seconds from the current media position',()=>{
  const clock=new PlayerPreviewV2();
@@ -61,4 +62,24 @@ test('short tracks can end normally and preview uses existing queue and repeat r
  assert.equal(nextQueueTrackV2(queue,c,'one',false),c);
  assert.equal(nextQueueTrackV2([a],a,'all',false),a);
  assert.equal(nextQueueTrackV2(queue,b,'off',true,()=>.9),c);
+});
+
+test('automatic Preview advances past Repeat 1 and preserves the normal queue boundaries',()=>{
+ const a={id:'a',owner_id:2},b={id:'b',owner_id:2};
+ const queue=[a,b];
+ assert.equal(nextPreviewQueueTrackV2(queue,a,'one',false),b);
+ assert.equal(nextPreviewQueueTrackV2(queue,b,'one',false),null);
+ assert.equal(nextPreviewQueueTrackV2([a],a,'one',false),null);
+ assert.equal(nextPreviewQueueTrackV2(queue,b,'all',false),a);
+ assert.equal(nextPreviewQueueTrackV2(queue,b,'one',true),a);
+ assert.equal(nextQueueTrackV2(queue,a,'one',false),a);
+});
+
+test('the Preview timer and natural end use automatic selection; the manual control keeps Repeat 1',()=>{
+ const source=readFileSync(new URL('../src/library-items-v2.tsx',import.meta.url),'utf8');
+ assert.match(source,/const advanceAutomatically=\(\)=>advance\(preview\?nextPreviewQueueTrackV2:nextQueueTrackV2\)/);
+ assert.match(source,/previewClock\.sample\(audio\.currentTime\)\)advanceAutomatically\(\)/);
+ assert.match(source,/onEnded=\{event=>\{if\(event\.currentTarget\.ended\)advanceAutomatically\(\)/);
+ assert.match(source,/const next=\(\)=>advance\(nextQueueTrackV2\)/);
+ assert.match(source,/next=\{next\}/);
 });

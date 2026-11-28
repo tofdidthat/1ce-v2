@@ -17,7 +17,7 @@ import {savedProjectKeyV2} from './project-identity-v2';
 import {createProjectShareLinkV2} from './project-requests-v2';
 import {fetchPlayableProjectV2,publicProjectLinkV2,downloadAuthorizedMp3V2} from './public-project-actions-v2';
 import {downloadOwnedProjectV2} from './owner-download-v2';
-import {appendDistinctQueueV2,upcomingQueueV2,queueTrackKeyV2,nextQueueTrackV2,tracksFromPlayableProjectV2,type PlaybackQueueTrackV2} from './playback-queue-v2';
+import {appendDistinctQueueV2,upcomingQueueV2,queueTrackKeyV2,nextQueueTrackV2,nextPreviewQueueTrackV2,tracksFromPlayableProjectV2,type PlaybackQueueTrackV2} from './playback-queue-v2';
 import ProjectActionDialogV2,{type ContextProject,type ProjectAction,type ChangedProject} from './project-action-dialog-v2';
 import {findOwnProjectV2,OwnedPackCacheV2} from './owned-pack-cache-v2';
 import {addFilesToOwnedPack,isAudioFileDrag} from './pack-drop-upload-v2';
@@ -254,9 +254,9 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
   else setQueue(previous=>appendDistinctQueueV2(previous,[{...beat,queue_pack_id:null}]));
   setContextBeat(null);
  };
- const next=()=>{
+ const advance=(selectNext:typeof nextQueueTrackV2)=>{
   if(!current)return;
-  const target=nextQueueTrackV2(queue,current,repeat,shuffle);
+  const target=selectNext(queue,current,repeat,shuffle);
   if(!target){
    previewClock.resetTrack();
    if(audioRef.current?.ended)setPlaying(false);
@@ -271,6 +271,8 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
   }
   setCurrent(target);setActivePackId(target.queue_pack_id??null);setElapsed(0);
  };
+ const next=()=>advance(nextQueueTrackV2);
+ const advanceAutomatically=()=>advance(preview?nextPreviewQueueTrackV2:nextQueueTrackV2);
  const previous=()=>{if(!current)return;const index=queue.findIndex(b=>b.id===current.id&&b.owner_id===current.owner_id);if(index>0){setCurrent(queue[index-1]);setActivePackId(queue[index-1].queue_pack_id??null);setElapsed(0)}else if(audioRef.current){previewClock.resetTrack();audioRef.current.currentTime=0}};
  const canCountPreview=(audio:HTMLAudioElement)=>!audio.paused&&!audio.ended&&!audio.seeking&&audio.readyState>=HTMLMediaElement.HAVE_FUTURE_DATA;
  const togglePreview=()=>{
@@ -280,7 +282,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
  };
  const countPreview=(audio:HTMLAudioElement)=>{
   setElapsed(audio.currentTime);
-  if(canCountPreview(audio)&&previewClock.sample(audio.currentTime))next();
+  if(canCountPreview(audio)&&previewClock.sample(audio.currentTime))advanceAutomatically();
  };
  const playPack=async(p:PackItem)=>{if(activePackId===p.id&&current?.owner_id===p.owner_id){toggle();return;}try{setPlayerError('');const project=await fetchPlayableProjectV2(p.owner_id,'pack',p.id);const beats=tracksFromPlayableProjectV2(project);if(!beats.length)throw Error('Pack has no playable beats');choose(beats[0],beats,p.id)}catch(e){setPlayerError(e instanceof Error?e.message:'Unable to load pack')}};
 
@@ -504,7 +506,7 @@ export default function LibraryItemsV2({onUpload,onPlayerVisibility,onPlaybackCh
  {current&&createPortal(<audio ref={audioRef} crossOrigin="use-credentials" preload="metadata" src={api+'/api/public/audio/'+(current.owner_id??userId)+'/'+current.audio_file_id}
   onTimeUpdate={event=>countPreview(event.currentTarget)}
   onLoadedMetadata={event=>setDuration(Number.isFinite(event.currentTarget.duration)?event.currentTarget.duration:0)}
-  onEnded={event=>{if(event.currentTarget.ended)next()}}
+  onEnded={event=>{if(event.currentTarget.ended)advanceAutomatically()}}
   onPlaying={event=>previewClock.resume(event.currentTarget.currentTime)}
   onWaiting={event=>previewClock.suspend(event.currentTarget.seeking?undefined:event.currentTarget.currentTime)}
   onSeeking={()=>previewClock.suspend()}
