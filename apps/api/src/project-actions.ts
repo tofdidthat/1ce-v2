@@ -12,6 +12,7 @@ type AccountV2={id:number};
 type CurrentUserV2=(req:IncomingMessage)=>Promise<AccountV2|null>;
 type ActionResultV2={status:number;data:unknown};
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const sha256=/^[a-f0-9]{64}$/;
 const send=(res:ServerResponse,status:number,payload:unknown)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(payload));};
 async function parseJson(req:IncomingMessage):Promise<Record<string,unknown>|null>{
  let raw='';for await(const part of req){raw+=part;if(raw.length>8192)throw Error('oversized');}
@@ -29,6 +30,44 @@ async function transaction(pool:TxPoolV2,owner:number,work:(db:TxClientV2)=>Prom
  finally{c.release();}
 }
 const result=(status:number,data:unknown):ActionResultV2=>({status,data});
+async function readStemsBinding(db:QueryableV2,owner:number,beatId:string,lock=false){
+ const row=(await db.query(`SELECT b.id,b.audio_file_id,a.sha256 AS audio_sha256,b.stems_file_id,
+  s.sha256 AS stems_sha256 FROM library_beats b
+  JOIN library_files a ON a.id=b.audio_file_id AND a.user_id=b.user_id AND a.kind='audio' AND a.status='ready'
+  LEFT JOIN library_files s ON s.id=b.stems_file_id AND s.user_id=b.user_id AND s.kind='stems' AND s.status='ready'
+  WHERE b.id=$1 AND b.user_id=$2 AND b.deleted_at IS NULL
+  AND NOT EXISTS (SELECT 1 FROM v2_public_projects p WHERE p.user_id=b.user_id AND p.kind='beat' AND p.project_id=b.id)
+  ${lock?'FOR UPDATE OF b':''}`,[beatId,owner])).rows[0];
+ if(!row)return null;
+ return {beatId:row.id,audioFileId:String(row.audio_file_id),audioSha256:row.audio_sha256,
+  stemsFileId:row.stems_file_id==null?null:String(row.stems_file_id),stemsSha256:row.stems_sha256};
+}
+
+async function attachStemsBinding(pool:TxPoolV2,owner:number,beatId:string,body:Record<string,unknown>|null|undefined){
+ const {audioFileId,audioSha256,stemsFileId,stemsSha256}=body||{};
+ const validId=(id:unknown):id is string=>typeof id==='string'&&/^[1-9]\d{0,15}$/.test(id)&&Number.isSafeInteger(Number(id));
+ if(!validId(audioFileId)||!validId(stemsFileId)||
+  typeof audioSha256!=='string'||!sha256.test(audioSha256)||typeof stemsSha256!=='string'||!sha256.test(stemsSha256))
+  return result(400,{error:'Provide the expected audio and stems file IDs and SHA-256 values'});
+ return transaction(pool,owner,async db=>{
+  const current=await readStemsBinding(db,owner,beatId,true);
+  if(!current)return result(404,{error:'Private beat not found'});
+  if(current.audioFileId!==audioFileId||current.audioSha256!==audioSha256)
+   return result(409,{error:'Beat audio no longer matches the approved binding'});
+  if(current.stemsFileId!==null){
+   if(current.stemsFileId===stemsFileId&&current.stemsSha256===stemsSha256)
+    return result(200,{...current,reused:true});
+   return result(409,{error:'This beat already has stems; existing stems were kept'});
+  }
+  const zip=await db.query("SELECT id FROM library_files WHERE id=$1 AND user_id=$2 AND kind='stems' AND status='ready' AND sha256=$3",
+   [stemsFileId,owner,stemsSha256]);
+  if(zip.rowCount!==1)return result(400,{error:'Stems must be a ready ZIP owned by you with the approved SHA-256'});
+  const update=await db.query('UPDATE library_beats SET stems_file_id=$1 WHERE id=$2 AND user_id=$3 AND stems_file_id IS NULL RETURNING id',
+   [stemsFileId,beatId,owner]);
+  if(update.rowCount!==1)return result(409,{error:'The beat binding changed; recheck before retrying'});
+  return result(200,{...current,stemsFileId,stemsSha256,reused:false});
+ });
+}
 async function ownerProject(c:QueryableV2,kind:ProjectKindV2,id:string,owner:number):Promise<Record<string,unknown>|null>{
  const table=kind==='beat'?'library_beats':'library_packs';
  return (await c.query('SELECT id,title,cover_file_id FROM '+table+' WHERE id=$1 AND user_id=$2 AND deleted_at IS NULL FOR UPDATE',[id,owner])).rows[0]||null;
@@ -56,11 +95,29 @@ async function attach(c:QueryableV2,targetId:string,beatIds:string[]):Promise<nu
 }
 export async function handleProjectActions(req:IncomingMessage,res:ServerResponse,pathname:string,pool:TxPoolV2,currentUser:CurrentUserV2):Promise<boolean>{
  if(!pathname.startsWith('/api/library/projects/'))return false;
- if(!['PATCH','DELETE','POST'].includes(req.method||'')){send(res,405,{error:'Method not allowed'});return true;}
+ const binding=pathname.match(/^\/api\/library\/projects\/beat\/([^/]+)\/stems-binding$/);
+ if(binding ? !['GET','POST'].includes(req.method||'') : !['PATCH','DELETE','POST'].includes(req.method||'')){
+  send(res,405,{error:'Method not allowed'});return true;
+ }
  const user=await currentUser(req);
  if(!user){send(res,401,{error:'Not authenticated'});return true;}
  const parts=pathname.split('/').filter(Boolean);
  const owner=Number(user.id);
+ if(binding){
+  const beatId=binding[1];
+  if(!uuid.test(beatId)){send(res,404,{error:'Private beat not found'});return true;}
+  if(req.method==='GET'){
+   const current=await readStemsBinding(pool,owner,beatId);
+   send(res,current?200:404,current??{error:'Private beat not found'});return true;
+  }
+  if(req.headers['content-type']?.split(';')[0]!=='application/json'){
+   send(res,415,{error:'Expected application/json'});return true;
+  }
+  let body:Record<string,unknown>|null;
+  try{body=await parseJson(req);}catch{send(res,400,{error:'Invalid JSON request'});return true;}
+  const response=await attachStemsBinding(pool,owner,beatId,body);
+  send(res,response.status,response.data);return true;
+ }
  let body:Record<string,unknown>|null|undefined;
  if(req.method!=='DELETE'){
   try{body=await parseJson(req);}catch{send(res,400,{error:'Invalid JSON request'});return true;}
